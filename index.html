@@ -2820,107 +2820,158 @@ function exportPDF() {
 // =======================================================
 // FORECAST
 // =======================================================
-function _fcBuildMesMap() {
-  const pN = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
-  const mesMap={}, mesesSet=new Set();
+// helpers compartidos para forecast
+function _fcSortMeses(set) {
+  return [...set].sort((a,b)=>{
+    const ia=MESES_ES.indexOf(a.toLowerCase()), ib=MESES_ES.indexOf(b.toLowerCase());
+    return (ia<0?99:ia)-(ib<0?99:ib);
+  });
+}
+function _fcLinReg(vals) {
+  const n=vals.length; if(n<2) return {a:vals[0]||0,b:0};
+  const sumX=n*(n-1)/2, sumY=vals.reduce((s,v)=>s+v,0);
+  const sumXY=vals.reduce((s,v,i)=>s+i*v,0), sumX2=n*(n-1)*(2*n-1)/6;
+  const b=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX);
+  return { a:(sumY-b*sumX)/n, b };
+}
+function _fcPM3(vals) {
+  const last=vals.filter(v=>v>0).slice(-3);
+  return last.length ? Math.round(last.reduce((s,v)=>s+v,0)/last.length) : 0;
+}
+// Devuelve los próximos N meses (en español cap) a partir del último mes en lista
+function _fcNextMeses(meses, n=4) {
+  if (!meses.length) return [];
+  const lastIdx = MESES_ES.indexOf(meses[meses.length-1].toLowerCase());
+  if (lastIdx<0) return [];
+  return Array.from({length:n}, (_,i) => MESES_CAP[(lastIdx+1+i)%12]);
+}
+
+function renderForecast() {
+  const pN = v=>{ const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+
+  // ── Construir mesMap producción ──────────────────────────────────────
+  const prodMesMap={}, prodMesesSet=new Set();
   DATA.prod.forEach(r=>{
     const prod=r._prod; if(!prod) return;
     const mes=r._mes;   if(!mes)  return;
     const cant=pN(r._cant); if(cant<=0) return;
-    if(!mesMap[prod]) mesMap[prod]={};
-    mesMap[prod][mes]=(mesMap[prod][mes]||0)+cant;
-    mesesSet.add(mes);
+    if(!prodMesMap[prod]) prodMesMap[prod]={};
+    prodMesMap[prod][mes]=(prodMesMap[prod][mes]||0)+cant;
+    prodMesesSet.add(mes);
   });
-  const meses=[...mesesSet].sort((a,b)=>{
-    const ia=MESES_ES.indexOf(a.toLowerCase()),ib=MESES_ES.indexOf(b.toLowerCase());
-    return (ia<0?99:ia)-(ib<0?99:ib);
+  const prodMeses = _fcSortMeses(prodMesesSet);
+  const prods = Object.keys(prodMesMap).sort((a,b)=>a.localeCompare(b));
+
+  // ── Construir mesMap ventas (unidades por mes, total) ────────────────
+  const ventaMesMap={}, ventaMesesSet=new Set();
+  DATA.ventas.forEach(r=>{
+    const mes=(r['MES ']||r['MES']||'').trim().toLowerCase(); if(!mes) return;
+    const cant=pN(r['Cantidad']); if(cant<=0) return;
+    ventaMesMap[mes]=(ventaMesMap[mes]||0)+cant;
+    ventaMesesSet.add(mes);
   });
-  return { mesMap, meses, prods: Object.keys(mesMap).sort((a,b)=>a.localeCompare(b)) };
-}
+  const ventaMeses = _fcSortMeses(ventaMesesSet);
 
-function renderForecast() {
-  const { mesMap, meses, prods } = _fcBuildMesMap();
-  if (!prods.length) return;
+  if (!prods.length && !ventaMeses.length) return;
 
-  // ── KPIs globales ────────────────────────────────────────────────────
-  const totalPorMes = meses.map(m => prods.reduce((s,p)=>s+(mesMap[p][m]||0),0));
-  const promMensual = totalPorMes.reduce((s,v)=>s+v,0) / (totalPorMes.filter(v=>v>0).length||1);
-  const maxMes      = Math.max(...totalPorMes);
-  const minMes      = Math.min(...totalPorMes.filter(v=>v>0));
-  // Promedio móvil 3 meses para proyección
-  const ultTres     = totalPorMes.slice(-3).filter(v=>v>0);
-  const proyMes     = ultTres.length ? Math.round(ultTres.reduce((s,v)=>s+v,0)/ultTres.length) : 0;
+  // ── Próximos 4 meses dinámicos ───────────────────────────────────────
+  const nextMeses = _fcNextMeses(prodMeses.length ? prodMeses : ventaMeses, 4);
 
+  // ── Proyecciones de producción total (todos los prods) ───────────────
+  const totalPorMes   = prodMeses.map(m=>prods.reduce((s,p)=>s+(prodMesMap[p][m]||0),0));
+  const promProd      = totalPorMes.filter(v=>v>0).reduce((s,v)=>s+v,0)/(totalPorMes.filter(v=>v>0).length||1);
+  const lrProd        = _fcLinReg(totalPorMes);
+  const pm3Prod       = _fcPM3(totalPorMes);
+  // proyección para cada próximo mes
+  const projProd      = nextMeses.map((_,i)=>Math.max(0,Math.round(lrProd.a+lrProd.b*(totalPorMes.length+i))));
+
+  // ── Proyecciones de ventas total ─────────────────────────────────────
+  const ventaTotals   = ventaMeses.map(m=>ventaMesMap[m]||0);
+  const lrVenta       = _fcLinReg(ventaTotals);
+  const pm3Venta      = _fcPM3(ventaTotals);
+  const projVenta     = nextMeses.map((_,i)=>Math.max(0,Math.round(lrVenta.a+lrVenta.b*(ventaTotals.length+i))));
+
+  // ── KPIs ─────────────────────────────────────────────────────────────
   document.getElementById('fc-kpis').innerHTML =
-    kpiCard('Promedio Mensual',  fmt(Math.round(promMensual)), '#38BDF8','Total unidades/mes','fa-solid fa-chart-bar')+
-    kpiCard('Máximo Histórico',  fmt(maxMes), '#10B981', meses[totalPorMes.indexOf(maxMes)] ? cap(meses[totalPorMes.indexOf(maxMes)]) : '','fa-solid fa-arrow-trend-up')+
-    kpiCard('Mínimo Histórico',  fmt(minMes), '#F59E0B','','fa-solid fa-arrow-trend-down')+
-    kpiCard('Proyección Próx. Mes', fmt(proyMes), '#A78BFA','Promedio móvil 3 meses','fa-solid fa-brain');
+    kpiCard('Prom. Producción/Mes', fmt(Math.round(promProd)), '#38BDF8','Histórico','fa-solid fa-industry')+
+    kpiCard('Proyección Próx. Mes', fmt(projProd[0]||pm3Prod), '#A78BFA','Tendencia lineal + PM3','fa-solid fa-brain')+
+    kpiCard('Prom. Ventas/Mes', fmt(Math.round(ventaTotals.filter(v=>v>0).reduce((s,v)=>s+v,0)/(ventaTotals.filter(v=>v>0).length||1))), '#10B981','Unidades facturadas','fa-solid fa-truck-fast')+
+    kpiCard('Proyección Ventas', fmt(projVenta[0]||pm3Venta), '#F59E0B','Próximo mes','fa-solid fa-arrow-trend-up');
 
-  // ── Gráfico tendencia por referencia ─────────────────────────────────
-  const topProds = prods.slice(0, 6);
-  makeChart('fc-trend-chart','line', meses.map(m=>MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m),
-    topProds.map((p,i)=>({
-      label: p, tension:.35, pointRadius:3, fill:false,
-      borderColor: PAL[i%PAL.length],
-      data: meses.map(m=>mesMap[p][m]||null)
-    })));
+  // ── Gráfico histórico + proyección producción ─────────────────────────
+  const allProdLabels = [...prodMeses.map(m=>MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m), ...nextMeses.map(m=>`▸ ${m}`)];
+  const histProd  = [...totalPorMes, ...nextMeses.map(()=>null)];
+  const fcProdArr = [...totalPorMes.map(()=>null), ...projProd];
+  // PM3 proyección
+  const pm3ProdArr= [...totalPorMes.map(()=>null), ...nextMeses.map(()=>pm3Prod)];
+  makeChart('fc-trend-chart','line', allProdLabels,[
+    { label:'Producción Real', data:histProd, borderColor:'#38BDF8', backgroundColor:'#38BDF822', tension:.35, pointRadius:3, fill:true },
+    { label:'Proyección (Tendencia)', data:fcProdArr, borderColor:'#A78BFA', borderDash:[6,4], tension:.35, pointRadius:4, pointStyle:'triangle', fill:false },
+    { label:'Proyección (PM3)', data:pm3ProdArr, borderColor:'#F59E0B', borderDash:[3,3], tension:0, pointRadius:3, fill:false }
+  ]);
 
-  // ── Gráfico proyección próximos 3 meses (promedio móvil) ─────────────
-  const PROX_MESES = ['Julio','Agosto','Septiembre'];
-  const projData = topProds.map((p,i) => {
-    const vals = meses.map(m=>mesMap[p][m]||0).filter(v=>v>0);
-    const last3 = vals.slice(-3);
-    const proy  = last3.length ? Math.round(last3.reduce((s,v)=>s+v,0)/last3.length) : 0;
-    return { label:p, proy, color: PAL[i%PAL.length] };
-  });
-  makeChart('fc-proj-chart','bar', PROX_MESES,
-    projData.map(d=>({
-      label:d.label, borderRadius:5,
-      backgroundColor: d.color+'99', borderColor: d.color, borderWidth:2,
-      data:[d.proy, Math.round(d.proy*1.02), Math.round(d.proy*1.04)]
-    })));
+  // ── Gráfico histórico + proyección ventas ─────────────────────────────
+  const allVentaLabels=[...ventaMeses.map(m=>MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m),...nextMeses.map(m=>`▸ ${m}`)];
+  const histVenta =[...ventaTotals,...nextMeses.map(()=>null)];
+  const fcVentaArr=[...ventaTotals.map(()=>null),...projVenta];
+  const pm3VentaArr=[...ventaTotals.map(()=>null),...nextMeses.map(()=>pm3Venta)];
+  makeChart('fc-proj-chart','line', allVentaLabels,[
+    { label:'Ventas Reales (Und.)', data:histVenta, borderColor:'#10B981', backgroundColor:'#10B98122', tension:.35, pointRadius:3, fill:true },
+    { label:'Proyección (Tendencia)', data:fcVentaArr, borderColor:'#EF4444', borderDash:[6,4], tension:.35, pointRadius:4, pointStyle:'triangle', fill:false },
+    { label:'Proyección (PM3)', data:pm3VentaArr, borderColor:'#F59E0B', borderDash:[3,3], tension:0, pointRadius:3, fill:false }
+  ]);
 
-  // ── Tabla unidades recomendadas ───────────────────────────────────────
+  // ── Tabla unidades recomendadas (histórico + próximos meses) ─────────
   const maxByProd={};
-  prods.forEach(p=>{ const v=Object.values(mesMap[p]); maxByProd[p]=v.length?Math.max(...v):0; });
+  prods.forEach(p=>{ const v=Object.values(prodMesMap[p]); maxByProd[p]=v.length?Math.max(...v):0; });
 
   const thead=`<thead><tr>
     <th>Referencia</th>
-    ${meses.map(m=>`<th style="text-align:right">${MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m}</th>`).join('')}
+    ${prodMeses.map(m=>`<th style="text-align:right">${MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m}</th>`).join('')}
+    ${nextMeses.map(m=>`<th style="text-align:right;color:#A78BFA;background:rgba(167,139,250,.07)">▸ ${m}</th>`).join('')}
     <th style="text-align:right;color:#38BDF8">Rec./Mes</th>
-    <th style="text-align:right;color:#38BDF8">Rec./Año</th>
   </tr></thead>`;
   const tbody=prods.map(p=>{
+    const vals=prodMeses.map(m=>prodMesMap[p][m]||0);
+    const lr=_fcLinReg(vals);
     const rec=Math.round(maxByProd[p]*0.95);
-    const cells=meses.map(m=>{
-      const v=mesMap[p][m]||0;
+    const histCells=prodMeses.map(m=>{
+      const v=prodMesMap[p][m]||0;
       return `<td style="text-align:right;color:${v>0?'#D1D5DB':'#4B5563'}">${v>0?v.toLocaleString():'-'}</td>`;
     }).join('');
-    return `<tr><td style="font-weight:600">${p}</td>${cells}
-      <td style="text-align:right;font-weight:700;color:#38BDF8">${rec.toLocaleString()}</td>
-      <td style="text-align:right;font-weight:700;color:#38BDF8">${(rec*12).toLocaleString()}</td></tr>`;
+    const projCells=nextMeses.map((_,i)=>{
+      const pm3=_fcPM3(vals);
+      const trend=Math.max(0,Math.round(lr.a+lr.b*(vals.length+i)));
+      const avg2=Math.round((pm3+trend)/2);
+      return `<td style="text-align:right;color:#A78BFA;background:rgba(167,139,250,.07);font-style:italic">${avg2>0?avg2.toLocaleString():'-'}</td>`;
+    }).join('');
+    return `<tr><td style="font-weight:600">${p}</td>${histCells}${projCells}
+      <td style="text-align:right;font-weight:700;color:#38BDF8">${rec.toLocaleString()}</td></tr>`;
   }).join('');
   document.getElementById('fc-units-tbl').innerHTML = thead+`<tbody>${tbody}</tbody>`;
 
   // ── Tarjetas modelos de pronóstico ────────────────────────────────────
   const FC_MODELOS = [
-    { icon:'fa-chart-line', color:'#38BDF8', nombre:'Promedio Móvil 3 Meses',
+    { icon:'fa-chart-line',    color:'#38BDF8', nombre:'Promedio Móvil 3 Meses (PM3)',
       formula:'PM₃ = (M-1 + M-2 + M-3) / 3',
-      desc:'Suaviza variaciones estacionales. Recomendado cuando la producción es estable sin tendencia marcada.',
-      uso:'Proyección del mes siguiente a partir del comportamiento reciente.' },
-    { icon:'fa-arrow-trend-up', color:'#10B981', nombre:'Máximo Histórico Ajustado',
+      desc:'Suaviza variaciones estacionales. Ideal cuando la producción es estable sin tendencia marcada.',
+      uso:'Proyección de corto plazo con datos recientes.' },
+    { icon:'fa-arrow-trend-up',color:'#A78BFA', nombre:'Tendencia Lineal (Mínimos Cuadrados)',
+      formula:'ŷ(t) = a + b×t',
+      desc:'Detecta si la producción/ventas crecen o decrecen. Se recalcula automáticamente con cada nuevo mes.',
+      uso:'Proyección de mediano plazo y alertas de declive.' },
+    { icon:'fa-calculator',    color:'#10B981', nombre:'Promedio Simple Mensual',
+      formula:'PM = Σ(meses) / n',
+      desc:'Baseline de producción esperada. Se actualiza al conectar datos nuevos.',
+      uso:'Presupuestación y planeación de materiales.' },
+    { icon:'fa-layer-group',   color:'#F59E0B', nombre:'Máximo Histórico Ajustado',
       formula:'Rec. = MAX(meses) × 95%',
-      desc:'Usa la mejor marca mensual alcanzada como techo de capacidad real. El 95% da margen operativo.',
+      desc:'Techo de capacidad real demostrado. El 95% da margen operativo frente a variaciones.',
       uso:'Definición de metas de producción por referencia.' },
-    { icon:'fa-calculator', color:'#8B5CF6', nombre:'Promedio Simple Mensual',
-      formula:'PM = Σ(producción mensual) / n_meses',
-      desc:'Baseline de producción esperada. Útil para presupuestar y comparar contra el plan comercial.',
-      uso:'Planeación de materiales y programación de producción.' },
-    { icon:'fa-layer-group', color:'#F59E0B', nombre:'Tendencia Lineal',
-      formula:'ŷ = a + b×t (mínimos cuadrados)',
-      desc:'Detecta si la producción está creciendo o decreciendo en el tiempo. Ideal para identificar referencias en declive.',
-      uso:'Alertas tempranas de referencias con tendencia negativa.' }
+    { icon:'fa-truck-fast',    color:'#EF4444', nombre:'Forecast de Ventas',
+      formula:'Ventas proyectadas = Tendencia(t) ó PM3',
+      desc:'Proyecta las unidades vendidas para los próximos meses usando el histórico de DATA.ventas (columna Cantidad). Se recalcula con cada actualización de datos.',
+      uso:'Alinear producción con demanda comercial proyectada.' }
   ];
   document.getElementById('fc-model-cards').innerHTML = FC_MODELOS.map(m=>`
     <div class="chart-card" style="border-left:3px solid ${m.color};padding:16px 18px">
