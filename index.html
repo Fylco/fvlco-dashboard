@@ -490,6 +490,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
             <div class="fp-title">Tarifas (COP/hora)</div>
             <p style="font-size:.68rem;color:#6B7280;margin-bottom:10px">Cargadas automáticamente desde <strong style="color:#4B5563">Plan de Referencias</strong></p>
             <div id="costos-tarifas-form"></div>
+            <div id="costos-debug" style="margin-top:10px;padding:8px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:0.65rem;color:#92400e;line-height:1.6;word-break:break-all"></div>
             <div class="fp-label" style="margin-top:14px">Moneda</div>
             <select id="costos-moneda" class="fp-select" onchange="renderCostos()">
               <option value="COP">COP $</option>
@@ -1682,6 +1683,24 @@ function rowParoHoras(r) { return (r._paro||0) / 60; }
 function renderCostos() {
   const d = filterCostos();
   buildTarifasForm();
+
+  // ── DEBUG temporal: mostrar valores de columnas clave
+  const _dbg = document.getElementById('costos-debug');
+  if (_dbg && d.length > 0) {
+    const _r = d[0];
+    const _cicloRealVal = _r['T. CICLO REAL'];
+    const _cicloEstVal  = _r['T. CICLO EST'];
+    const _cicloAbVal   = _r['CICLO REAL'];
+    const _cavVal       = _r['CAVIDADES'];
+    const _cavTeorVal   = _r['CAV.TEORICAS'];
+    const _getCiclo     = _getCicloReal(_r);
+    const _getCavFinal  = _findColVal(_r,'CAVIDAD','TEOR') || CAV_MAP[_r._prod] || 1;
+    _dbg.innerHTML = `<b>DEBUG fila[0] (${_r._prod||'?'} Máq${_r._maq}):</b><br>
+      T. CICLO REAL="${_cicloRealVal}" | T. CICLO EST="${_cicloEstVal}" | CICLO REAL(AB)="${_cicloAbVal}"<br>
+      _getCicloReal()=${_getCiclo} | CAVIDADES="${_cavVal}" | CAV.TEORICAS="${_cavTeorVal}"<br>
+      getCav usado=${_getCavFinal} | _cant=${_r._cant} | _paro=${_r._paro}<br>
+      rowFabHoras=${rowFabHoras(_r).toFixed(4)}h`;
+  } else if (_dbg) { _dbg.innerHTML = 'Sin datos filtrados'; }
 
   // ── Tabla 1: Costo fabricación por producto
   const prodMap = {};
