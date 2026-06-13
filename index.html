@@ -708,7 +708,8 @@ function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); delete CHART
 // DATA LOADING
 // =======================================================
 async function fetchCSV(url) {
-  const res = await fetch(proxy(url));
+  const bust = `&_t=${Date.now()}`;
+  const res = await fetch(proxy(url + bust), { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
   return Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
 }
