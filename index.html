@@ -2207,19 +2207,21 @@ function renderReporteDiario() {
     const g       = groups[key];
     const undProd = Math.round(g.cantSum);
     const undProg = g.undProg || undProd;
-    if (!refMap[g.prod]) refMap[g.prod] = { prog:0, prod:0 };
-    refMap[g.prod].prog += undProg;
-    refMap[g.prod].prod += undProd;
+    const rKey    = `${g.prod}|||${g.maq}`;
+    if (!refMap[rKey]) refMap[rKey] = { prod: g.prod, maq: g.maq, prog:0, prod2:0 };
+    refMap[rKey].prog  += undProg;
+    refMap[rKey].prod2 += undProd;
   });
-  const refRows = Object.entries(refMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([prod, v]) => {
-    const falt = v.prog - v.prod;
-    const pct  = v.prog > 0 ? (v.prod/v.prog*100) : 0;
+  const refRows = Object.values(refMap).sort((a,b)=>a.prod.localeCompare(b.prod)||a.maq.localeCompare(b.maq)).map(v => {
+    const falt = v.prog - v.prod2;
+    const pct  = v.prog > 0 ? (v.prod2/v.prog*100) : 0;
     const c    = pct >= 90 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#EF4444';
     const bar  = Math.min(100, pct).toFixed(1);
     return `<tr>
-      <td style="font-weight:600">${prod}</td>
+      <td style="font-weight:600">${v.prod}</td>
+      <td style="color:#9CA3AF;font-size:.85rem">${v.maq}</td>
       <td style="text-align:right;color:#60A5FA">${v.prog.toLocaleString()}</td>
-      <td style="text-align:right;color:#10B981">${v.prod.toLocaleString()}</td>
+      <td style="text-align:right;color:#10B981">${v.prod2.toLocaleString()}</td>
       <td style="text-align:right;color:${falt>0?'#EF4444':'#10B981'}">${falt>0?'+'+falt.toLocaleString():falt.toLocaleString()}</td>
       <td style="min-width:160px;padding:6px 10px">
         <div style="display:flex;align-items:center;gap:6px">
@@ -2234,12 +2236,13 @@ function renderReporteDiario() {
   document.getElementById('rd-ref-tbl').innerHTML = `
     <thead><tr>
       <th>Referencia</th>
+      <th>Máquina</th>
       <th style="text-align:right">Und. Programadas</th>
       <th style="text-align:right">Und. Producidas</th>
       <th style="text-align:right">Und. Faltantes</th>
       <th>% Cumplimiento</th>
     </tr></thead>
-    <tbody>${refRows||'<tr><td colspan="5" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>`;
+    <tbody>${refRows||'<tr><td colspan="6" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>`;
 
   // ── Detalle por turno (sin subtotales ni total) ────────────────────
   document.getElementById('rd-tbl').innerHTML = `
