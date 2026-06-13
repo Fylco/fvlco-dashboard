@@ -255,6 +255,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
         <button class="btn-clear" onclick="clearFilters('rd');renderReporteDiario()">Limpiar</button>
       </div>
+      <!-- OEE ensayo -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+        <div class="chart-card" id="rd-oee-tiempo"></div>
+        <div class="chart-card" id="rd-oee-unid"></div>
+      </div>
       <div class="chart-card" style="margin-bottom:18px">
         <div id="rd-cumpl-box"></div>
         <div id="rd-progress-bar"></div>
@@ -1961,6 +1966,107 @@ function renderReporteDiario() {
     }
     groups[key].cantSum += pNum(r._cant);
   });
+
+  // ── OEE: acumular por máquina ─────────────────────────────────────
+  const oeeByMaq = {};
+  rows.forEach(r => {
+    const maq   = String(r._maq || '?');
+    const dia   = String(r._diaTurno || '');
+    const turno = String(r._turno || '');
+    if (!oeeByMaq[maq]) oeeByMaq[maq] = { dtMap:{}, hParo:0, cant:0, rendNumer:0, teoFABNumer:0, teoTURNONumer:0 };
+    const m = oeeByMaq[maq];
+    if (dia && TURNO_INTERVALS[turno]) {
+      if (!m.dtMap[dia]) m.dtMap[dia] = new Set();
+      m.dtMap[dia].add(turno);
+    }
+    const cant    = pNum(r._cant);
+    const est     = pNum(r['T. CICLO EST']);
+    const cavTeorR = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
+    m.hParo     += (r._paro || 0) / 60;
+    m.cant      += cant;
+    m.rendNumer += cant * est;           // Σ(cant × cicloEst) para Rend_t
+    m._est       = m._est || est;        // cicloEst representativo (primer valor)
+    m._cavTeor   = m._cavTeor || cavTeorR;
+  });
+  // NC filtrado por mes+dia (mismo filtro que producción)
+  const ncMesLow = fMes.toLowerCase();
+  DATA.nc.forEach(r => {
+    const maq = String(r['MÁQUINA'] ?? r['MAQUINA'] ?? '');
+    if (!maq || !oeeByMaq[maq]) return;
+    const mes = (r['MES '] || r['MES'] || '').trim().toLowerCase();
+    if (fMes && mes !== ncMesLow) return;
+    if (fDia && String(r._diaTurno) !== fDia) return;
+    const nc = pNum(r['CANTIDAD NC']);
+    if (nc > 0) { oeeByMaq[maq]._nc = (oeeByMaq[maq]._nc||0) + nc; }
+  });
+
+  let totHT=0, totHF=0, totCantO=0, totNC_O=0, totRendN=0, totTeoFAB=0, totTeoTURNO=0;
+  Object.values(oeeByMaq).forEach(m => {
+    const hT  = Object.values(m.dtMap).reduce((s,ts)=>s+calcShiftHours(ts),0);
+    const hF  = Math.max(0, hT - m.hParo);
+    const est = m._est || 0;
+    const cav = m._cavTeor || 1;
+    m.hTurno  = hT; m.hFab = hF;
+    m.teoFAB  = est>0 ? (hF*3600/est)*cav : 0;
+    m.teoTURNO= est>0 ? (hT*3600/est)*cav : 0;
+    totHT       += hT;  totHF      += hF;
+    totCantO    += m.cant;
+    totNC_O     += m._nc||0;
+    totRendN    += m.rendNumer;
+    totTeoFAB   += m.teoFAB;
+    totTeoTURNO += m.teoTURNO;
+  });
+  const undBuenas = Math.max(0, totCantO - totNC_O);
+
+  // OEE por Tiempo
+  const disp_t = totHT>0 ? totHF/totHT : 0;
+  const rend_t = totHF>0 ? totRendN/(totHF*3600) : 0;
+  const cal_t  = totCantO>0 ? undBuenas/totCantO : 0;
+  const oee_t  = disp_t * Math.min(rend_t,1) * cal_t;
+
+  // OEE por Unidades
+  const disp_u = totHT>0 ? totHF/totHT : 0;
+  const rend_u = totTeoFAB>0 ? Math.min(totCantO/totTeoFAB,1) : 0;
+  const cal_u  = totCantO>0 ? undBuenas/totCantO : 0;
+  const oee_u  = disp_u * rend_u * cal_u;
+
+  function oeeCard(titulo, oee, disp, rend, cal, prodInfo) {
+    const pct = v => (v*100).toFixed(1)+'%';
+    const col = v => v>=0.90?'#10B981':v>=0.70?'#F59E0B':'#EF4444';
+    const bar = (v, c) => {
+      const w = (Math.min(v,1)*100).toFixed(1);
+      return `<div style="flex:1;background:#374151;border-radius:99px;height:8px;overflow:hidden">
+        <div style="width:${w}%;height:100%;background:${c};border-radius:99px"></div></div>`;
+    };
+    const row = (label, v) => {
+      const c = col(v);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:110px;font-size:.72rem;color:#9CA3AF;flex-shrink:0">${label}</div>
+        ${bar(v,c)}
+        <div style="width:52px;text-align:right;font-size:.82rem;font-weight:700;color:${c};flex-shrink:0">${pct(v)}</div>
+      </div>`;
+    };
+    const oc = col(oee); const ow = (Math.min(oee,1)*100).toFixed(1);
+    return `
+      <div style="font-size:.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${titulo}</div>
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
+        <div style="font-size:3rem;font-weight:900;color:${oc};line-height:1;text-shadow:0 0 24px ${oc}66">${pct(oee)}</div>
+        <div style="flex:1">
+          <div style="background:#374151;border-radius:99px;height:12px;overflow:hidden">
+            <div style="width:${ow}%;height:100%;background:linear-gradient(90deg,${oc}99,${oc});border-radius:99px"></div>
+          </div>
+          <div style="font-size:.65rem;color:#6B7280;margin-top:4px">${prodInfo}</div>
+        </div>
+      </div>
+      ${row('Disponibilidad', disp)}
+      ${row('Rendimiento',    rend)}
+      ${row('Calidad',        cal)}`;
+  }
+
+  const infoT = `H.Turno ${totHT.toFixed(1)}h · H.Fab ${totHF.toFixed(1)}h · H.Paro ${(totHT-totHF).toFixed(1)}h`;
+  const infoU = `Prod ${totCantO.toLocaleString()} · NC ${totNC_O.toLocaleString()} · Buenas ${undBuenas.toLocaleString()}`;
+  document.getElementById('rd-oee-tiempo').innerHTML = oeeCard('OEE por Tiempo', oee_t, disp_t, Math.min(rend_t,1), cal_t, infoT);
+  document.getElementById('rd-oee-unid').innerHTML   = oeeCard('OEE por Unidades', oee_u, disp_u, rend_u, cal_u, infoU);
 
   let totalProg = 0, totalProd = 0;
   const sortedKeys = Object.keys(groups).sort((a,b) => {
