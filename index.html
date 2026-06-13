@@ -920,6 +920,15 @@ async function loadAll() {
     populateAllFilters();
     loadTarifasFromSheet();
     buildCavMap();
+    // DEBUG: mostrar nombres reales de columnas CICLO y CAVIDAD
+    if (DATA.prod.length > 0) {
+      const _r0 = DATA.prod[0];
+      const _cicCols = Object.keys(_r0).filter(k=>k.toUpperCase().includes('CICLO'));
+      const _cavCols = Object.keys(_r0).filter(k=>k.toUpperCase().includes('CAVID'));
+      console.log('[DEBUG] Columnas CICLO:', _cicCols.map(k=>k+'='+_r0[k]));
+      console.log('[DEBUG] Columnas CAVID:', _cavCols.map(k=>k+'='+_r0[k]));
+      console.log('[DEBUG] CAV_MAP muestra:', Object.entries(CAV_MAP).slice(0,5));
+    }
     renderAll();
     setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
   } catch(e) {
