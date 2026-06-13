@@ -606,7 +606,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div style="width:1px;height:24px;background:#374151;flex-shrink:0"></div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:.7rem;color:#9CA3AF">Cliente</span>
-          <select id="fv-cliente" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:160px"><option value="">Todos</option></select>
+          <select id="fv-cliente" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:150px"><option value="">Todos</option></select>
+          <span style="font-size:.7rem;color:#9CA3AF">Producto</span>
+          <select id="fv-producto" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:150px"><option value="">Todos</option></select>
+          <span style="font-size:.7rem;color:#9CA3AF">Materia Prima</span>
+          <select id="fv-materia" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:120px"><option value="">Todas</option></select>
           <span style="font-size:.7rem;color:#9CA3AF">Estado</span>
           <select id="fv-estado" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
             <option value="">Todos</option><option value="DESPACHADO">Despachado</option><option value="EN PROCESO">En Proceso</option>
@@ -616,7 +620,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:.7rem;color:#9CA3AF">Métrica</span>
           <select id="fv-metrica" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
-            <option value="valor">Valor ($)</option><option value="cantidad">Cantidad pedidos</option>
+            <option value="valor">Valor Total ($)</option><option value="cantidad">Cantidad (Und)</option><option value="materia">Materia Prima</option>
           </select>
           <span style="font-size:.7rem;color:#9CA3AF">Horizonte</span>
           <select id="fv-horizonte" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
@@ -3049,7 +3053,7 @@ function renderForecast() {
 // =======================================================
 // FORECAST DE VENTAS — funciones fv* (integradas desde forecast.html)
 // =======================================================
-const FV_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ4-F6K4w3h8-Q_ugbDyaeApNv6KYj0BbwNXq5SVAbVbheJP49jYKQB9EPJ9h5NO6_XJizXaI1YsRxR/pub?gid=65365395&single=true&output=csv';
+const FV_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ4-F6K4w3h8-Q_ugbDyaeApNv6KYj0BbwNXq5SVAbVbheJP49jYKQB9EPJ9h5NO6_XJizXaI1YsRxR/pub?gid=999968463&single=true&output=csv';
 const FV_COLORS = { actual:'#e2e8f0', sma:'#38bdf8', wma:'#a78bfa', reg:'#34d399', exp:'#fb923c', holt:'#f87171' };
 const FV_MODEL_NAMES = { sma:'P. Móvil Simple', wma:'P. Móvil Ponderado', reg:'Regresión Lineal', exp:'Suav. Exponencial', holt:'Holt (Tendencia)' };
 let fvCharts = {};
@@ -3079,49 +3083,73 @@ async function fvLoadData() {
 }
 
 function fvPopulateClients() {
-  const sel = document.getElementById('fv-cliente');
-  if (!sel) return;
-  while (sel.options.length > 1) sel.remove(1);
-  const clients = [...new Set((DATA.forecastVentas||[]).map(r=>r['CLIENTE']?.trim()).filter(Boolean))].sort();
-  clients.forEach(c => { const o = document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+  const fill = (id, col) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    const vals = [...new Set((DATA.forecastVentas||[]).map(r=>r[col]?.trim()).filter(Boolean))].sort();
+    vals.forEach(v => { const o = document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+  };
+  fill('fv-cliente',  'CLIENTE');
+  fill('fv-producto', 'PRODUCTO');
+  fill('fv-materia',  'MATERIA PRIMA REQUERIDA');
+
+  // Ajustar rango de fechas al histórico real (para que los meses nuevos no se corten)
+  const keys = (DATA.forecastVentas||[]).map(r=>{
+    const dt = fvParseDate(r['FECHA REGISTRO']); if(!dt) return null;
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+  }).filter(Boolean).sort();
+  if (keys.length) {
+    const dEl=document.getElementById('fv-desde'), hEl=document.getElementById('fv-hasta');
+    if(dEl) dEl.value = keys[0];
+    if(hEl) hEl.value = keys[keys.length-1];
+  }
 }
 
 function fvParseDate(str) {
   if (!str) return null;
   const parts = str.split(' ')[0].split('/');
   if (parts.length !== 3) return null;
-  const d=parseInt(parts[0]), m=parseInt(parts[1])-1, y=parseInt(parts[2]);
+  const d=parseInt(parts[0]), m=parseInt(parts[1])-1; let y=parseInt(parts[2]);
   if (isNaN(d)||isNaN(m)||isNaN(y)) return null;
+  if (y < 100) y += 2000; // año de 2 dígitos → 20YY
   return new Date(y, m, d);
 }
 
-function fvAggregateByMonth(data, metric) {
+function fvNum(s) { return parseFloat(String(s||'').replace(/[^0-9.-]/g,'')) || 0; }
+
+function fvAggregateByMonth(data) {
   const map = {};
   data.forEach(row => {
     const dt = fvParseDate(row['FECHA REGISTRO']);
     if (!dt) return;
-    const val = parseFloat(String(row['VALOR PEDIDO']).replace(/[^0-9.-]/g,'')) || 0;
     const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
-    if (!map[key]) map[key] = { valor:0, cantidad:0 };
-    map[key].valor += val;
-    map[key].cantidad += 1;
+    if (!map[key]) map[key] = { valor:0, cantidad:0, materia:0, pedidos:0 };
+    map[key].valor    += fvNum(row['VALOR TOTAL']);        // col O
+    map[key].cantidad += fvNum(row['CANTIDAD']);           // col K
+    map[key].materia  += fvNum(row['CANT MATERIA PRIMA']); // col R
+    map[key].pedidos  += 1;
   });
   return map;
 }
 
 function fvGetFilteredData() {
-  const desde   = document.getElementById('fv-desde')?.value   || '';
-  const hasta   = document.getElementById('fv-hasta')?.value   || '';
-  const cliente = document.getElementById('fv-cliente')?.value || '';
-  const estado  = document.getElementById('fv-estado')?.value  || '';
+  const desde    = document.getElementById('fv-desde')?.value    || '';
+  const hasta    = document.getElementById('fv-hasta')?.value    || '';
+  const cliente  = document.getElementById('fv-cliente')?.value  || '';
+  const producto = document.getElementById('fv-producto')?.value || '';
+  const materia  = document.getElementById('fv-materia')?.value  || '';
+  const estado   = document.getElementById('fv-estado')?.value   || '';
   return (DATA.forecastVentas||[]).filter(row => {
     const dt = fvParseDate(row['FECHA REGISTRO']);
     if (!dt) return false;
     const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
     if (desde && key < desde) return false;
     if (hasta && key > hasta) return false;
-    if (cliente && row['CLIENTE']?.trim() !== cliente) return false;
-    if (estado  && row['ESTADO']?.trim()  !== estado)  return false;
+    if (cliente  && row['CLIENTE']?.trim()  !== cliente)  return false;
+    if (producto && row['PRODUCTO']?.trim() !== producto) return false;
+    if (materia  && row['MATERIA PRIMA REQUERIDA']?.trim() !== materia) return false;
+    if (estado   && row['ESTADO']?.trim()   !== estado)   return false;
     return true;
   });
 }
@@ -3207,7 +3235,7 @@ function fvRunForecast() {
   const beta    = 0.2;
 
   const filtered = fvGetFilteredData();
-  const monthly  = fvAggregateByMonth(filtered, metric);
+  const monthly  = fvAggregateByMonth(filtered);
   let keys   = Object.keys(monthly).sort();
   let values = keys.map(k=>monthly[k][metric]);
 
@@ -3277,7 +3305,7 @@ function fvBuildHTML(values,keys,models,bestModel,projLabels,metric,anomalies,to
 
   const kpiStyle = (c)=>`background:#111827;border:1px solid #374151;border-radius:10px;padding:16px;border-top:3px solid ${c};position:relative;overflow:hidden`;
   const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px">
-    <div style="${kpiStyle('#38bdf8')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total ${metric==='valor'?'Ventas':'Pedidos'}</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(total,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${keys.length} meses analizados</div></div>
+    <div style="${kpiStyle('#38bdf8')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total ${metric==='valor'?'Ventas':metric==='materia'?'Materia Prima':'Cantidad'}</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(total,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${keys.length} meses analizados</div></div>
     <div style="${kpiStyle('#a78bfa')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Promedio Mensual</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(avg2,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Por mes en el período</div></div>
     <div style="${kpiStyle('#34d399')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Último Período</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(last,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${fvMonthLabel(keys[keys.length-1])}</div></div>
     <div style="${kpiStyle('#fb923c')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mejor Pronóstico</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(nextBest,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Modelo: ${bestModel.name}</div><div style="font-size:.68rem;${trendCl};margin-top:2px">${trendDir} Tendencia lineal</div></div>
@@ -3359,8 +3387,10 @@ function fvResetFilters() {
   const el=id=>document.getElementById(id);
   if(el('fv-desde'))  el('fv-desde').value  = '2024-03';
   if(el('fv-hasta'))  el('fv-hasta').value  = `${yy}-${mm}`;
-  if(el('fv-cliente'))el('fv-cliente').value = '';
-  if(el('fv-estado')) el('fv-estado').value  = '';
+  if(el('fv-cliente')) el('fv-cliente').value  = '';
+  if(el('fv-producto'))el('fv-producto').value = '';
+  if(el('fv-materia')) el('fv-materia').value  = '';
+  if(el('fv-estado'))  el('fv-estado').value   = '';
   if(el('fv-metrica'))el('fv-metrica').value = 'valor';
   if(el('fv-horizonte'))el('fv-horizonte').value='6';
   if(el('fv-sma-k'))  el('fv-sma-k').value  = '3';
