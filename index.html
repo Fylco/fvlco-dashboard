@@ -255,6 +255,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
         <button class="btn-clear" onclick="clearFilters('rd');renderReporteDiario()">Limpiar</button>
       </div>
+      <div class="chart-card" style="margin-bottom:18px">
+        <div id="rd-cumpl-box"></div>
+        <div id="rd-progress-bar"></div>
+      </div>
       <div class="chart-card" style="overflow-x:auto">
         <div class="section-title">Reporte Diario de Producción</div>
         <table class="tbl" id="rd-tbl"></table>
@@ -1969,7 +1973,49 @@ function renderReporteDiario() {
   }).join('');
 
   const cumpl = totalProg > 0 ? (totalProd / totalProg * 100) : 0;
-  const cumplColor = cumpl >= 95 ? '#10B981' : cumpl >= 80 ? '#F59E0B' : '#EF4444';
+  const cumplColor  = cumpl >= 95 ? '#10B981' : cumpl >= 80 ? '#F59E0B' : '#EF4444';
+  const cumplBg     = cumpl >= 95 ? 'rgba(16,185,129,.12)' : cumpl >= 80 ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
+  const cumplLabel  = cumpl >= 95 ? '✅ META ALCANZADA' : cumpl >= 80 ? '⚠️ EN RIESGO' : '🔴 INCUMPLIMIENTO';
+  const faltTotal   = Math.max(0, totalProg - totalProd);
+
+  // Semáforo grande de cumplimiento
+  document.getElementById('rd-cumpl-box').innerHTML = `
+    <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
+      <div style="text-align:center;flex:1;min-width:180px">
+        <div style="font-size:.75rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">% Cumplimiento del Plan</div>
+        <div style="font-size:4.5rem;font-weight:900;color:${cumplColor};line-height:1;text-shadow:0 0 40px ${cumplColor}88">${cumpl.toFixed(1)}%</div>
+        <div style="margin-top:10px;font-size:.9rem;font-weight:700;color:${cumplColor};background:${cumplBg};border:1px solid ${cumplColor}44;border-radius:8px;padding:5px 14px;display:inline-block">${cumplLabel}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;flex:1;min-width:200px">
+        <div style="background:#1F2937;border-radius:10px;padding:14px 20px;border-left:4px solid #60A5FA">
+          <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Und. Programadas</div>
+          <div style="font-size:1.7rem;font-weight:800;color:#60A5FA">${totalProg.toLocaleString()}</div>
+        </div>
+        <div style="background:#1F2937;border-radius:10px;padding:14px 20px;border-left:4px solid #10B981">
+          <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Und. Producidas</div>
+          <div style="font-size:1.7rem;font-weight:800;color:#10B981">${totalProd.toLocaleString()}</div>
+        </div>
+        <div style="background:#1F2937;border-radius:10px;padding:14px 20px;border-left:4px solid ${faltTotal>0?'#EF4444':'#10B981'}">
+          <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Und. Faltantes</div>
+          <div style="font-size:1.7rem;font-weight:800;color:${faltTotal>0?'#EF4444':'#10B981'}">${faltTotal.toLocaleString()}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div style="width:28px;height:28px;border-radius:50%;background:${cumpl>=95?'#10B981':'#374151'};box-shadow:${cumpl>=95?'0 0 16px #10B981':'none'};border:2px solid ${cumpl>=95?'#10B981':'#4B5563'}"></div>
+        <div style="width:28px;height:28px;border-radius:50%;background:${cumpl>=80&&cumpl<95?'#F59E0B':'#374151'};box-shadow:${cumpl>=80&&cumpl<95?'0 0 16px #F59E0B':'none'};border:2px solid ${cumpl>=80&&cumpl<95?'#F59E0B':'#4B5563'}"></div>
+        <div style="width:28px;height:28px;border-radius:50%;background:${cumpl<80?'#EF4444':'#374151'};box-shadow:${cumpl<80?'0 0 16px #EF4444':'none'};border:2px solid ${cumpl<80?'#EF4444':'#4B5563'}"></div>
+        <div style="font-size:.6rem;color:#6B7280;margin-top:2px;text-align:center">SEMÁFORO</div>
+      </div>
+    </div>`;
+
+  // Barra de progreso
+  const barWidth = Math.min(100, cumpl).toFixed(1);
+  document.getElementById('rd-progress-bar').innerHTML = `
+    <div style="background:#374151;border-radius:99px;height:14px;overflow:hidden;margin-top:10px">
+      <div style="width:${barWidth}%;height:100%;background:linear-gradient(90deg,${cumplColor}cc,${cumplColor});border-radius:99px;transition:width .6s ease;position:relative">
+        <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:.65rem;font-weight:700;color:#fff">${cumpl.toFixed(1)}%</span>
+      </div>
+    </div>`;
 
   document.getElementById('rd-tbl').innerHTML = `
     <thead><tr>
@@ -1987,7 +2033,7 @@ function renderReporteDiario() {
       <td colspan="7" style="text-align:right;padding:8px 10px">TOTALES</td>
       <td style="text-align:right;color:#60A5FA;padding:8px 10px">${totalProg.toLocaleString()}</td>
       <td style="text-align:right;padding:8px 10px">${totalProd.toLocaleString()}</td>
-      <td style="text-align:right;color:${cumplColor};padding:8px 10px">% Cumpl: ${cumpl.toFixed(1)}%</td>
+      <td style="text-align:right;color:${cumplColor};padding:8px 10px;font-size:1rem">${cumpl.toFixed(1)}%</td>
     </tr></tfoot>`;
 
   // ── Cuadro de Razones de Paro ──────────────────────────────────────
