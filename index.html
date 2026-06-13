@@ -812,6 +812,16 @@ function normalizeProd(r) {
   out._rend  = out['% RENDIMIENTO'];
   out._disp  = out['% DISPONIBILIDAD'];
   out._oee   = out['OEE FINAL'];
+  // Día real según turno de trabajo (col AD) — extrae día del formato DD/MM/YYYY
+  const _ft  = String(out['FECHAS SEGUN TURNO DE TRABAJO'] || out['FECHAS SEGÚN TURNO DE TRABAJO'] || '').trim();
+  if (_ft) {
+    const _m = _ft.match(/^(\d{1,2})[\/\-]/);          // DD/MM/... o DD-MM-...
+    const _m2 = !_m && _ft.match(/\d{4}[\/\-]\d{2}[\/\-](\d{2})/); // YYYY-MM-DD
+    const _day = _m ? parseInt(_m[1]) : (_m2 ? parseInt(_m2[1]) : null);
+    out._diaTurno = _day != null ? String(_day) : null;
+  } else {
+    out._diaTurno = null;
+  }
   return out;
 }
 
@@ -901,7 +911,7 @@ function clearFilters(prefix) {
 function populateAllFilters() {
   const meses = [...new Set(DATA.prod.map(r=>r._mes).filter(Boolean))];
   const maqs  = [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort();
-  const dias  = [...new Set(DATA.prod.map(r=>r['DIA']).filter(x=>x!==null&&x!==undefined&&x!==''))].sort((a,b)=>Number(a)-Number(b)).map(String);
+  const dias  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(x=>x!=null&&x!==''))].sort((a,b)=>Number(a)-Number(b));
   // Global top bar
   fillSel('g-mes', meses.map(cap), 'Mes');
   buildDiaDd(dias);
@@ -957,7 +967,7 @@ function filterProd() {
   const maq = getVal('oee-f-maq'); const t = getVal('oee-f-turno');
   return DATA.prod.filter(r =>
     (!m        || r._mes === m) &&
-    (!dias.size || dias.has(String(r['DIA']||''))) &&
+    (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq      || String(r._maq) === maq) &&
     (!t        || String(r._turno) === t)
   );
@@ -968,7 +978,7 @@ function filterCostos() {
   const dias = SEL_DIAS_COSTOS.size ? SEL_DIAS_COSTOS : SEL_DIAS;
   return DATA.prod.filter(r =>
     (!m    || r._mes === m) &&
-    (!dias.size || dias.has(String(r['DIA']||'').trim())) &&
+    (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq  || String(r._maq) === maq)
   );
 }
@@ -978,7 +988,7 @@ function filterParo() {
   const dias = SEL_DIAS_PARO.size ? SEL_DIAS_PARO : SEL_DIAS;
   return DATA.prod.filter(r =>
     (!m        || r._mes === m) &&
-    (!dias.size || dias.has(String(r['DIA']||''))) &&
+    (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq      || String(r._maq) === maq) &&
     (!SEL_RAZONES.size || SEL_RAZONES.has((r['RAZON PARO']||'').trim()))
   );
@@ -990,7 +1000,7 @@ function filterNC() {
   const dias = SEL_DIAS_NC;
   return DATA.nc.filter(r =>
     (!m    || (r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
-    (!dias.size || dias.has(String(r['DIA']||r['DIA ']||''))) &&
+    (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq  || String(((r['MÁQUINA']??r['MAQUINA'])||'')) === maq) &&
     (!SEL_CAUSAS.size || SEL_CAUSAS.has((r['CAUSA']||'').trim()))
   );
