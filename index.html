@@ -1909,6 +1909,41 @@ function renderCostos() {
 
 // =======================================================
 // REPORTE DIARIO
+function _oeeCard(titulo, oee, disp, rend, cal, info) {
+  const pct = v => (isNaN(v)?0:Math.min(v,1)*100).toFixed(1)+'%';
+  const col = v => v>=0.90?'#10B981':v>=0.70?'#F59E0B':'#EF4444';
+  const bar = (v,c) => {
+    const w = (Math.min(isNaN(v)?0:v,1)*100).toFixed(1);
+    return `<div style="flex:1;background:#374151;border-radius:99px;height:8px;overflow:hidden">
+      <div style="width:${w}%;height:100%;background:${c};border-radius:99px"></div></div>`;
+  };
+  const compRow = (label, v) => {
+    const c = col(isNaN(v)?0:v);
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="width:115px;font-size:.73rem;color:#9CA3AF;flex-shrink:0">${label}</div>
+      ${bar(v,c)}
+      <div style="width:54px;text-align:right;font-size:.85rem;font-weight:700;color:${c};flex-shrink:0">${pct(v)}</div>
+    </div>`;
+  };
+  const ov = isNaN(oee)?0:Math.min(oee,1);
+  const oc = col(ov);
+  const ow = (ov*100).toFixed(1);
+  return `
+    <div style="font-size:.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">${titulo}</div>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <div style="font-size:2.8rem;font-weight:900;color:${oc};line-height:1;text-shadow:0 0 24px ${oc}55;flex-shrink:0">${(ov*100).toFixed(1)}%</div>
+      <div style="flex:1">
+        <div style="background:#374151;border-radius:99px;height:12px;overflow:hidden">
+          <div style="width:${ow}%;height:100%;background:linear-gradient(90deg,${oc}88,${oc});border-radius:99px"></div>
+        </div>
+        <div style="font-size:.62rem;color:#6B7280;margin-top:5px">${info}</div>
+      </div>
+    </div>
+    ${compRow('Disponibilidad', disp)}
+    ${compRow('Rendimiento',    rend)}
+    ${compRow('Calidad',        cal)}`;
+}
+
 // =======================================================
 function _rdFilter(rows, fMes, fDia, fTurno, fMaq) {
   const m = fMes.toLowerCase();
@@ -1953,18 +1988,20 @@ function renderReporteDiario() {
     const turno = String(r._turno || '?');
     const prod  = r._prod || '?';
     const key   = `${dia}|${maq}|${turno}|${prod}`;
-    if (!groups[key]) {
-      const est      = pNum(r['T. CICLO EST']);
-      // Cavidades teóricas: columna CAV.TEORICAS o mapa de producto
-      const cavTeor  = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[prod] || 1, 1);
-      // Cavidades reales: columna K (contiene "CAVIDAD" pero no "TEOR")
-      const cavReal  = Math.max(_findColVal(r,'CAVIDAD','TEOR') || cavTeor, 1);
-      // UND PROGRAMADAS = seg_turno / cicloEst × cavTeóricas
-      const seg      = TURNO_SEG[turno] || 28800;
-      const undProg  = est > 0 ? Math.round((seg / est) * cavTeor) : 0;
-      groups[key] = { dia, maq, turno, prod, est, cavTeor, cavReal, undProg, cantSum:0 };
+    if (!groups[key]) groups[key] = { dia, maq, turno, prod, est:0, cavTeor:1, cavReal:1, undProg:0, cantSum:0 };
+    const g = groups[key];
+    // Tomar primer cicloEst válido (>0) del grupo
+    if (!g.est) {
+      const est = pNum(r['T. CICLO EST']);
+      if (est > 0) {
+        const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[prod] || 1, 1);
+        const cavReal = Math.max(_findColVal(r,'CAVIDAD','TEOR') || cavTeor, 1);
+        const seg     = TURNO_SEG[turno] || 28800;
+        g.est = est; g.cavTeor = cavTeor; g.cavReal = cavReal;
+        g.undProg = Math.round((seg / est) * cavTeor);
+      }
     }
-    groups[key].cantSum += pNum(r._cant);
+    g.cantSum += pNum(r._cant);
   });
 
   // ── OEE: acumular por máquina ─────────────────────────────────────
@@ -2030,43 +2067,12 @@ function renderReporteDiario() {
   const cal_u  = totCantO>0 ? undBuenas/totCantO : 0;
   const oee_u  = disp_u * rend_u * cal_u;
 
-  function oeeCard(titulo, oee, disp, rend, cal, prodInfo) {
-    const pct = v => (v*100).toFixed(1)+'%';
-    const col = v => v>=0.90?'#10B981':v>=0.70?'#F59E0B':'#EF4444';
-    const bar = (v, c) => {
-      const w = (Math.min(v,1)*100).toFixed(1);
-      return `<div style="flex:1;background:#374151;border-radius:99px;height:8px;overflow:hidden">
-        <div style="width:${w}%;height:100%;background:${c};border-radius:99px"></div></div>`;
-    };
-    const row = (label, v) => {
-      const c = col(v);
-      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <div style="width:110px;font-size:.72rem;color:#9CA3AF;flex-shrink:0">${label}</div>
-        ${bar(v,c)}
-        <div style="width:52px;text-align:right;font-size:.82rem;font-weight:700;color:${c};flex-shrink:0">${pct(v)}</div>
-      </div>`;
-    };
-    const oc = col(oee); const ow = (Math.min(oee,1)*100).toFixed(1);
-    return `
-      <div style="font-size:.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${titulo}</div>
-      <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
-        <div style="font-size:3rem;font-weight:900;color:${oc};line-height:1;text-shadow:0 0 24px ${oc}66">${pct(oee)}</div>
-        <div style="flex:1">
-          <div style="background:#374151;border-radius:99px;height:12px;overflow:hidden">
-            <div style="width:${ow}%;height:100%;background:linear-gradient(90deg,${oc}99,${oc});border-radius:99px"></div>
-          </div>
-          <div style="font-size:.65rem;color:#6B7280;margin-top:4px">${prodInfo}</div>
-        </div>
-      </div>
-      ${row('Disponibilidad', disp)}
-      ${row('Rendimiento',    rend)}
-      ${row('Calidad',        cal)}`;
-  }
-
   const infoT = `H.Turno ${totHT.toFixed(1)}h · H.Fab ${totHF.toFixed(1)}h · H.Paro ${(totHT-totHF).toFixed(1)}h`;
   const infoU = `Prod ${totCantO.toLocaleString()} · NC ${totNC_O.toLocaleString()} · Buenas ${undBuenas.toLocaleString()}`;
-  document.getElementById('rd-oee-tiempo').innerHTML = oeeCard('OEE por Tiempo', oee_t, disp_t, Math.min(rend_t,1), cal_t, infoT);
-  document.getElementById('rd-oee-unid').innerHTML   = oeeCard('OEE por Unidades', oee_u, disp_u, rend_u, cal_u, infoU);
+  const elT = document.getElementById('rd-oee-tiempo');
+  const elU = document.getElementById('rd-oee-unid');
+  if (elT) elT.innerHTML = _oeeCard('OEE por Tiempo',    oee_t, disp_t, Math.min(rend_t,1), cal_t, infoT);
+  if (elU) elU.innerHTML = _oeeCard('OEE por Unidades',  oee_u, disp_u, rend_u,              cal_u, infoU);
 
   let totalProg = 0, totalProd = 0;
   const sortedKeys = Object.keys(groups).sort((a,b) => {
