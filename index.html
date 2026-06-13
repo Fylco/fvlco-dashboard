@@ -132,6 +132,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="nav-item" onclick="showSection('oee')" data-section="oee">
       <i class="fa-solid fa-circle-nodes w-4"></i> OEE
     </div>
+    <div class="nav-item" onclick="showSection('reporte-diario')" data-section="reporte-diario">
+      <i class="fa-solid fa-calendar-day w-4"></i> Reporte Diario
+    </div>
     <div class="nav-item" onclick="showSection('plan-mensual')" data-section="plan-mensual">
       <i class="fa-solid fa-calendar-check w-4"></i> Plan vs Real Mensual
     </div>
@@ -227,6 +230,34 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="chart-card" style="overflow-x:auto">
         <div class="section-title">Detalle por Máquina</div>
         <table class="tbl" id="oee-tbl"></table>
+      </div>
+    </div>
+
+    <!-- ======================================= REPORTE DIARIO == -->
+    <div class="section" id="sec-reporte-diario">
+      <div class="filter-bar">
+        <select id="rd-f-mes">
+          <option value="">Todos los meses</option>
+          <option>Enero</option><option>Febrero</option><option>Marzo</option><option>Abril</option>
+          <option>Mayo</option><option>Junio</option><option>Julio</option><option>Agosto</option>
+          <option>Septiembre</option><option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
+        </select>
+        <select id="rd-f-dia"><option value="">Todos los días</option></select>
+        <select id="rd-f-turno">
+          <option value="">Todos los turnos</option>
+          <option value="1">T1 — 6:00 AM a 2:00 PM</option>
+          <option value="2">T2 — 2:00 PM a 10:00 PM</option>
+          <option value="3">T3 — 10:00 PM a 6:00 AM</option>
+          <option value="4">T4 — 6:00 AM a 6:00 PM</option>
+          <option value="5">T5 — 6:00 PM a 6:00 AM</option>
+        </select>
+        <select id="rd-f-maq"><option value="">Todas las máquinas</option></select>
+        <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
+        <button class="btn-clear" onclick="clearFilters('rd');renderReporteDiario()">Limpiar</button>
+      </div>
+      <div class="chart-card" style="overflow-x:auto">
+        <div class="section-title">Reporte Diario de Producción</div>
+        <table class="tbl" id="rd-tbl"></table>
       </div>
     </div>
 
@@ -1858,11 +1889,109 @@ function renderCostos() {
 }
 
 // =======================================================
+// REPORTE DIARIO
+// =======================================================
+function renderReporteDiario() {
+  const fMes   = (document.getElementById('rd-f-mes')?.value   || '').trim();
+  const fDia   = (document.getElementById('rd-f-dia')?.value   || '').trim();
+  const fTurno = (document.getElementById('rd-f-turno')?.value || '').trim();
+  const fMaq   = (document.getElementById('rd-f-maq')?.value   || '').trim();
+
+  // Populate day selector dynamically
+  const diaEl = document.getElementById('rd-f-dia');
+  if (diaEl && diaEl.options.length <= 1) {
+    const dias = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>a-b);
+    dias.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
+  }
+  // Populate machine selector
+  const maqEl = document.getElementById('rd-f-maq');
+  if (maqEl && maqEl.options.length <= 1) {
+    [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort().forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; maqEl.appendChild(o); });
+  }
+
+  const rows = DATA.prod.filter(r => {
+    if (fMes   && r._mes       !== fMes)        return false;
+    if (fDia   && String(r._diaTurno) !== fDia) return false;
+    if (fTurno && String(r._turno)    !== fTurno) return false;
+    if (fMaq   && r._maq              !== fMaq)  return false;
+    return true;
+  });
+
+  const pNum = v => { const n = parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+  const TURNO_H = {'1':8,'2':8,'3':8,'4':12,'5':12};
+
+  let totalProg = 0, totalProd = 0;
+  const bodyRows = rows.map(r => {
+    const cant       = pNum(r._cant);
+    const cicloEst   = pNum(r['T. CICLO EST']);
+    const cicloReal  = pNum(r['T. CICLO REAL']) || pNum(r['T.CICLO REAL']);
+    const cavReal    = pNum(r['CAVIDADES']) || pNum(r['CAV.REALES']) || 1;
+    const cavTeor    = pNum(r['CAV.TEORICAS']) || cavReal;
+
+    // Unidades Programadas = teóricas al ciclo estándar, en el tiempo real utilizado
+    // Tiempo real del lote = (cant / cavReal) * cicloReal segundos
+    // Und Prog = (tiempoReal / cicloEst) * cavTeor
+    let undProg = 0;
+    if (cicloEst > 0 && cicloReal > 0 && cavReal > 0) {
+      const tiempoReal = (cant / cavReal) * cicloReal;
+      undProg = Math.round((tiempoReal / cicloEst) * cavTeor);
+    } else if (cicloEst > 0) {
+      // fallback: turno horas si no hay ciclo real
+      const th = TURNO_H[String(r._turno)] || 8;
+      undProg = Math.round((th * 3600 / cicloEst) * cavTeor);
+    }
+    const undProd     = Math.round(cant);
+    const undFaltantes = undProg - undProd;
+
+    totalProg += undProg;
+    totalProd += undProd;
+
+    return `<tr>
+      <td>${r._prod||'-'}</td>
+      <td>${r._maq||'-'}</td>
+      <td>T${r._turno||'-'}</td>
+      <td style="text-align:right">${cavReal>0?Math.round(cavReal):'-'}</td>
+      <td style="text-align:right">${cicloEst>0?cicloEst.toFixed(1)+' s':'-'}</td>
+      <td style="text-align:right">${cavTeor>0?Math.round(cavTeor):'-'}</td>
+      <td style="text-align:right">${cicloReal>0?cicloReal.toFixed(1)+' s':'-'}</td>
+      <td style="text-align:right;font-weight:600;color:#60A5FA">${undProg.toLocaleString()}</td>
+      <td style="text-align:right">${undProd.toLocaleString()}</td>
+      <td style="text-align:right;color:${undFaltantes>0?'#EF4444':'#10B981'}">${undFaltantes>0?'+':''+(undFaltantes===0?'0':undFaltantes.toLocaleString())}</td>
+    </tr>`;
+  }).join('');
+
+  const cumpl = totalProg > 0 ? (totalProd / totalProg * 100) : 0;
+  const cumplColor = cumpl >= 95 ? '#10B981' : cumpl >= 80 ? '#F59E0B' : '#EF4444';
+
+  document.getElementById('rd-tbl').innerHTML = `
+    <thead><tr>
+      <th>Producto</th><th>Máquina</th><th>Turno</th>
+      <th style="text-align:right"># Cavidades</th>
+      <th style="text-align:right">Ciclo Estándar</th>
+      <th style="text-align:right"># Cav. Estándar</th>
+      <th style="text-align:right">T. Ciclo Real</th>
+      <th style="text-align:right">Und. Programadas</th>
+      <th style="text-align:right">Und. Producidas</th>
+      <th style="text-align:right">Und. Faltantes</th>
+    </tr></thead>
+    <tbody>${bodyRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos para los filtros seleccionados</td></tr>'}</tbody>
+    <tfoot><tr style="background:#1F2937;font-weight:700;font-size:.92rem">
+      <td colspan="7" style="text-align:right;padding:8px 10px">TOTALES</td>
+      <td style="text-align:right;color:#60A5FA;padding:8px 10px">${totalProg.toLocaleString()}</td>
+      <td style="text-align:right;padding:8px 10px">${totalProd.toLocaleString()}</td>
+      <td style="text-align:right;color:${cumplColor};padding:8px 10px">
+        % Cumpl: ${cumpl.toFixed(1)}%
+      </td>
+    </tr></tfoot>`;
+}
+
+// =======================================================
 // RENDER ALL
 // =======================================================
 function renderAll() {
   renderResumen();
   renderOEE();
+  renderReporteDiario();
   renderPlanMensual();
   renderPlanRef();
   renderNC();
@@ -1877,12 +2006,14 @@ function renderAll() {
 // =======================================================
 const TITLES = {
   resumen:'Resumen General', oee:'OEE — Eficiencia Global',
+  'reporte-diario':'Reporte Diario de Producción',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
   accid:'Status Personal', costos:'Costos de Producción'
 };
 const SECTION_RENDERS = {
-  resumen:renderResumen, oee:renderOEE, 'plan-mensual':renderPlanMensual,
+  resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
+  'plan-mensual':renderPlanMensual,
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
   paros:renderParos, accid:renderAccid, costos:renderCostos
 };
