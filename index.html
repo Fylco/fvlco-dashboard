@@ -948,7 +948,7 @@ async function loadAll() {
 
     setProgress(28, 'Cargando No Conformes...');
     const ncParsed = await fetchCSV(SHEETS.noConformes);
-    DATA.nc = ncParsed.data;
+    DATA.nc = ncParsed.data.map(normalizeProd);
     DATA.ncByOrden = buildNcByOrden(DATA.nc);
 
     setProgress(46, 'Cargando Plan Referencias...');
@@ -2097,26 +2097,24 @@ function renderReporteDiario() {
   // Tiempo teórico: H.TURNO × 3600
   // Componentes:
   //   Disp_t = H.FAB / H.TURNO
-  //   Rend_t = segReal / (H.FAB × 3600)  [fracción de FAB realmente ocupada]
-  //   Cal_t  = Und.Buenas / Und.Producidas
-  //   OEE_t  = segReal_buenas / (H.TURNO × 3600)  ≈ Disp × Rend × Cal
-  const disp_t = totHT > 0 ? totHF / totHT : 0;
-  const rend_t = totHFseg > 0 ? Math.min(totSegReal / totHFseg, 1) : 0;
-  const cal_t  = totCantO > 0 ? undBuenas / totCantO : 0;
-  const oee_t  = disp_t * rend_t * cal_t;
+  // ── OEE Ponderado por Tiempo ─────────────────────────────────────────
+  // Rend_t = Und.Prod / Und.Teo en H.FAB  (capacidad al ciclo estándar en tiempo disponible)
+  // Cal_t  = Und.Buenas / Und.Prod  (penaliza NC)
+  // Diferencia con OEE_u: denominador de Rend usa H.FAB (Disp ya absorbida)
+  // → Rend_t > Rend_u porque H.FAB < H.TURNO → dividimos por un número menor
+  const disp_t   = totHT > 0 ? totHF / totHT : 0;
+  const undTeoFAB = totUndTeo > 0 ? totUndTeo * disp_t : 0; // capacidad en H.FAB
+  const rend_t   = undTeoFAB > 0 ? Math.min(totCantO / undTeoFAB, 1) : 0;
+  const cal_t    = totCantO > 0 ? undBuenas / totCantO : 0;
+  const oee_t    = disp_t * rend_t * cal_t;
 
-  // ── OEE por Unidades = Und.Buenas / Und.Teóricas ───────────────────
-  // Und.Teóricas = Σ_maq (H.TURNO × 3600 / cicloEst × cavTeor)
-  // Componentes:
-  //   Disp_u = H.FAB / H.TURNO  (mismo)
-  //   Rend_u = Und.Prod / Und.Teo_en_FAB  = cant / [(H.FAB/H.TURNO)×Und.Teo]
-  //   Cal_u  = Und.Buenas / Und.Prod  (mismo)
-  //   OEE_u  = Und.Buenas / Und.Teóricas
-  const disp_u  = totHT > 0 ? totHF / totHT : 0;
-  const undTeoFAB = totUndTeo > 0 ? totUndTeo * (totHF / totHT) : 0; // Und teóricas en H.FAB
-  const rend_u  = undTeoFAB > 0 ? Math.min(totCantO / undTeoFAB, 1) : 0;
-  const cal_u   = totCantO > 0 ? undBuenas / totCantO : 0;
-  const oee_u   = totUndTeo > 0 ? undBuenas / totUndTeo : 0;
+  // ── OEE Ponderado por Unidades = Und.Buenas / Und.Teóricas ──────────
+  // Rend_u = Und.Prod / Und.Teo en H.TURNO  (capacidad plena del turno)
+  // → Rend_u < Rend_t porque divide entre una capacidad mayor (turno completo)
+  const disp_u = totHT > 0 ? totHF / totHT : 0;
+  const rend_u = totUndTeo > 0 ? Math.min(totCantO / totUndTeo, 1) : 0;
+  const cal_u  = totCantO > 0 ? undBuenas / totCantO : 0;
+  const oee_u  = totUndTeo > 0 ? undBuenas / totUndTeo : 0;
 
   const infoT = `H.Turno: ${totHT.toFixed(1)}h · H.Fab: ${totHF.toFixed(1)}h · H.Paro: ${(totHT-totHF).toFixed(1)}h`;
   const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${totNC_O.toLocaleString()} · Buenas: ${undBuenas.toLocaleString()} · Teóricas: ${Math.round(totUndTeo).toLocaleString()}`;
