@@ -2119,8 +2119,8 @@ function renderReporteDiario() {
   const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${totNC_O.toLocaleString()} · Buenas: ${undBuenas.toLocaleString()} · Teóricas: ${Math.round(totUndTeo).toLocaleString()}`;
   const elT = document.getElementById('rd-oee-tiempo');
   const elU = document.getElementById('rd-oee-unid');
-  if (elT) elT.innerHTML = _oeeCard('OEE por Tiempo',    oee_t, disp_t, rend_t, cal_t, infoT);
-  if (elU) elU.innerHTML = _oeeCard('OEE por Unidades',  oee_u, disp_u, rend_u, cal_u, infoU);
+  if (elT) elT.innerHTML = _oeeCard('OEE Ponderado por Tiempo',    oee_t, disp_t, rend_t, cal_t, infoT);
+  if (elU) elU.innerHTML = _oeeCard('OEE Ponderado por Unidades',  oee_u, disp_u, rend_u, cal_u, infoU);
 
   let totalProg = 0, totalProd = 0;
   const sortedKeys = Object.keys(groups).sort((a,b) => {
