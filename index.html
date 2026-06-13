@@ -1675,11 +1675,40 @@ function renderCostos() {
   const d = filterCostos();
   buildTarifasForm();
 
-  // ── Tabla 1: Costo fabricación por producto
+  // ── Tabla 2: Costo por máquina (se calcula primero para distribuir H.FAB a productos)
+  const maqList = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
+  const TURNOS_VALIDOS = new Set(['1','2','3']);
+  const maqRows = maqList.map(m=>{
+    const rows   = d.filter(r=>r._maq==m);
+    // Solo contar turnos válidos (1, 2, 3) para no superar 24 h/día
+    const shiftKeys = new Set(
+      rows
+        .filter(r => TURNOS_VALIDOS.has(String(r._turno||'')))
+        .map(r => `${r['DIA']||r._diaTurno||''}-${r._turno}`)
+    );
+    const hTurno = shiftKeys.size * 8;
+    const hParo  = rows.reduce((s,r)=>s+rowParoHoras(r), 0);
+    // H.FAB = tiempo disponible menos paros, sin negativo
+    const hFab   = Math.max(0, hTurno - hParo);
+    const tarifa = TARIFAS_MAQ[m]||25000;
+    const costoTotal = hFab  * tarifa;
+    const costoParo  = hParo * tarifa;
+    const unidades   = sum(rows,'_cant');
+    const costUnit   = unidades>0 ? costoTotal/unidades : 0;
+    return {m, hFab, hParo, hTurno, tarifa, costoTotal, costoParo, unidades, costUnit};
+  });
+
+  // Mapa de H.FAB por máquina para distribuir proporcionalmente a productos
+  const maqFabMap = {};
+  maqRows.forEach(r => { maqFabMap[r.m] = { hFab: r.hFab, unidades: r.unidades }; });
+
+  // ── Tabla 1: Costo fabricación por producto (H.FAB proporcional a la máquina)
   const prodMap = {};
   d.forEach(r=>{
     const k = r._prod||'Sin dato';
-    const hFab  = rowFabHoras(r);
+    const mData = maqFabMap[r._maq] || { hFab: 0, unidades: 0 };
+    // H.FAB proporcional: fracción de unidades de este registro sobre el total de la máquina
+    const hFab  = mData.unidades > 0 ? mData.hFab * (r._cant||0) / mData.unidades : 0;
     const hParo = rowParoHoras(r);
     if (!prodMap[k]) prodMap[k]={unidades:0,hFab:0,hParo:0,ordenes:new Set()};
     prodMap[k].unidades += r._cant||0;
@@ -1716,24 +1745,6 @@ function renderCostos() {
       <td style="text-align:right;color:#EF4444">${fmtCOP(r.costoParo)}</td>
       <td style="text-align:right">${(r.hFab+r.hParo)>0?badge(r.hParo/(r.hFab+r.hParo)*100,5,15,true):badge(null)}</td>
     </tr>`).join('')}</tbody>`;
-
-  // ── Tabla 2: Costo por máquina
-  const maqList = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
-  const maqRows = maqList.map(m=>{
-    const rows   = d.filter(r=>r._maq==m);
-    // H.TURNO: turnos únicos (día + número de turno) × 8 h/turno
-    const shiftKeys = new Set(rows.map(r=>`${r['DIA']||r._diaTurno||''}-${r._turno||''}`).filter(k=>k!=='-'&&k!==''));
-    const hTurno = shiftKeys.size * 8;
-    const hParo  = rows.reduce((s,r)=>s+rowParoHoras(r), 0);
-    // H.FAB = tiempo disponible menos paros, sin negativo
-    const hFab   = Math.max(0, hTurno - hParo);
-    const tarifa = TARIFAS_MAQ[m]||25000;
-    const costoTotal = hFab  * tarifa;
-    const costoParo  = hParo * tarifa;
-    const unidades   = sum(rows,'_cant');
-    const costUnit   = unidades>0 ? costoTotal/unidades : 0;
-    return {m, hFab, hParo, hTurno, tarifa, costoTotal, costoParo, unidades, costUnit};
-  });
 
   const totalCosto = maqRows.reduce((s,r)=>s+r.costoTotal,0);
   const totalParo  = maqRows.reduce((s,r)=>s+r.costoParo,0);
