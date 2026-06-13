@@ -2035,11 +2035,7 @@ function renderReporteDiario() {
     const maq   = String(r._maq || '?');
     const dia   = String(r._diaTurno || '');
     const turno = String(r._turno || '');
-    if (!oeeByMaq[maq]) oeeByMaq[maq] = {
-      dtMap:{}, hParo:0, cant:0,
-      segReal:0,    // Σ (cant/cavReal)×cicloReal  → seg reales corriendo
-      _est:0, _cavTeor:1, _nc:0
-    };
+    if (!oeeByMaq[maq]) oeeByMaq[maq] = { dtMap:{}, hParo:0, cant:0, segReal:0, _nc:0 };
     const m = oeeByMaq[maq];
     if (dia && TURNO_INTERVALS[turno]) {
       if (!m.dtMap[dia]) m.dtMap[dia] = new Set();
@@ -2048,43 +2044,47 @@ function renderReporteDiario() {
     const cant     = pNum(r._cant);
     const est      = pNum(r['T. CICLO EST']);
     const real     = pNum(r['T. CICLO REAL']) || pNum(r['T.CICLO REAL']);
-    const cavTeorR = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
-    const cavRealR = Math.max(_findColVal(r,'CAVIDAD','TEOR') || cavTeorR, 1);
-    m.hParo  += (r._paro || 0) / 60;
-    m.cant   += cant;
-    // Tiempo real corriendo = (ciclos) × cicloReal = (cant/cavReal) × cicloReal
-    if (real > 0) m.segReal += (cant / cavRealR) * real;
-    // Primer cicloEst y cavTeor válidos para calcular Und.Teóricas
-    if (!m._est    && est      > 0) m._est     = est;
-    if (m._cavTeor === 1 && cavTeorR > 1) m._cavTeor = cavTeorR;
+    const cavRealR = Math.max(_findColVal(r,'CAVIDAD','TEOR') || pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
+    m.hParo += (r._paro || 0) / 60;
+    m.cant  += cant;
+    // OEE_t: tiempo real = cicloReal si existe, sino cicloEst (máquina ocupada corriendo)
+    // cavReal diferencia OEE_t de OEE_u cuando hay cavidades bloqueadas
+    const cicloUso = real > 0 ? real : (est > 0 ? est : 0);
+    if (cicloUso > 0) m.segReal += (cant / cavRealR) * cicloUso;
   });
 
-  // NC del sheet de no conformes, filtrado por mismo período
+  // NC: índice normalizado por nombre de máquina (trim + lowercase)
+  const maqNorm = {};  // nombre_normalizado → clave en oeeByMaq
+  Object.keys(oeeByMaq).forEach(k => { maqNorm[String(k).trim().toLowerCase()] = k; });
+
   const ncMesLow = fMes.toLowerCase();
   DATA.nc.forEach(r => {
-    const maq = String(r['MÁQUINA'] ?? r['MAQUINA'] ?? '');
-    if (!maq || !oeeByMaq[maq]) return;
+    const rawMaq = String(r['MÁQUINA'] ?? r['MAQUINA'] ?? '').trim();
+    const maqKey = maqNorm[rawMaq.toLowerCase()];
+    if (!rawMaq || !maqKey) return;
     const mes = (r['MES '] || r['MES'] || '').trim().toLowerCase();
     if (fMes && mes !== ncMesLow) return;
     if (fDia && String(r._diaTurno) !== fDia) return;
+    if (fTurno && r['TURNO'] && String(r['TURNO']).trim() !== fTurno) return;
     const nc = pNum(r['CANTIDAD NC']);
-    if (nc > 0) oeeByMaq[maq]._nc += nc;
+    if (nc > 0) oeeByMaq[maqKey]._nc += nc;
   });
 
-  // Agregar por máquina y calcular Und.Teóricas
-  let totHT=0, totHF=0, totCantO=0, totNC_O=0, totSegReal=0, totUndTeo=0;
-  Object.values(oeeByMaq).forEach(m => {
+  // totUndTeo = Σ capacidades de slot (undProg por slot = turnoSeg/cicloEst × cavTeor)
+  // Usa slotCap que ya tiene el valor correcto con las cavidades reales del producto
+  let totHT=0, totHF=0, totCantO=0, totNC_O=0, totSegReal=0;
+  Object.entries(oeeByMaq).forEach(([maq, m]) => {
     const hT = Object.values(m.dtMap).reduce((s,ts)=>s+calcShiftHours(ts),0);
     const hF = Math.max(0, hT - m.hParo);
     m.hTurno = hT; m.hFab = hF;
-    // Und.Teóricas = (H.TURNO × 3600 / cicloEst) × cavTeor  → capacidad total del turno
-    const undTeo = m._est > 0 ? (hT * 3600 / m._est) * m._cavTeor : 0;
-    totHT      += hT;   totHF      += hF;
+    totHT      += hT;  totHF      += hF;
     totCantO   += m.cant;
     totNC_O    += m._nc;
     totSegReal += m.segReal;
-    totUndTeo  += undTeo;
   });
+  // Und.Teóricas = suma de capacidades de slot (ya calculadas en slotCap)
+  let totUndTeo = 0;
+  Object.values(slotCap).forEach(s => { if (s.undProg > 0) totUndTeo += s.undProg; });
   const totHTseg  = totHT * 3600;
   const totHFseg  = totHF * 3600;
   const undBuenas = Math.max(0, totCantO - totNC_O);
