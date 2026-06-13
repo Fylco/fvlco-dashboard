@@ -1980,21 +1980,6 @@ function renderReporteDiario() {
   // Segundos por turno
   const TURNO_SEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
 
-  // ── Lookup desde PLAN REFERENCIAS (valores estándar correctos por producto) ───
-  // Columnas del sheet: CAVIDADES MOLDE, TIEMPO DE CICLO, UNID EN 8H, UNID EN 12H
-  const PLAN_PROD_MAP = {};
-  (DATA.planRef || []).forEach(row => {
-    const ref = (row['REFERENCIA / PRODUCTO'] || '').trim().toUpperCase();
-    if (!ref || ref === 'TOTAL') return;
-    const cav    = pNum(row['CAVIDADES MOLDE']) || pNum(row['CAVIDADES']);
-    const ciclo  = pNum(row['TIEMPO DE CICLO']) || pNum(row['CICLO']);
-    const u8     = pNum(row['UNID EN 8H'])  || pNum(row['UNID 8H']);
-    const u12    = pNum(row['UNID EN 12H']) || pNum(row['UNID 12H']);
-    // Solo guardar filas que tienen datos de producción (cav>0 o ciclo>0 o unid>0)
-    if (cav > 0 || ciclo > 0 || u8 > 0) {
-      PLAN_PROD_MAP[ref] = { cav, ciclo, u8, u12 };
-    }
-  });
 
   // ── Paso 1: capacidad por Máquina+Turno+Día (1 valor por slot de máquina) ─────
   // Un slot de máquina solo puede producir UN turno de unidades en total,
@@ -2005,26 +1990,14 @@ function renderReporteDiario() {
     const maq   = String(r._maq || '?');
     const turno = String(r._turno || '?');
     const sKey  = `${dia}|${maq}|${turno}`;
-    if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0, _prodRef:r._prod };
+    if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0 };
     const s = slotCap[sKey];
     if (!s.undProg) {
-      const prodKey  = String(r._prod || '').toUpperCase();
-      const planData = PLAN_PROD_MAP[prodKey];
-      const segSlot  = TURNO_SEG[turno] || 28800;
-      const is12h    = segSlot >= 43200;
-
-      if (planData && planData.u8 > 0) {
-        // Usar directamente UNID EN 8H / 12H de PLAN REFERENCIAS (valores correctos de planta)
-        s.undProg = is12h ? (planData.u12 || Math.round(planData.u8 * 1.5)) : planData.u8;
-      } else if (planData && planData.ciclo > 0 && planData.cav > 0) {
-        // Usar cav y ciclo correctos de PLAN REFERENCIAS con la fórmula estándar
-        s.undProg = Math.round((segSlot / planData.ciclo) * planData.cav);
-      } else {
-        // Fallback: usar valores del registro de producción
-        const est     = pNum(r['T. CICLO EST']);
-        const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
-        if (est > 0) s.undProg = Math.round((segSlot / est) * cavTeor);
-      }
+      const est     = pNum(r['T. CICLO EST']);
+      const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
+      // Siempre 28800 s (8h) como base de planificación — T4/T5 son clasificación
+      // operativa del turno pero la unidad de plan estándar es siempre 8 horas
+      if (est > 0) s.undProg = Math.round((28800 / est) * cavTeor);
     }
     s.cantTotal += pNum(r._cant);
   });
