@@ -1646,13 +1646,26 @@ function _findColVal(r, keyword, exclude) {
 function getCav(r) {
   return _findColVal(r,'CAVIDAD','TEOR') || _findColVal(r,'CAVIDAD','') || 1;
 }
-// Horas reales de fabricación: cant × cicloReal(seg) / cavidades / 3600
+// Horas reales de fabricación: (cant / cav) × cicloReal(seg) / 3600
+// Busca T.CICLO REAL con fuzzy (evita caer al estimado cuando el nombre tiene espacios distintos)
+function _getCicloReal(r) {
+  // Intento exacto primero (con y sin espacio tras el punto)
+  let v = pNum(r['T. CICLO REAL']) || pNum(r['T.CICLO REAL']) || pNum(r['CICLO REAL']);
+  if (v > 0) return v;
+  // Fuzzy: columna que contenga "CICLO" y "REAL" pero NO "EST"
+  for (const key of Object.keys(r)) {
+    const up = key.trim().toUpperCase();
+    if (up.includes('CICLO') && up.includes('REAL') && !up.includes('EST')) {
+      const n = pNum(r[key]); if (n > 0) return n;
+    }
+  }
+  return 0;
+}
 function rowFabHoras(r) {
-  const real = pNum(r['T. CICLO REAL']||r['T.CICLO REAL']||r['CICLO REAL']) || pNum(r['T. CICLO EST']) || 0;
-  // Busca cavidades en la fila; si está vacío usa el mapa del mismo producto
+  const real = _getCicloReal(r) || pNum(r['T. CICLO EST']) || 0;
   const cav  = _findColVal(r,'CAVIDAD','TEOR') || CAV_MAP[r._prod] || 1;
   const cant = r._cant || 0;
-  return (real > 0 && cant > 0) ? (cant * real / cav) / 3600 : 0;
+  return (real > 0 && cant > 0) ? (cant / cav) * real / 3600 : 0;
 }
 // Horas paro: TIEMPO_PARO_MIN → horas
 function rowParoHoras(r) { return (r._paro||0) / 60; }
