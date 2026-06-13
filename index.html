@@ -3070,10 +3070,8 @@ async function fvLoadData() {
   }
   statusEl.textContent = 'Cargando datos…';
   try {
-    // cache-busting: evita que el navegador/CDN sirva una versión vieja de la hoja
-    const res  = await fetch(FV_CSV + '&_cb=' + Date.now(), { cache:'no-store' });
-    const text = await res.text();
-    const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
+    // usa fetchCSV → mismo cache-busting (&_t=timestamp + no-store) que las demás hojas
+    const parsed = await fetchCSV(FV_CSV);
     DATA.forecastVentas = parsed.data;
     statusEl.textContent = `${DATA.forecastVentas.length} pedidos cargados`;
     fvPopulateClients();
