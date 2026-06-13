@@ -1961,19 +1961,46 @@ function renderReporteDiario() {
   let totalProg = 0, totalProd = 0;
   const sortedKeys = Object.keys(groups).sort((a,b) => {
     const pa = a.split('|'), pb = b.split('|');
-    return Number(pa[0])-Number(pb[0]) || pa[2].localeCompare(pb[2]) || pa[1].localeCompare(pb[1]) || pa[3].localeCompare(pb[3]);
+    return pa[1].localeCompare(pb[1]) || pa[2].localeCompare(pb[2]) || Number(pa[0])-Number(pb[0]) || pa[3].localeCompare(pb[3]);
   });
 
-  const bodyRows = sortedKeys.map(key => {
+  // Construir filas con subtotal por Máquina + Turno
+  let bodyRows = '';
+  let prevMaqTurno = null;
+  let subProg = 0, subProd = 0;
+
+  const flushSubtotal = (maq, turno) => {
+    const subFalt  = subProg - subProd;
+    const subColor = subFalt > 0 ? '#EF4444' : '#10B981';
+    const subPct   = subProg > 0 ? (subProd/subProg*100).toFixed(1)+'%' : '-';
+    bodyRows += `<tr style="background:#1E293B;font-weight:700;border-top:2px solid #374151">
+      <td colspan="7" style="padding:6px 10px;color:#94A3B8;font-size:.8rem">
+        ↳ Subtotal — Máq ${maq} · T${turno}
+      </td>
+      <td style="text-align:right;color:#60A5FA;padding:6px 10px">${subProg.toLocaleString()}</td>
+      <td style="text-align:right;padding:6px 10px">${subProd.toLocaleString()}</td>
+      <td style="text-align:right;color:${subColor};padding:6px 10px">${subPct}</td>
+    </tr>`;
+    subProg = 0; subProd = 0;
+  };
+
+  sortedKeys.forEach((key, i) => {
     const g            = groups[key];
+    const maqTurno     = `${g.maq}|${g.turno}`;
     const undProd      = Math.round(g.cantSum);
     const undProg      = g.undProg || undProd;
     const undFaltantes = undProg - undProd;
     totalProg += undProg;
     totalProd += undProd;
+    subProg   += undProg;
+    subProd   += undProd;
+
+    if (prevMaqTurno && prevMaqTurno !== maqTurno) flushSubtotal(...prevMaqTurno.split('|'));
+    prevMaqTurno = maqTurno;
+
     const faltColor = undFaltantes > 0 ? '#EF4444' : '#10B981';
     const faltTxt   = undFaltantes === 0 ? '0' : undFaltantes > 0 ? '+'+undFaltantes.toLocaleString() : undFaltantes.toLocaleString();
-    return `<tr>
+    bodyRows += `<tr>
       <td>Día ${g.dia}</td>
       <td>${g.prod}</td>
       <td>${g.maq}</td>
@@ -1985,7 +2012,9 @@ function renderReporteDiario() {
       <td style="text-align:right">${undProd.toLocaleString()}</td>
       <td style="text-align:right;color:${faltColor}">${faltTxt}</td>
     </tr>`;
-  }).join('');
+  });
+  // Último subtotal
+  if (prevMaqTurno) flushSubtotal(...prevMaqTurno.split('|'));
 
   const cumpl = totalProg > 0 ? (totalProd / totalProg * 100) : 0;
   const cumplColor  = cumpl >= 95 ? '#10B981' : cumpl >= 80 ? '#F59E0B' : '#EF4444';
