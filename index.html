@@ -490,7 +490,6 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
             <div class="fp-title">Tarifas (COP/hora)</div>
             <p style="font-size:.68rem;color:#6B7280;margin-bottom:10px">Cargadas automáticamente desde <strong style="color:#4B5563">Plan de Referencias</strong></p>
             <div id="costos-tarifas-form"></div>
-            <div id="costos-debug" style="margin-top:10px;padding:8px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:0.65rem;color:#92400e;line-height:1.6;word-break:break-all"></div>
             <div class="fp-label" style="margin-top:14px">Moneda</div>
             <select id="costos-moneda" class="fp-select" onchange="renderCostos()">
               <option value="COP">COP $</option>
@@ -921,15 +920,6 @@ async function loadAll() {
     populateAllFilters();
     loadTarifasFromSheet();
     buildCavMap();
-    // DEBUG: mostrar nombres reales de columnas CICLO y CAVIDAD
-    if (DATA.prod.length > 0) {
-      const _r0 = DATA.prod[0];
-      const _cicCols = Object.keys(_r0).filter(k=>k.toUpperCase().includes('CICLO'));
-      const _cavCols = Object.keys(_r0).filter(k=>k.toUpperCase().includes('CAVID'));
-      console.log('[DEBUG] Columnas CICLO:', _cicCols.map(k=>k+'='+_r0[k]));
-      console.log('[DEBUG] Columnas CAVID:', _cavCols.map(k=>k+'='+_r0[k]));
-      console.log('[DEBUG] CAV_MAP muestra:', Object.entries(CAV_MAP).slice(0,5));
-    }
     renderAll();
     setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
   } catch(e) {
@@ -1673,7 +1663,8 @@ function _getCicloReal(r) {
 }
 function rowFabHoras(r) {
   const real = _getCicloReal(r) || pNum(r['T. CICLO EST']) || 0;
-  const cav  = _findColVal(r,'CAVIDAD','TEOR') || CAV_MAP[r._prod] || 1;
+  // Cavidades: real (col K) → mapa producto → teóricas (col AO) → 1
+  const cav  = _findColVal(r,'CAVIDAD','TEOR') || CAV_MAP[r._prod] || pNum(r['CAV.TEORICAS']) || 1;
   const cant = r._cant || 0;
   return (real > 0 && cant > 0) ? (cant / cav) * real / 3600 : 0;
 }
@@ -1683,23 +1674,6 @@ function rowParoHoras(r) { return (r._paro||0) / 60; }
 function renderCostos() {
   const d = filterCostos();
   buildTarifasForm();
-
-  // ── DEBUG temporal: distribución de getCav y dias
-  const _dbg = document.getElementById('costos-debug');
-  if (_dbg && d.length > 0) {
-    const _cavDist = {}, _diaDist = {};
-    d.forEach(_r => {
-      const _c = _findColVal(_r,'CAVIDAD','TEOR') || CAV_MAP[_r._prod] || 1;
-      _cavDist[_c] = (_cavDist[_c]||0) + 1;
-      const _dia = _r._diaTurno || 'null';
-      _diaDist[_dia] = (_diaDist[_dia]||0) + 1;
-    });
-    const _r0 = d[0];
-    _dbg.innerHTML = `<b>DEBUG: ${d.length} filas filtradas</b><br>
-      getCav dist: ${JSON.stringify(_cavDist)}<br>
-      dias dist: ${JSON.stringify(_diaDist)}<br>
-      fila[0]: cicloReal=${_getCicloReal(_r0)} cav=${_findColVal(_r0,'CAVIDAD','TEOR')||CAV_MAP[_r0._prod]||1} cant=${_r0._cant} dia=${_r0._diaTurno}`;
-  } else if (_dbg) { _dbg.innerHTML = 'Sin datos filtrados'; }
 
   // ── Tabla 1: Costo fabricación por producto
   const prodMap = {};
