@@ -566,11 +566,20 @@ let SEL_DIAS_NC   = new Set();
 // Tarifas por máquina (COP/hora) — editables por el usuario
 // Tarifas base (COP/hora) — se sobreescriben automáticamente con los valores del sheet
 let TARIFAS_MAQ = { 1:67196, 2:67196, 3:68490, 4:68490, 5:62304, 6:100753 };
+let CAV_MAP = {}; // producto → cavidades (de filas que sí tienen el dato)
 
 function parseCOP(str) {
   if (!str) return null;
   const n = parseFloat(String(str).replace(/[$\s.]/g,'').replace(',','.'));
   return isNaN(n) ? null : n;
+}
+
+function buildCavMap() {
+  CAV_MAP = {};
+  DATA.prod.forEach(r => {
+    const cav = _findColVal(r,'CAVIDAD','TEOR');
+    if (cav > 0 && r._prod) CAV_MAP[r._prod] = cav;
+  });
 }
 
 function loadTarifasFromSheet() {
@@ -910,6 +919,7 @@ async function loadAll() {
 
     populateAllFilters();
     loadTarifasFromSheet();
+    buildCavMap();
     renderAll();
     setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
   } catch(e) {
@@ -1639,7 +1649,8 @@ function getCav(r) {
 // Horas reales de fabricación: cant × cicloReal(seg) / cavidades / 3600
 function rowFabHoras(r) {
   const real = pNum(r['T. CICLO REAL']||r['T.CICLO REAL']||r['CICLO REAL']) || pNum(r['T. CICLO EST']) || 0;
-  const cav  = _findColVal(r,'CAVIDAD','TEOR') || _findColVal(r,'CAVIDAD','') || 1;
+  // Busca cavidades en la fila; si está vacío usa el mapa del mismo producto
+  const cav  = _findColVal(r,'CAVIDAD','TEOR') || CAV_MAP[r._prod] || 1;
   const cant = r._cant || 0;
   return (real > 0 && cant > 0) ? (cant * real / cav) / 3600 : 0;
 }
@@ -1749,7 +1760,7 @@ function renderCostos() {
     const real = pNum(r['T. CICLO REAL']||r['T.CICLO REAL']||r['CICLO REAL']);
     // Unidades teóricas: cuántas se habrían hecho en el mismo tiempo si el ciclo fuera estándar
     // tiempo_real = cant × cicloReal → unid_teoricas = tiempo_real / cicloEst = cant × (real/est)
-    const cav      = Math.max(pNum(r['CAVIDADES'])||pNum(r['No. CAVIDADES'])||pNum(r['CAVI'])||1, 1);
+    const cav      = Math.max(_findColVal(r,'CAVIDAD','TEOR') || CAV_MAP[r._prod] || 1, 1);
     const unidReal = r._cant||0;
     const unidTeor = est>0&&real>0 ? Math.round(unidReal*(real/est)) : unidReal;
     const perdidas = Math.max(0, unidTeor - unidReal);
