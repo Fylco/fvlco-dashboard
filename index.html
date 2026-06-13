@@ -1721,14 +1721,18 @@ function renderCostos() {
   const maqList = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
   const maqRows = maqList.map(m=>{
     const rows   = d.filter(r=>r._maq==m);
-    const hFab   = rows.reduce((s,r)=>s+rowFabHoras(r), 0);
+    // H.TURNO: turnos únicos (día + número de turno) × 8 h/turno
+    const shiftKeys = new Set(rows.map(r=>`${r['DIA']||r._diaTurno||''}-${r._turno||''}`).filter(k=>k!=='-'&&k!==''));
+    const hTurno = shiftKeys.size * 8;
     const hParo  = rows.reduce((s,r)=>s+rowParoHoras(r), 0);
+    // H.FAB = tiempo disponible menos paros, sin negativo
+    const hFab   = Math.max(0, hTurno - hParo);
     const tarifa = TARIFAS_MAQ[m]||25000;
     const costoTotal = hFab  * tarifa;
     const costoParo  = hParo * tarifa;
     const unidades   = sum(rows,'_cant');
     const costUnit   = unidades>0 ? costoTotal/unidades : 0;
-    return {m, hFab, hParo, tarifa, costoTotal, costoParo, unidades, costUnit};
+    return {m, hFab, hParo, hTurno, tarifa, costoTotal, costoParo, unidades, costUnit};
   });
 
   const totalCosto = maqRows.reduce((s,r)=>s+r.costoTotal,0);
@@ -1748,7 +1752,7 @@ function renderCostos() {
         <td style="text-align:right;color:#9CA3AF">${fmtCOP(r.tarifa)}</td>
         <td style="text-align:right">${r.hFab.toFixed(2)} h</td>
         <td style="text-align:right;color:#EF4444">${r.hParo.toFixed(2)} h</td>
-        <td style="text-align:right;color:#9CA3AF">${(r.hFab+r.hParo).toFixed(2)} h</td>
+        <td style="text-align:right;color:#9CA3AF">${r.hTurno.toFixed(2)} h</td>
         <td style="text-align:right;color:#10B981;font-weight:700">${fmtCOP(r.costoTotal)}</td>
         <td style="text-align:right;color:#EF4444;font-weight:600">${fmtCOP(r.costoParo)}</td>
         <td style="text-align:right">${fmt(r.unidades)}</td>
@@ -1817,7 +1821,7 @@ function renderCostos() {
 
   // KPIs resumen
   const totalHFab  = maqRows.reduce((s,r)=>s+r.hFab, 0);
-  const totalHTurno= maqRows.reduce((s,r)=>s+r.hFab+r.hParo, 0);
+  const totalHTurno= maqRows.reduce((s,r)=>s+r.hTurno, 0);
   document.getElementById('costos-kpis').innerHTML=
     kpiCard('Costo Total Fabricación',fmtCOP(totalCosto),'#10B981',`${maqList.length} máquinas`,'fa-solid fa-factory')+
     kpiCard('Costo Total Paros',fmtCOP(totalParo),'#EF4444',`${pct(totalCosto>0?totalParo/totalCosto*100:null)} del total`,'fa-solid fa-circle-pause')+
