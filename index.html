@@ -788,9 +788,27 @@ async function fetchCSV(url) {
   return Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
 }
 
+const _MESES_ES = ['','enero','febrero','marzo','abril','mayo','junio',
+                   'julio','agosto','septiembre','octubre','noviembre','diciembre'];
 function normalizeProd(r) {
   const out = {};
   for (const k in r) out[k.trim()] = r[k];
+
+  // ── Extraer fecha de turno ANTES de la conversión numérica masiva
+  let _ftRaw = '';
+  for (const _k of Object.keys(out)) {
+    const _ku = _k.toUpperCase();
+    if (_ku.includes('FECHA') && _ku.includes('TURNO')) { _ftRaw = String(out[_k]||'').trim(); break; }
+  }
+  // Parsear DD/MM/YYYY o DD-MM-YYYY
+  const _dtParts = _ftRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  let _diaTurno = null, _mesTurno = null;
+  if (_dtParts) {
+    const _d = parseInt(_dtParts[1]), _m = parseInt(_dtParts[2]);
+    if (_d >= 1 && _d <= 31) _diaTurno = String(_d);
+    if (_m >= 1 && _m <= 12) _mesTurno = _MESES_ES[_m];
+  }
+
   for (const k in out) {
     const v = out[k];
     if (typeof v === 'string' && v !== '') {
@@ -812,27 +830,9 @@ function normalizeProd(r) {
   out._rend  = out['% RENDIMIENTO'];
   out._disp  = out['% DISPONIBILIDAD'];
   out._oee   = out['OEE FINAL'];
-  // Día real según turno de trabajo (col AD) — búsqueda difusa del nombre de columna
-  let _ft = '';
-  for (const _k of Object.keys(out)) {
-    const _ku = _k.toUpperCase();
-    if (_ku.includes('FECHA') && _ku.includes('TURNO')) { _ft = String(out[_k]||'').trim(); break; }
-  }
-  if (!_ft) {
-    // fallback: columna DIA original
-    for (const _k of Object.keys(out)) {
-      if (_k.trim().toUpperCase()==='DIA'||_k.trim().toUpperCase()==='DÍA') { _ft = String(out[_k]||'').trim(); break; }
-    }
-  }
-  if (_ft) {
-    const _m  = _ft.match(/^(\d{1,2})[\/\-]/);                      // DD/MM/... o DD-MM-...
-    const _m2 = !_m && _ft.match(/\d{4}[\/\-]\d{2}[\/\-](\d{2})/); // YYYY-MM-DD
-    const _m3 = !_m && !_m2 && _ft.match(/^(\d{1,2})$/);            // número puro 1-31
-    const _day = _m ? parseInt(_m[1]) : _m2 ? parseInt(_m2[1]) : _m3 ? parseInt(_m3[1]) : null;
-    out._diaTurno = (_day!=null && _day>=1 && _day<=31) ? String(_day) : null;
-  } else {
-    out._diaTurno = null;
-  }
+  // Usar valores parseados antes de la conversión numérica
+  out._diaTurno = _diaTurno;
+  out._mesTurno = _mesTurno;
   return out;
 }
 
@@ -932,10 +932,12 @@ function populateAllFilters() {
   fillSel('paro-fp-mes', meses.map(cap), 'Mes');
   fillSel('paro-f-maq', maqs, 'Máquina');
   buildParoDiaDd(dias);
-  // Costos panel
-  fillSel('costos-f-mes', meses.map(cap), 'Mes');
+  // Costos panel — usa meses y días derivados de FECHAS SEGUN TURNO
+  const mesesTurno = [...new Set(DATA.prod.map(r=>r._mesTurno).filter(Boolean))];
+  const diasTurno  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  fillSel('costos-f-mes', (mesesTurno.length ? mesesTurno : meses).map(cap), 'Mes');
   fillSel('costos-f-maq', maqs, 'Máquina');
-  buildCostosDiaDd(dias);
+  buildCostosDiaDd(diasTurno.length ? diasTurno : dias);
   // Razones de paro
   const razonMap = {};
   DATA.prod.filter(r=>r._paro>0).forEach(r=>{ const k=(r['RAZON PARO']||'').trim(); if(k) razonMap[k]=(razonMap[k]||0)+1; });
@@ -987,11 +989,12 @@ function filterCostos() {
   const m   = (getVal('costos-f-mes') || getVal('g-mes')).toLowerCase();
   const maq = getVal('costos-f-maq');
   const dias = SEL_DIAS_COSTOS.size ? SEL_DIAS_COSTOS : SEL_DIAS;
-  return DATA.prod.filter(r =>
-    (!m    || r._mes === m) &&
-    (!dias.size || dias.has(r._diaTurno||'')) &&
-    (!maq  || String(r._maq) === maq)
-  );
+  return DATA.prod.filter(r => {
+    const mes = r._mesTurno || r._mes || '';
+    return (!m    || mes === m) &&
+           (!dias.size || dias.has(r._diaTurno||'')) &&
+           (!maq  || String(r._maq) === maq);
+  });
 }
 function filterParo() {
   const m   = (getVal('paro-fp-mes')||getVal('g-mes')).toLowerCase();
