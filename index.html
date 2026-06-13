@@ -796,9 +796,27 @@ function normalizeProd(r) {
 
   // ── Extraer fecha de turno ANTES de la conversión numérica masiva
   let _ftRaw = '';
+  // Prioridad 1: columna que contenga FECHA y TURNO
   for (const _k of Object.keys(out)) {
     const _ku = _k.toUpperCase();
     if (_ku.includes('FECHA') && _ku.includes('TURNO')) { _ftRaw = String(out[_k]||'').trim(); break; }
+  }
+  // Prioridad 2: columna que contenga solo FECHA (con formato de fecha)
+  if (!_ftRaw) {
+    for (const _k of Object.keys(out)) {
+      const _ku = _k.toUpperCase();
+      if (_ku.includes('FECH')) {
+        const _v = String(out[_k]||'').trim();
+        if (_v.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/)) { _ftRaw = _v; break; }
+      }
+    }
+  }
+  // Prioridad 3: cualquier columna con valor de formato fecha DD/MM/YYYY
+  if (!_ftRaw) {
+    for (const _k of Object.keys(out)) {
+      const _v = String(out[_k]||'').trim();
+      if (_v.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/)) { _ftRaw = _v; break; }
+    }
   }
   // Parsear DD/MM/YYYY o DD-MM-YYYY
   const _dtParts = _ftRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
