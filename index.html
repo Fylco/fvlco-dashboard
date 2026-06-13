@@ -1621,34 +1621,27 @@ function buildTarifasForm() {
     </div>`).join('');
 }
 
-// Cavidades reales (col K) — busca cualquier columna que contenga CAVIDAD pero NO TEOR
+// Busca valor positivo en columnas que contengan la palabra clave
+function _findColVal(r, keyword, exclude) {
+  for (const key of Object.keys(r)) {
+    const up = key.trim().toUpperCase();
+    if (up.includes(keyword) && (!exclude || !up.includes(exclude))) {
+      const v = pNum(r[key]);
+      if (v > 0) return v;
+    }
+  }
+  return null;
+}
+// Cavidades reales (col K "CAVIDADES"), fallback a teóricas, fallback a 1
 function getCav(r) {
-  for (const key of Object.keys(r)) {
-    const up = key.trim().toUpperCase();
-    if (up.includes('CAVIDAD') && !up.includes('TEOR')) {
-      const v = pNum(r[key]);
-      if (v > 0) return v;
-    }
-  }
-  return 1;
+  return _findColVal(r,'CAVIDAD','TEOR') || _findColVal(r,'CAVIDAD','') || 1;
 }
-// Cavidades teóricas (col AO) — busca columna que contenga CAVIDAD y TEOR
-function getCavTeor(r) {
-  for (const key of Object.keys(r)) {
-    const up = key.trim().toUpperCase();
-    if (up.includes('CAVIDAD') && up.includes('TEOR')) {
-      const v = pNum(r[key]);
-      if (v > 0) return v;
-    }
-  }
-  return getCav(r);
-}
-// Horas reales de fabricación: cant × cicloReal(seg) / cavidades_reales / 3600
+// Horas reales de fabricación: cant × cicloReal(seg) / cavidades / 3600
 function rowFabHoras(r) {
   const real = pNum(r['T. CICLO REAL']||r['CICLO REAL']) || pNum(r['T. CICLO EST']) || 0;
-  const cav  = getCav(r);
-  const cant = r._cant||0;
-  return (real>0 && cant>0) ? (cant * real / cav) / 3600 : 0;
+  const cav  = _findColVal(r,'CAVIDAD','TEOR') || _findColVal(r,'CAVIDAD','') || 1;
+  const cant = r._cant || 0;
+  return (real > 0 && cant > 0) ? (cant * real / cav) / 3600 : 0;
 }
 // Horas paro: TIEMPO_PARO_MIN → horas
 function rowParoHoras(r) { return (r._paro||0) / 60; }
