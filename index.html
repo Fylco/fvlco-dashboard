@@ -259,8 +259,12 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div id="rd-cumpl-box"></div>
         <div id="rd-progress-bar"></div>
       </div>
-      <div class="chart-card" style="overflow-x:auto">
-        <div class="section-title">Reporte Diario de Producción</div>
+      <div class="chart-card" style="overflow-x:auto;margin-top:18px">
+        <div class="section-title">Resumen por Referencia</div>
+        <table class="tbl" id="rd-ref-tbl"></table>
+      </div>
+      <div class="chart-card" style="overflow-x:auto;margin-top:18px">
+        <div class="section-title">Detalle por Turno</div>
         <table class="tbl" id="rd-tbl"></table>
       </div>
       <div style="margin-top:18px">
@@ -1964,40 +1968,14 @@ function renderReporteDiario() {
     return pa[1].localeCompare(pb[1]) || pa[2].localeCompare(pb[2]) || Number(pa[0])-Number(pb[0]) || pa[3].localeCompare(pb[3]);
   });
 
-  // Construir filas con subtotal por Máquina + Turno
   let bodyRows = '';
-  let prevMaqTurno = null;
-  let subProg = 0, subProd = 0;
-
-  const flushSubtotal = (maq, turno) => {
-    const subFalt  = subProg - subProd;
-    const subColor = subFalt > 0 ? '#EF4444' : '#10B981';
-    const subPct   = subProg > 0 ? (subProd/subProg*100).toFixed(1)+'%' : '-';
-    bodyRows += `<tr style="background:#1E293B;font-weight:700;border-top:2px solid #374151">
-      <td colspan="7" style="padding:6px 10px;color:#94A3B8;font-size:.8rem">
-        ↳ Subtotal — Máq ${maq} · T${turno}
-      </td>
-      <td style="text-align:right;color:#60A5FA;padding:6px 10px">${subProg.toLocaleString()}</td>
-      <td style="text-align:right;padding:6px 10px">${subProd.toLocaleString()}</td>
-      <td style="text-align:right;color:${subColor};padding:6px 10px">${subPct}</td>
-    </tr>`;
-    subProg = 0; subProd = 0;
-  };
-
-  sortedKeys.forEach((key, i) => {
+  sortedKeys.forEach(key => {
     const g            = groups[key];
-    const maqTurno     = `${g.maq}|${g.turno}`;
     const undProd      = Math.round(g.cantSum);
     const undProg      = g.undProg || undProd;
     const undFaltantes = undProg - undProd;
     totalProg += undProg;
     totalProd += undProd;
-    subProg   += undProg;
-    subProd   += undProd;
-
-    if (prevMaqTurno && prevMaqTurno !== maqTurno) flushSubtotal(...prevMaqTurno.split('|'));
-    prevMaqTurno = maqTurno;
-
     const faltColor = undFaltantes > 0 ? '#EF4444' : '#10B981';
     const faltTxt   = undFaltantes === 0 ? '0' : undFaltantes > 0 ? '+'+undFaltantes.toLocaleString() : undFaltantes.toLocaleString();
     bodyRows += `<tr>
@@ -2013,22 +1991,23 @@ function renderReporteDiario() {
       <td style="text-align:right;color:${faltColor}">${faltTxt}</td>
     </tr>`;
   });
-  // Último subtotal
-  if (prevMaqTurno) flushSubtotal(...prevMaqTurno.split('|'));
 
   const cumpl = totalProg > 0 ? (totalProd / totalProg * 100) : 0;
-  const cumplColor  = cumpl >= 95 ? '#10B981' : cumpl >= 80 ? '#F59E0B' : '#EF4444';
-  const cumplBg     = cumpl >= 95 ? 'rgba(16,185,129,.12)' : cumpl >= 80 ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
-  const cumplLabel  = cumpl >= 95 ? '✅ META ALCANZADA' : cumpl >= 80 ? '⚠️ EN RIESGO' : '🔴 INCUMPLIMIENTO';
-  const faltTotal   = Math.max(0, totalProg - totalProd);
+  // Semáforo: Verde ≥90%, Amarillo ≥70%, Rojo <70%
+  const cumplColor = cumpl >= 90 ? '#10B981' : cumpl >= 70 ? '#F59E0B' : '#EF4444';
+  const cumplBg    = cumpl >= 90 ? 'rgba(16,185,129,.12)' : cumpl >= 70 ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
+  const cumplLabel = cumpl >= 90 ? '✅ META ALCANZADA' : cumpl >= 70 ? '⚠️ EN RIESGO' : '🔴 INCUMPLIMIENTO';
+  const faltTotal  = Math.max(0, totalProg - totalProd);
 
-  // Semáforo grande de cumplimiento
+  // ── Semáforo grande ────────────────────────────────────────────────
+  const isGreen  = cumpl >= 90, isYellow = cumpl >= 70 && cumpl < 90, isRed = cumpl < 70;
   document.getElementById('rd-cumpl-box').innerHTML = `
     <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
       <div style="text-align:center;flex:1;min-width:180px">
         <div style="font-size:.75rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">% Cumplimiento del Plan</div>
         <div style="font-size:4.5rem;font-weight:900;color:${cumplColor};line-height:1;text-shadow:0 0 40px ${cumplColor}88">${cumpl.toFixed(1)}%</div>
         <div style="margin-top:10px;font-size:.9rem;font-weight:700;color:${cumplColor};background:${cumplBg};border:1px solid ${cumplColor}44;border-radius:8px;padding:5px 14px;display:inline-block">${cumplLabel}</div>
+        <div style="font-size:.68rem;color:#6B7280;margin-top:8px">Verde ≥90% · Amarillo ≥70% · Rojo &lt;70%</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px;flex:1;min-width:200px">
         <div style="background:#1F2937;border-radius:10px;padding:14px 20px;border-left:4px solid #60A5FA">
@@ -2044,15 +2023,14 @@ function renderReporteDiario() {
           <div style="font-size:1.7rem;font-weight:800;color:${faltTotal>0?'#EF4444':'#10B981'}">${faltTotal.toLocaleString()}</div>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
-        <div style="width:28px;height:28px;border-radius:50%;background:${cumpl>=95?'#10B981':'#374151'};box-shadow:${cumpl>=95?'0 0 16px #10B981':'none'};border:2px solid ${cumpl>=95?'#10B981':'#4B5563'}"></div>
-        <div style="width:28px;height:28px;border-radius:50%;background:${cumpl>=80&&cumpl<95?'#F59E0B':'#374151'};box-shadow:${cumpl>=80&&cumpl<95?'0 0 16px #F59E0B':'none'};border:2px solid ${cumpl>=80&&cumpl<95?'#F59E0B':'#4B5563'}"></div>
-        <div style="width:28px;height:28px;border-radius:50%;background:${cumpl<80?'#EF4444':'#374151'};box-shadow:${cumpl<80?'0 0 16px #EF4444':'none'};border:2px solid ${cumpl<80?'#EF4444':'#4B5563'}"></div>
-        <div style="font-size:.6rem;color:#6B7280;margin-top:2px;text-align:center">SEMÁFORO</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;border-radius:50%;background:${isGreen?'#10B981':'#1F2937'};box-shadow:${isGreen?'0 0 20px #10B981':'none'};border:2px solid ${isGreen?'#10B981':'#374151'};transition:all .3s"></div>
+        <div style="width:32px;height:32px;border-radius:50%;background:${isYellow?'#F59E0B':'#1F2937'};box-shadow:${isYellow?'0 0 20px #F59E0B':'none'};border:2px solid ${isYellow?'#F59E0B':'#374151'};transition:all .3s"></div>
+        <div style="width:32px;height:32px;border-radius:50%;background:${isRed?'#EF4444':'#1F2937'};box-shadow:${isRed?'0 0 20px #EF4444':'none'};border:2px solid ${isRed?'#EF4444':'#374151'};transition:all .3s"></div>
+        <div style="font-size:.6rem;color:#6B7280;text-align:center">SEMÁFORO</div>
       </div>
     </div>`;
 
-  // Barra de progreso
   const barWidth = Math.min(100, cumpl).toFixed(1);
   document.getElementById('rd-progress-bar').innerHTML = `
     <div style="background:#374151;border-radius:99px;height:14px;overflow:hidden;margin-top:10px">
@@ -2061,6 +2039,47 @@ function renderReporteDiario() {
       </div>
     </div>`;
 
+  // ── Cuadro resumen por referencia (producto) ───────────────────────
+  const refMap = {};
+  sortedKeys.forEach(key => {
+    const g       = groups[key];
+    const undProd = Math.round(g.cantSum);
+    const undProg = g.undProg || undProd;
+    if (!refMap[g.prod]) refMap[g.prod] = { prog:0, prod:0 };
+    refMap[g.prod].prog += undProg;
+    refMap[g.prod].prod += undProd;
+  });
+  const refRows = Object.entries(refMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([prod, v]) => {
+    const falt = v.prog - v.prod;
+    const pct  = v.prog > 0 ? (v.prod/v.prog*100) : 0;
+    const c    = pct >= 90 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#EF4444';
+    const bar  = Math.min(100, pct).toFixed(1);
+    return `<tr>
+      <td style="font-weight:600">${prod}</td>
+      <td style="text-align:right;color:#60A5FA">${v.prog.toLocaleString()}</td>
+      <td style="text-align:right;color:#10B981">${v.prod.toLocaleString()}</td>
+      <td style="text-align:right;color:${falt>0?'#EF4444':'#10B981'}">${falt>0?'+'+falt.toLocaleString():falt.toLocaleString()}</td>
+      <td style="min-width:160px;padding:6px 10px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;background:#374151;border-radius:99px;height:10px;overflow:hidden">
+            <div style="width:${bar}%;height:100%;background:${c};border-radius:99px"></div>
+          </div>
+          <span style="font-size:.8rem;font-weight:700;color:${c};white-space:nowrap">${pct.toFixed(1)}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  document.getElementById('rd-ref-tbl').innerHTML = `
+    <thead><tr>
+      <th>Referencia</th>
+      <th style="text-align:right">Und. Programadas</th>
+      <th style="text-align:right">Und. Producidas</th>
+      <th style="text-align:right">Und. Faltantes</th>
+      <th>% Cumplimiento</th>
+    </tr></thead>
+    <tbody>${refRows||'<tr><td colspan="5" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>`;
+
+  // ── Detalle por turno (sin subtotales ni total) ────────────────────
   document.getElementById('rd-tbl').innerHTML = `
     <thead><tr>
       <th>Día</th><th>Producto</th><th>Máquina</th><th>Turno</th>
@@ -2071,13 +2090,7 @@ function renderReporteDiario() {
       <th style="text-align:right">Und. Producidas</th>
       <th style="text-align:right">Und. Faltantes</th>
     </tr></thead>
-    <tbody>${bodyRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos para los filtros seleccionados</td></tr>'}</tbody>
-    <tfoot><tr style="background:#1F2937;font-weight:700;font-size:.92rem">
-      <td colspan="7" style="text-align:right;padding:8px 10px">TOTALES</td>
-      <td style="text-align:right;color:#60A5FA;padding:8px 10px">${totalProg.toLocaleString()}</td>
-      <td style="text-align:right;padding:8px 10px">${totalProd.toLocaleString()}</td>
-      <td style="text-align:right;color:${cumplColor};padding:8px 10px;font-size:1rem">${cumpl.toFixed(1)}%</td>
-    </tr></tfoot>`;
+    <tbody>${bodyRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos para los filtros seleccionados</td></tr>'}</tbody>`;
 
   // ── Cuadro de Razones de Paro por Máquina ─────────────────────────
   const paroRows = rows.filter(r => (r._paro||0) > 0);
