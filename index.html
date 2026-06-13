@@ -588,38 +588,95 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     </div>
 
     <!-- ======================================= FORECAST == -->
-    <div class="section" id="sec-forecast" style="padding:24px">
+    <div class="section" id="sec-forecast">
 
-      <!-- KPIs de pronóstico -->
-      <div id="fc-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px"></div>
-
-      <!-- Gráfico de tendencia por referencia -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px">
-        <div class="chart-card">
-          <div class="section-title">Tendencia de Producción por Mes</div>
-          <div style="height:240px"><canvas id="fc-trend-chart"></canvas></div>
+      <!-- Filtros Forecast de Ventas -->
+      <div style="background:#111827;border-bottom:1px solid #374151;padding:12px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:.95rem;font-weight:800;color:#38BDF8">📈 Forecast de Ventas</div>
+          <div id="fv-status" style="font-size:.7rem;color:#4B5563">Cargando datos…</div>
         </div>
-        <div class="chart-card">
-          <div class="section-title">Proyección Próximos 3 Meses (Promedio Móvil)</div>
-          <div style="height:240px"><canvas id="fc-proj-chart"></canvas></div>
+        <div style="width:1px;height:24px;background:#374151;flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:.7rem;color:#9CA3AF">Desde</span>
+          <input type="month" id="fv-desde" value="2024-03" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 8px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
+          <span style="font-size:.7rem;color:#9CA3AF">Hasta</span>
+          <input type="month" id="fv-hasta" value="2026-12" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 8px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
         </div>
+        <div style="width:1px;height:24px;background:#374151;flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:.7rem;color:#9CA3AF">Cliente</span>
+          <select id="fv-cliente" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:160px"><option value="">Todos</option></select>
+          <span style="font-size:.7rem;color:#9CA3AF">Estado</span>
+          <select id="fv-estado" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
+            <option value="">Todos</option><option value="DESPACHADO">Despachado</option><option value="EN PROCESO">En Proceso</option>
+          </select>
+        </div>
+        <div style="width:1px;height:24px;background:#374151;flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:.7rem;color:#9CA3AF">Métrica</span>
+          <select id="fv-metrica" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
+            <option value="valor">Valor ($)</option><option value="cantidad">Cantidad pedidos</option>
+          </select>
+          <span style="font-size:.7rem;color:#9CA3AF">Horizonte</span>
+          <select id="fv-horizonte" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 10px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px">
+            <option value="3">3 meses</option><option value="6" selected>6 meses</option><option value="12">12 meses</option>
+          </select>
+        </div>
+        <div style="width:1px;height:24px;background:#374151;flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:.7rem;color:#9CA3AF">SMA n=</span>
+          <select id="fv-sma-k" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 8px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:56px">
+            <option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="6">6</option>
+          </select>
+          <span style="font-size:.7rem;color:#9CA3AF">WMA n=</span>
+          <select id="fv-wma-k" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 8px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:56px">
+            <option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="6">6</option>
+          </select>
+          <span style="font-size:.7rem;color:#9CA3AF">α EXP</span>
+          <select id="fv-alpha" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:4px 8px;color:#F3F4F6;font-size:.78rem;outline:none;height:30px;width:62px">
+            <option value="0.2">0.2</option><option value="0.3" selected>0.3</option><option value="0.5">0.5</option><option value="0.7">0.7</option><option value="0.9">0.9</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.75rem;color:#9CA3AF;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" id="fv-excl-outliers" style="accent-color:#F59E0B;width:14px;height:14px"> Excluir outliers
+          </label>
+        </div>
+        <button onclick="fvRunForecast()" style="background:#38BDF8;border:none;color:#0b1120;border-radius:8px;padding:5px 14px;font-weight:700;font-size:.78rem;cursor:pointer;height:30px">Calcular</button>
+        <button onclick="fvResetFilters()" style="background:#1F2937;border:1px solid #374151;color:#F3F4F6;border-radius:8px;padding:5px 14px;font-weight:700;font-size:.78rem;cursor:pointer;height:30px">Limpiar</button>
       </div>
 
-      <!-- Tabla unidades recomendadas -->
-      <div style="margin-bottom:10px;font-size:.82rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <i class="fa-solid fa-table" style="color:#38BDF8"></i> Unidades Recomendadas por Mes y Referencia
-        <span style="font-size:.68rem;color:#6B7280;font-weight:400">(95% del máximo histórico producido)</span>
-      </div>
-      <div class="chart-card" style="overflow-x:auto;margin-bottom:24px">
-        <table class="tbl" id="fc-units-tbl"></table>
-      </div>
+      <!-- Contenido dinámico Forecast Ventas -->
+      <div style="padding:20px 24px">
+        <div id="fv-loading" style="display:flex;flex-direction:column;align-items:center;padding:60px;gap:12px">
+          <div style="width:32px;height:32px;border-radius:50%;border:3px solid #374151;border-top-color:#38BDF8;animation:spin .8s linear infinite"></div>
+          <span style="color:#6B7280;font-size:.82rem">Cargando datos de ventas…</span>
+        </div>
+        <div id="fv-content" style="display:none"></div>
 
-      <!-- Modelos de pronóstico -->
-      <div style="margin-bottom:10px;font-size:.82rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px">
-        <i class="fa-solid fa-brain" style="color:#38BDF8"></i> Modelos de Pronóstico Aplicados
-      </div>
-      <div id="fc-model-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px"></div>
+        <!-- Separador -->
+        <div style="margin:28px 0;border-top:1px solid #374151"></div>
 
+        <!-- Producción: KPIs + gráficos + tabla -->
+        <div style="font-size:.82rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <i class="fa-solid fa-industry" style="color:#38BDF8"></i> Forecast de Producción
+        </div>
+        <div id="fc-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px">
+          <div class="chart-card"><div class="section-title">Tendencia de Producción</div><div style="height:220px"><canvas id="fc-trend-chart"></canvas></div></div>
+          <div class="chart-card"><div class="section-title">Proyección Ventas (histórico + próximos meses)</div><div style="height:220px"><canvas id="fc-proj-chart"></canvas></div></div>
+        </div>
+        <div style="font-size:.78rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <i class="fa-solid fa-table" style="color:#38BDF8"></i> Unidades Recomendadas por Mes
+          <span style="font-size:.68rem;color:#6B7280;font-weight:400">(95% máx. histórico · columnas lila = proyección próximos meses)</span>
+        </div>
+        <div class="chart-card" style="overflow-x:auto;margin-bottom:20px"><table class="tbl" id="fc-units-tbl"></table></div>
+
+        <!-- Modelos -->
+        <div style="font-size:.78rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <i class="fa-solid fa-brain" style="color:#38BDF8"></i> Modelos de Pronóstico Aplicados
+        </div>
+        <div id="fc-model-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
+      </div>
     </div>
 
     <!-- ======================================= DESCRIPCION == -->
@@ -657,7 +714,7 @@ const MESES_CAP = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 // =======================================================
 // STATE
 // =======================================================
-let DATA = { prod: [], nc: [], planRef: [], ventas: [], accid: [], ncByOrden: {} };
+let DATA = { prod: [], nc: [], planRef: [], ventas: [], accid: [], ncByOrden: {}, forecastVentas: [] };
 let CHARTS = {};
 let SEL_DIAS      = new Set();
 let SEL_RAZONES   = new Set();
@@ -2440,7 +2497,7 @@ const SECTION_RENDERS = {
   paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, descripcion:renderDescripcion
 };
 // Secciones protegidas con clave
-const PROTECTED = { costos: 'fvlco2026' };
+const PROTECTED = { costos: 'fvlco2026', forecast: 'fvlco2026' };
 const UNLOCKED  = new Set();
 
 function showSection(id) {
@@ -2847,6 +2904,9 @@ function _fcNextMeses(meses, n=4) {
 }
 
 function renderForecast() {
+  // Lazy-load Forecast de Ventas data (separate CSV)
+  fvLoadData();
+
   const pN = v=>{ const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
 
   // ── Construir mesMap producción ──────────────────────────────────────
@@ -2984,6 +3044,330 @@ function renderForecast() {
       <p style="font-size:.72rem;color:#9CA3AF;margin:0 0 8px;line-height:1.5">${m.desc}</p>
       <div style="font-size:.7rem;color:#6B7280"><i class="fa-solid fa-circle-check" style="color:#10B981;margin-right:4px"></i><strong style="color:#D1D5DB">Uso:</strong> ${m.uso}</div>
     </div>`).join('');
+}
+
+// =======================================================
+// FORECAST DE VENTAS — funciones fv* (integradas desde forecast.html)
+// =======================================================
+const FV_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ4-F6K4w3h8-Q_ugbDyaeApNv6KYj0BbwNXq5SVAbVbheJP49jYKQB9EPJ9h5NO6_XJizXaI1YsRxR/pub?gid=65365395&single=true&output=csv';
+const FV_COLORS = { actual:'#e2e8f0', sma:'#38bdf8', wma:'#a78bfa', reg:'#34d399', exp:'#fb923c', holt:'#f87171' };
+const FV_MODEL_NAMES = { sma:'P. Móvil Simple', wma:'P. Móvil Ponderado', reg:'Regresión Lineal', exp:'Suav. Exponencial', holt:'Holt (Tendencia)' };
+let fvCharts = {};
+
+async function fvLoadData() {
+  const statusEl = document.getElementById('fv-status');
+  const loadEl   = document.getElementById('fv-loading');
+  if (!statusEl) return;
+  if (DATA.forecastVentas && DATA.forecastVentas.length > 0) {
+    if (statusEl) statusEl.textContent = `${DATA.forecastVentas.length} pedidos cargados`;
+    fvPopulateClients();
+    fvRunForecast();
+    return;
+  }
+  statusEl.textContent = 'Cargando datos…';
+  try {
+    const res  = await fetch(FV_CSV);
+    const text = await res.text();
+    const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
+    DATA.forecastVentas = parsed.data;
+    statusEl.textContent = `${DATA.forecastVentas.length} pedidos cargados`;
+    fvPopulateClients();
+    fvRunForecast();
+  } catch(e) {
+    if (loadEl) loadEl.innerHTML = `<div style="color:#f87171;text-align:center;padding:40px">⚠️ Error al cargar datos: ${e.message}</div>`;
+  }
+}
+
+function fvPopulateClients() {
+  const sel = document.getElementById('fv-cliente');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  const clients = [...new Set((DATA.forecastVentas||[]).map(r=>r['CLIENTE']?.trim()).filter(Boolean))].sort();
+  clients.forEach(c => { const o = document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+}
+
+function fvParseDate(str) {
+  if (!str) return null;
+  const parts = str.split(' ')[0].split('/');
+  if (parts.length !== 3) return null;
+  const d=parseInt(parts[0]), m=parseInt(parts[1])-1, y=parseInt(parts[2]);
+  if (isNaN(d)||isNaN(m)||isNaN(y)) return null;
+  return new Date(y, m, d);
+}
+
+function fvAggregateByMonth(data, metric) {
+  const map = {};
+  data.forEach(row => {
+    const dt = fvParseDate(row['FECHA REGISTRO']);
+    if (!dt) return;
+    const val = parseFloat(String(row['VALOR PEDIDO']).replace(/[^0-9.-]/g,'')) || 0;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+    if (!map[key]) map[key] = { valor:0, cantidad:0 };
+    map[key].valor += val;
+    map[key].cantidad += 1;
+  });
+  return map;
+}
+
+function fvGetFilteredData() {
+  const desde   = document.getElementById('fv-desde')?.value   || '';
+  const hasta   = document.getElementById('fv-hasta')?.value   || '';
+  const cliente = document.getElementById('fv-cliente')?.value || '';
+  const estado  = document.getElementById('fv-estado')?.value  || '';
+  return (DATA.forecastVentas||[]).filter(row => {
+    const dt = fvParseDate(row['FECHA REGISTRO']);
+    if (!dt) return false;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+    if (desde && key < desde) return false;
+    if (hasta && key > hasta) return false;
+    if (cliente && row['CLIENTE']?.trim() !== cliente) return false;
+    if (estado  && row['ESTADO']?.trim()  !== estado)  return false;
+    return true;
+  });
+}
+
+function fvComputeSMA(data, k) {
+  const f = new Array(data.length).fill(null);
+  for (let i=k-1; i<data.length; i++) f[i] = data.slice(i-k+1,i+1).reduce((a,b)=>a+b,0)/k;
+  return f;
+}
+function fvProjectSMA(data, k, h) {
+  const ext=[...data]; for(let i=0;i<h;i++) ext.push(ext.slice(-k).reduce((a,b)=>a+b,0)/k); return ext.slice(data.length);
+}
+function fvComputeWMA(data, k) {
+  const w=Array.from({length:k},(_,i)=>i+1), ws=w.reduce((a,b)=>a+b,0);
+  const f=new Array(data.length).fill(null);
+  for(let i=k-1;i<data.length;i++){let s=0; for(let j=0;j<k;j++) s+=data[i-k+1+j]*w[j]; f[i]=s/ws;}
+  return f;
+}
+function fvProjectWMA(data, k, h) {
+  const w=Array.from({length:k},(_,i)=>i+1), ws=w.reduce((a,b)=>a+b,0);
+  const ext=[...data]; for(let i=0;i<h;i++){const seg=ext.slice(-k);let s=0; for(let j=0;j<k;j++) s+=seg[j]*w[j]; ext.push(s/ws);} return ext.slice(data.length);
+}
+function fvComputeRegression(data) {
+  const n=data.length, xi=Array.from({length:n},(_,i)=>i);
+  const sx=xi.reduce((a,b)=>a+b,0), sy=data.reduce((a,b)=>a+b,0);
+  const sxy=xi.reduce((acc,x,i)=>acc+x*data[i],0), sx2=xi.reduce((acc,x)=>acc+x*x,0);
+  const b1=(n*sxy-sx*sy)/(n*sx2-sx*sx), b0=(sy-b1*sx)/n;
+  return { b0, b1, fitted:xi.map(x=>b0+b1*x) };
+}
+function fvProjectRegression(b0, b1, n, h) { return Array.from({length:h},(_,i)=>Math.max(0,b0+b1*(n+i))); }
+function fvComputeExpSmoothing(data, alpha) {
+  const s=[data[0]]; for(let i=1;i<data.length;i++) s.push(alpha*data[i]+(1-alpha)*s[i-1]); return s;
+}
+function fvProjectExp(data, alpha, h) { const s=fvComputeExpSmoothing(data,alpha); return new Array(h).fill(s[s.length-1]); }
+function fvComputeHolt(data, alpha, beta) {
+  const L=[data[0]], T=[data.length>1?data[1]-data[0]:0], fitted=[data[0]];
+  for(let i=1;i<data.length;i++){const li=alpha*data[i]+(1-alpha)*(L[i-1]+T[i-1]); const ti=beta*(li-L[i-1])+(1-beta)*T[i-1]; L.push(li);T.push(ti);fitted.push(li+ti);}
+  return {fitted,L,T};
+}
+function fvProjectHolt(L,T,h){const lL=L[L.length-1],lT=T[T.length-1];return Array.from({length:h},(_,i)=>Math.max(0,lL+(i+1)*lT));}
+
+function fvCalcErrors(actual, fitted) {
+  const pairs=actual.map((a,i)=>[a,fitted[i]]).filter(([,f])=>f!==null&&!isNaN(f));
+  if(!pairs.length) return {mae:0,mse:0,rmse:0,mape:0};
+  const mae=pairs.reduce((s,[a,f])=>s+Math.abs(a-f),0)/pairs.length;
+  const mse=pairs.reduce((s,[a,f])=>s+(a-f)**2,0)/pairs.length;
+  const rmse=Math.sqrt(mse);
+  const mape=pairs.filter(([a])=>a!==0).reduce((s,[a,f])=>s+Math.abs((a-f)/a),0)/pairs.filter(([a])=>a!==0).length*100;
+  return {mae,mse,rmse,mape};
+}
+
+function fvFmt(n, metric) {
+  if (metric==='valor') { if(n>=1e9) return '$'+(n/1e9).toFixed(2)+'B'; if(n>=1e6) return '$'+(n/1e6).toFixed(1)+'M'; return '$'+Math.round(n).toLocaleString('es-CO'); }
+  return Math.round(n).toLocaleString('es-CO');
+}
+function fvFmtError(n, metric) { return metric==='valor'?fvFmt(n,metric):n.toFixed(1); }
+function fvFmtMAPE(n) { return isNaN(n)?'N/A':n.toFixed(1)+'%'; }
+function fvMonthLabel(ym) { const [y,m]=ym.split('-'); const ns=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']; return ns[parseInt(m)-1]+' '+y; }
+function fvAddMonths(ym, n) { let [y,m]=ym.split('-').map(Number); m+=n; while(m>12){m-=12;y++;} return `${y}-${String(m).padStart(2,'0')}`; }
+function fvDetectAnomalies(series) { const mean=series.reduce((a,b)=>a+b,0)/series.length; const std=Math.sqrt(series.reduce((s,v)=>s+(v-mean)**2,0)/series.length); return series.map((v,i)=>Math.abs(v-mean)>3*std?i:-1).filter(i=>i>=0); }
+
+function fvChartDefaults() {
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{labels:{color:'#94a3b8',font:{size:11},boxWidth:12,padding:14}},
+      tooltip:{backgroundColor:'#162032',borderColor:'#253650',borderWidth:1,titleColor:'#e2e8f0',bodyColor:'#94a3b8',
+        callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw?.toLocaleString('es-CO')||ctx.raw}`}}
+    },
+    scales:{
+      x:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'rgba(37,54,80,.4)'}},
+      y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'rgba(37,54,80,.4)'}}
+    }
+  };
+}
+
+function fvRunForecast() {
+  const metric  = document.getElementById('fv-metrica')?.value  || 'valor';
+  const horizon = parseInt(document.getElementById('fv-horizonte')?.value || '6');
+  const smaK    = parseInt(document.getElementById('fv-sma-k')?.value   || '3');
+  const wmaK    = parseInt(document.getElementById('fv-wma-k')?.value   || '3');
+  const alpha   = parseFloat(document.getElementById('fv-alpha')?.value  || '0.3');
+  const beta    = 0.2;
+
+  const filtered = fvGetFilteredData();
+  const monthly  = fvAggregateByMonth(filtered, metric);
+  let keys   = Object.keys(monthly).sort();
+  let values = keys.map(k=>monthly[k][metric]);
+
+  const exclOutliers = document.getElementById('fv-excl-outliers')?.checked;
+  if (exclOutliers && values.length > 4) {
+    const mean=values.reduce((a,b)=>a+b,0)/values.length;
+    const std=Math.sqrt(values.reduce((s,v)=>s+(v-mean)**2,0)/values.length);
+    const mask=values.map((v,i)=>Math.abs(v-mean)<=3*std?i:-1).filter(i=>i>=0);
+    keys=mask.map(i=>keys[i]); values=mask.map(i=>values[i]);
+  }
+
+  const contentEl = document.getElementById('fv-content');
+  const loadEl    = document.getElementById('fv-loading');
+
+  if (values.length < 4) {
+    if (contentEl) contentEl.innerHTML = `<div style="background:#1F2937;border:1px solid #F59E0B44;border-radius:8px;padding:16px 20px;color:#F59E0B;display:flex;gap:12px;align-items:center;margin:16px 0"><i class="fa-solid fa-triangle-exclamation"></i> Se necesitan al menos 4 períodos de datos. Ajusta los filtros de fecha.</div>`;
+    if (loadEl) loadEl.style.display='none';
+    if (contentEl) contentEl.style.display='block';
+    return;
+  }
+
+  const anomalies = fvDetectAnomalies(values);
+  const smaFitted = fvComputeSMA(values, smaK);
+  const wmaFitted = fvComputeWMA(values, wmaK);
+  const {b0,b1,fitted:regFitted} = fvComputeRegression(values);
+  const expFitted = fvComputeExpSmoothing(values, alpha);
+  const {fitted:holtFitted,L:holtL,T:holtT} = fvComputeHolt(values, alpha, beta);
+
+  const smaProj  = fvProjectSMA(values, smaK, horizon);
+  const wmaProj  = fvProjectWMA(values, wmaK, horizon);
+  const regProj  = fvProjectRegression(b0, b1, values.length, horizon);
+  const expProj  = fvProjectExp(values, alpha, horizon);
+  const holtProj = fvProjectHolt(holtL, holtT, horizon);
+
+  const errSMA  = fvCalcErrors(values, smaFitted);
+  const errWMA  = fvCalcErrors(values, wmaFitted);
+  const errReg  = fvCalcErrors(values, regFitted);
+  const errExp  = fvCalcErrors(values, expFitted);
+  const errHolt = fvCalcErrors(values, holtFitted);
+
+  const models = [
+    {key:'sma', name:FV_MODEL_NAMES.sma, err:errSMA, proj:smaProj, fitted:smaFitted, color:FV_COLORS.sma},
+    {key:'wma', name:FV_MODEL_NAMES.wma, err:errWMA, proj:wmaProj, fitted:wmaFitted, color:FV_COLORS.wma},
+    {key:'reg', name:FV_MODEL_NAMES.reg, err:errReg, proj:regProj, fitted:regFitted, color:FV_COLORS.reg},
+    {key:'exp', name:FV_MODEL_NAMES.exp, err:errExp, proj:expProj, fitted:expFitted, color:FV_COLORS.exp},
+    {key:'holt',name:FV_MODEL_NAMES.holt,err:errHolt,proj:holtProj,fitted:holtFitted,color:FV_COLORS.holt},
+  ];
+  const bestModel = [...models].sort((a,b)=>a.err.rmse-b.err.rmse)[0];
+
+  const projLabels = Array.from({length:horizon},(_,i)=>fvMonthLabel(fvAddMonths(keys[keys.length-1],i+1)));
+  const total=values.reduce((a,b)=>a+b,0), avg2=total/values.length, last=values[values.length-1], nextBest=bestModel.proj[0];
+
+  if (loadEl) loadEl.style.display='none';
+  if (contentEl) { contentEl.style.display='block'; contentEl.innerHTML = fvBuildHTML(values,keys,models,bestModel,projLabels,metric,anomalies,total,avg2,last,nextBest,b1); }
+
+  Object.values(fvCharts).forEach(c=>c.destroy()); fvCharts={};
+  fvRenderMainChart(values,keys,models,projLabels,metric);
+  models.forEach(m=>fvRenderModelChart(m,values,keys,projLabels,metric));
+  fvRenderErrorChart(models, metric);
+}
+
+function fvBuildHTML(values,keys,models,bestModel,projLabels,metric,anomalies,total,avg2,last,nextBest,trend) {
+  const trendDir=trend>=0?'▲':'▼'; const trendCl=trend>=0?'color:#34d399':'color:#f87171';
+  const minRMSE=Math.min(...models.map(m=>m.err.rmse));
+
+  const anomalyBlock = anomalies.length>0 ? `<div style="background:#1F2937;border:1px solid #F59E0B44;border-radius:8px;padding:14px 18px;color:#F59E0B;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px"><i class="fa-solid fa-triangle-exclamation" style="margin-top:2px;flex-shrink:0"></i><div><strong>Valores atípicos detectados</strong> en: ${anomalies.map(i=>`${fvMonthLabel(keys[i])} (${fvFmt(values[i],metric)})`).join(', ')}. Considera excluirlos.</div></div>` : '';
+
+  const kpiStyle = (c)=>`background:#111827;border:1px solid #374151;border-radius:10px;padding:16px;border-top:3px solid ${c};position:relative;overflow:hidden`;
+  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px">
+    <div style="${kpiStyle('#38bdf8')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total ${metric==='valor'?'Ventas':'Pedidos'}</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(total,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${keys.length} meses analizados</div></div>
+    <div style="${kpiStyle('#a78bfa')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Promedio Mensual</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(avg2,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Por mes en el período</div></div>
+    <div style="${kpiStyle('#34d399')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Último Período</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(last,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${fvMonthLabel(keys[keys.length-1])}</div></div>
+    <div style="${kpiStyle('#fb923c')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mejor Pronóstico</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(nextBest,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Modelo: ${bestModel.name}</div><div style="font-size:.68rem;${trendCl};margin-top:2px">${trendDir} Tendencia lineal</div></div>
+    <div style="${kpiStyle('#f87171')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mejor Modelo (RMSE)</div><div style="font-size:1rem;font-weight:800;color:#F3F4F6;line-height:1.3">${bestModel.name}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">RMSE: ${fvFmtError(bestModel.err.rmse,metric)}</div><div style="font-size:.68rem;color:#34d399">MAPE ${fvFmtMAPE(bestModel.err.mape)}</div></div>
+  </div>`;
+
+  const modelPills = models.map(m=>`<span style="display:inline-flex;align-items:center;gap:5px;background:#1F2937;border:1px solid #374151;border-radius:20px;padding:3px 10px 3px 7px;font-size:.7rem;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:${m.color};flex-shrink:0"></span>${m.name}</span>`).join('');
+
+  const projHeader = models.map(m=>`<th style="text-align:right;color:${m.color};font-size:.7rem">${m.name}</th>`).join('');
+  const projRows = projLabels.map((lbl,i)=>`<tr style="border-top:1px solid #1F2937"><td style="color:#D1D5DB;font-size:.75rem">${lbl}</td>${models.map(m=>`<td style="text-align:right;font-size:.75rem;color:#9CA3AF">${fvFmt(m.proj[i]||0,metric)}</td>`).join('')}</tr>`).join('');
+
+  const errRows = models.map(m=>{
+    const isBest=m.err.rmse===minRMSE;
+    return `<tr style="border-top:1px solid #1F2937${isBest?';background:#34d39911':''}"><td style="font-size:.73rem"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${m.color};margin-right:6px"></span>${m.name}${isBest?' ⭐':''}</td><td style="text-align:right;font-size:.73rem">${fvFmtError(m.err.mae,metric)}</td><td style="text-align:right;font-size:.73rem">${fvFmtError(m.err.mse,metric)}</td><td style="text-align:right;font-size:.73rem;font-weight:700;color:${m.color}">${fvFmtError(m.err.rmse,metric)}</td><td style="text-align:right;font-size:.73rem">${fvFmtMAPE(m.err.mape)}</td></tr>`;
+  }).join('');
+
+  const tblStyle=`width:100%;border-collapse:collapse`;
+  const thStyle=`text-align:left;padding:8px 10px;font-size:.65rem;text-transform:uppercase;color:#6B7280;border-bottom:1px solid #374151`;
+
+  return `${anomalyBlock}
+    ${kpis}
+    <div style="font-size:.8rem;font-weight:700;color:#E5E7EB;margin:0 0 10px;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-chart-area" style="color:#38bdf8"></i> Pronóstico vs. Real — Todos los Modelos</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${modelPills}</div>
+    <div class="chart-card" style="margin-bottom:20px"><div style="font-size:.75rem;color:#6B7280;margin-bottom:10px">Histórico + Proyección (${projLabels.length} meses)</div><div style="position:relative;height:280px"><canvas id="fvc-main"></canvas></div></div>
+
+    <div style="font-size:.8rem;font-weight:700;color:#E5E7EB;margin:0 0 10px;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-table" style="color:#a78bfa"></i> Proyecciones por Modelo</div>
+    <div style="background:#111827;border:1px solid #374151;border-radius:10px;overflow-x:auto;margin-bottom:20px"><table style="${tblStyle}"><thead><tr><th style="${thStyle}">Período</th>${projHeader}</tr></thead><tbody>${projRows}</tbody></table></div>
+
+    <div style="font-size:.8rem;font-weight:700;color:#E5E7EB;margin:0 0 10px;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-ruler" style="color:#fb923c"></i> Métricas de Error (In-sample)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div style="background:#111827;border:1px solid #374151;border-radius:10px;overflow:auto"><table style="${tblStyle}"><thead><tr><th style="${thStyle}">Modelo</th><th style="${thStyle};text-align:right">MAE</th><th style="${thStyle};text-align:right">MSE</th><th style="${thStyle};text-align:right">RMSE ↑</th><th style="${thStyle};text-align:right">MAPE</th></tr></thead><tbody>${errRows}</tbody></table></div>
+      <div class="chart-card" style="margin-bottom:0"><div style="font-size:.75rem;color:#6B7280;margin-bottom:10px">Comparación RMSE</div><div style="position:relative;height:160px"><canvas id="fvc-errors"></canvas></div></div>
+    </div>
+
+    <div style="font-size:.8rem;font-weight:700;color:#E5E7EB;margin:0 0 10px;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-layer-group" style="color:#34d399"></i> Detalle por Modelo</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+      ${models.map(m=>`<div class="chart-card" style="margin-bottom:0"><div style="font-size:.78rem;font-weight:700;color:${m.color};margin-bottom:8px">${m.name}</div><div style="position:relative;height:160px"><canvas id="fvc-${m.key}"></canvas></div><div style="display:flex;gap:14px;margin-top:10px;font-size:.68rem;color:#6B7280"><span>MAE <strong style="color:${m.color}">${fvFmtError(m.err.mae,metric)}</strong></span><span>RMSE <strong style="color:${m.color}">${fvFmtError(m.err.rmse,metric)}</strong></span><span>MAPE <strong style="color:${m.color}">${fvFmtMAPE(m.err.mape)}</strong></span></div></div>`).join('')}
+    </div>`;
+}
+
+function fvRenderMainChart(values, keys, models, projLabels, metric) {
+  const allLabels=[...keys.map(fvMonthLabel),...projLabels]; const n=values.length;
+  const datasets=[
+    {label:'Real',data:[...values,...new Array(projLabels.length).fill(null)],borderColor:FV_COLORS.actual,backgroundColor:'rgba(226,232,240,.08)',borderWidth:2,pointRadius:3,tension:.3,fill:true,order:10},
+    ...models.map(m=>{
+      const fPad=[...m.fitted.map(v=>v??null),...new Array(projLabels.length).fill(null)];
+      const pPad=[...new Array(n-1).fill(null),values[n-1],...m.proj];
+      return [{label:m.name+' (ajuste)',data:fPad,borderColor:m.color+'99',borderWidth:1.5,pointRadius:0,borderDash:[4,3],tension:.3,fill:false},
+              {label:m.name+' (pron.)',data:pPad,borderColor:m.color,borderWidth:2,pointRadius:4,pointBackgroundColor:m.color,tension:.2,fill:false}];
+    }).flat()
+  ];
+  const divPlugin={id:'fvDivider',afterDraw(chart){const idx=keys.length;if(idx>=chart.data.labels.length)return;const md=chart.getDatasetMeta(0);if(!md.data[idx])return;const x=md.data[idx].x;const c=chart.ctx;c.save();c.strokeStyle='rgba(56,189,248,.4)';c.lineWidth=1;c.setLineDash([5,4]);c.beginPath();c.moveTo(x,chart.chartArea.top);c.lineTo(x,chart.chartArea.bottom);c.stroke();c.restore();}};
+  const el=document.getElementById('fvc-main'); if(!el)return;
+  fvCharts['main']=new Chart(el.getContext('2d'),{type:'line',data:{labels:allLabels,datasets},options:fvChartDefaults(),plugins:[divPlugin]});
+}
+
+function fvRenderModelChart(model, values, keys, projLabels, metric) {
+  const allLabels=[...keys.map(fvMonthLabel),...projLabels]; const n=values.length;
+  const pPad=[...new Array(n-1).fill(null),values[n-1],...model.proj];
+  const fPad=[...model.fitted.map(v=>v??null),...new Array(projLabels.length).fill(null)];
+  const el=document.getElementById('fvc-'+model.key); if(!el)return;
+  fvCharts[model.key]=new Chart(el.getContext('2d'),{type:'line',data:{labels:allLabels,datasets:[
+    {label:'Real',data:[...values,...new Array(projLabels.length).fill(null)],borderColor:FV_COLORS.actual,backgroundColor:'rgba(226,232,240,.05)',borderWidth:2,pointRadius:2,tension:.3,fill:true},
+    {label:'Ajuste',data:fPad,borderColor:model.color+'99',borderWidth:1.5,pointRadius:0,borderDash:[4,3],tension:.3},
+    {label:'Pronóstico',data:pPad,borderColor:model.color,borderWidth:2.5,pointRadius:4,pointBackgroundColor:model.color,tension:.2},
+  ]},options:fvChartDefaults()});
+}
+
+function fvRenderErrorChart(models, metric) {
+  const el=document.getElementById('fvc-errors'); if(!el)return;
+  fvCharts['errors']=new Chart(el.getContext('2d'),{type:'bar',data:{
+    labels:models.map(m=>m.name),
+    datasets:[{label:'RMSE',data:models.map(m=>m.err.rmse),backgroundColor:models.map(m=>m.color+'bb'),borderColor:models.map(m=>m.color),borderWidth:1,borderRadius:6}]
+  },options:{...fvChartDefaults(),plugins:{...fvChartDefaults().plugins,legend:{display:false}},indexAxis:'y'}});
+}
+
+function fvResetFilters() {
+  const now=new Date(); const yy=now.getFullYear(); const mm=String(now.getMonth()+1).padStart(2,'0');
+  const el=id=>document.getElementById(id);
+  if(el('fv-desde'))  el('fv-desde').value  = '2024-03';
+  if(el('fv-hasta'))  el('fv-hasta').value  = `${yy}-${mm}`;
+  if(el('fv-cliente'))el('fv-cliente').value = '';
+  if(el('fv-estado')) el('fv-estado').value  = '';
+  if(el('fv-metrica'))el('fv-metrica').value = 'valor';
+  if(el('fv-horizonte'))el('fv-horizonte').value='6';
+  if(el('fv-sma-k'))  el('fv-sma-k').value  = '3';
+  if(el('fv-wma-k'))  el('fv-wma-k').value  = '3';
+  if(el('fv-alpha'))  el('fv-alpha').value   = '0.3';
+  if(el('fv-excl-outliers'))el('fv-excl-outliers').checked=false;
+  fvRunForecast();
 }
 
 // =======================================================
