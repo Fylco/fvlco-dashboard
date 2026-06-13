@@ -1919,55 +1919,64 @@ function renderReporteDiario() {
   const fTurno = (document.getElementById('rd-f-turno')?.value || '').trim();
   const fMaq   = (document.getElementById('rd-f-maq')?.value   || '').trim();
 
-  // Populate day selector once
+  // Populate selectors once
   const diaEl = document.getElementById('rd-f-dia');
   if (diaEl && diaEl.options.length <= 1) {
-    const dias = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
-    dias.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
+    [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b))
+      .forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
   }
-  // Populate machine selector once
   const maqEl = document.getElementById('rd-f-maq');
   if (maqEl && maqEl.options.length <= 1) {
-    [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort().forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; maqEl.appendChild(o); });
+    [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort()
+      .forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; maqEl.appendChild(o); });
   }
 
   const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, fMaq);
+  const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
 
-  const pNum = v => { const n = parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
-  const TURNO_H = {'1':8,'2':8,'3':8,'4':12,'5':12};
+  // Agrupar por Día + Máquina + Turno + Producto
+  const groups = {};
+  rows.forEach(r => {
+    const dia    = r._diaTurno || '?';
+    const maq    = r._maq      || '?';
+    const turno  = String(r._turno || '?');
+    const prod   = r._prod     || '?';
+    const key    = `${dia}|${maq}|${turno}|${prod}`;
+    if (!groups[key]) {
+      const est  = pNum(r['T. CICLO EST']);
+      const cav  = Math.max(_findColVal(r,'CAVIDAD','TEOR') || CAV_MAP[prod] || pNum(r['CAV.TEORICAS']) || 1, 1);
+      groups[key] = { dia, maq, turno, prod, est, cav, cantSum:0, progSum:0 };
+    }
+    const g       = groups[key];
+    const cant    = pNum(r._cant);
+    const real    = pNum(r['T. CICLO REAL']) || pNum(r['T.CICLO REAL']);
+    g.cantSum    += cant;
+    // undProg por registro = cant × (cicloReal/cicloEst)  [cavidades se cancelan algebraicamente]
+    if (g.est > 0 && real > 0) g.progSum += cant * (real / g.est);
+  });
 
   let totalProg = 0, totalProd = 0;
-  const bodyRows = rows.map(r => {
-    const cant      = pNum(r._cant);
-    const cicloEst  = pNum(r['T. CICLO EST']);
-    const cicloReal = pNum(r['T. CICLO REAL']) || pNum(r['T.CICLO REAL']);
-    const cavReal   = pNum(r['CAVIDADES']) || pNum(r['CAV.REALES']) || 1;
-    const cavTeor   = pNum(r['CAV.TEORICAS']) || cavReal;
+  const sortedKeys = Object.keys(groups).sort((a,b) => {
+    const [dA,,tA,pA] = a.split('|'), [dB,,tB,pB] = b.split('|');
+    return Number(dA)-Number(dB) || tA.localeCompare(tB) || pA.localeCompare(pB);
+  });
 
-    let undProg = 0;
-    if (cicloEst > 0 && cicloReal > 0 && cavReal > 0) {
-      const tiempoReal = (cant / cavReal) * cicloReal;
-      undProg = Math.round((tiempoReal / cicloEst) * cavTeor);
-    } else if (cicloEst > 0) {
-      const th = TURNO_H[String(r._turno)] || 8;
-      undProg = Math.round((th * 3600 / cicloEst) * cavTeor);
-    }
-    const undProd      = Math.round(cant);
+  const bodyRows = sortedKeys.map(key => {
+    const g           = groups[key];
+    const undProd     = Math.round(g.cantSum);
+    const undProg     = Math.round(g.progSum) || undProd;
     const undFaltantes = undProg - undProd;
-
     totalProg += undProg;
     totalProd += undProd;
-
     const faltColor = undFaltantes > 0 ? '#EF4444' : '#10B981';
     const faltTxt   = undFaltantes === 0 ? '0' : undFaltantes > 0 ? '+'+undFaltantes.toLocaleString() : undFaltantes.toLocaleString();
     return `<tr>
-      <td>${r._prod||'-'}</td>
-      <td>${r._maq||'-'}</td>
-      <td>T${r._turno||'-'}</td>
-      <td style="text-align:right">${Math.round(cavReal)||'-'}</td>
-      <td style="text-align:right">${cicloEst>0?cicloEst.toFixed(1)+' s':'-'}</td>
-      <td style="text-align:right">${Math.round(cavTeor)||'-'}</td>
-      <td style="text-align:right">${cicloReal>0?cicloReal.toFixed(1)+' s':'-'}</td>
+      <td>Día ${g.dia}</td>
+      <td>${g.prod}</td>
+      <td>${g.maq}</td>
+      <td>T${g.turno}</td>
+      <td style="text-align:right">${g.cav}</td>
+      <td style="text-align:right">${g.est>0?g.est.toFixed(1)+' s':'-'}</td>
       <td style="text-align:right;font-weight:600;color:#60A5FA">${undProg.toLocaleString()}</td>
       <td style="text-align:right">${undProd.toLocaleString()}</td>
       <td style="text-align:right;color:${faltColor}">${faltTxt}</td>
@@ -2021,18 +2030,16 @@ function renderReporteDiario() {
 
   document.getElementById('rd-tbl').innerHTML = `
     <thead><tr>
-      <th>Producto</th><th>Máquina</th><th>Turno</th>
+      <th>Día</th><th>Producto</th><th>Máquina</th><th>Turno</th>
       <th style="text-align:right"># Cavidades</th>
       <th style="text-align:right">Ciclo Estándar</th>
-      <th style="text-align:right"># Cav. Estándar</th>
-      <th style="text-align:right">T. Ciclo Real</th>
       <th style="text-align:right">Und. Programadas</th>
       <th style="text-align:right">Und. Producidas</th>
       <th style="text-align:right">Und. Faltantes</th>
     </tr></thead>
-    <tbody>${bodyRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos para los filtros seleccionados</td></tr>'}</tbody>
+    <tbody>${bodyRows||'<tr><td colspan="9" style="text-align:center;padding:20px;color:#6B7280">Sin datos para los filtros seleccionados</td></tr>'}</tbody>
     <tfoot><tr style="background:#1F2937;font-weight:700;font-size:.92rem">
-      <td colspan="7" style="text-align:right;padding:8px 10px">TOTALES</td>
+      <td colspan="6" style="text-align:right;padding:8px 10px">TOTALES</td>
       <td style="text-align:right;color:#60A5FA;padding:8px 10px">${totalProg.toLocaleString()}</td>
       <td style="text-align:right;padding:8px 10px">${totalProd.toLocaleString()}</td>
       <td style="text-align:right;color:${cumplColor};padding:8px 10px;font-size:1rem">${cumpl.toFixed(1)}%</td>
