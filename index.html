@@ -2093,9 +2093,34 @@ function renderReporteDiario() {
     <tbody>${bodyRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos para los filtros seleccionados</td></tr>'}</tbody>`;
 
   // ── Cuadro de Razones de Paro por Máquina ─────────────────────────
-  const paroRows = rows.filter(r => (r._paro||0) > 0);
+  const TURNO_MIN = {'1':480,'2':480,'3':480,'4':720,'5':720};
+  const paroRows  = rows.filter(r => (r._paro||0) > 0);
 
-  // Agrupar primero por máquina, luego por razón
+  // Minutos de turno disponibles por máquina (días × turno únicos en el filtro)
+  const maqTurnoMin = {};
+  rows.forEach(r => {
+    const maq   = String(r._maq || '—');
+    const dia   = String(r._diaTurno || '');
+    const turno = String(r._turno || '');
+    if (!dia || !turno) return;
+    if (!maqTurnoMin[maq]) maqTurnoMin[maq] = {};
+    const dkey = `${dia}|${turno}`;
+    if (!maqTurnoMin[maq][dkey]) maqTurnoMin[maq][dkey] = TURNO_MIN[turno] || 480;
+  });
+  const maqDisponibleMin = {};
+  Object.entries(maqTurnoMin).forEach(([maq, dias]) => {
+    // Usar calcShiftHours por día para respetar lógica T4/T5
+    const dayMap = {};
+    Object.keys(dias).forEach(dk => {
+      const [d, t] = dk.split('|');
+      if (!dayMap[d]) dayMap[d] = new Set();
+      dayMap[d].add(t);
+    });
+    const horas = Object.values(dayMap).reduce((s, ts) => s + calcShiftHours(ts), 0);
+    maqDisponibleMin[maq] = horas * 60;
+  });
+
+  // Agrupar por máquina → razón
   const maqParoMap = {};
   paroRows.forEach(r => {
     const maq   = String(r._maq || '—');
@@ -2108,8 +2133,6 @@ function renderReporteDiario() {
   });
 
   const maqsSorted = Object.keys(maqParoMap).sort();
-  const totalMinParo = paroRows.reduce((s, r) => s + (r._paro||0), 0);
-
   const paroContainer = document.getElementById('rd-paro-container');
   if (!maqsSorted.length) {
     paroContainer.innerHTML = '<p style="color:#6B7280;padding:16px">Sin paros registrados para los filtros seleccionados.</p>';
@@ -2117,22 +2140,26 @@ function renderReporteDiario() {
   }
 
   paroContainer.innerHTML = maqsSorted.map(maq => {
-    const razones = Object.entries(maqParoMap[maq]).sort((a,b) => b[1].minutos - a[1].minutos);
-    const maqTotal = razones.reduce((s,[,v]) => s + v.minutos, 0);
-    const rows = razones.map(([razon, v]) => {
-      const pct    = maqTotal > 0 ? (v.minutos / maqTotal * 100).toFixed(1) : '0.0';
-      const pctBar = Math.min(100, parseFloat(pct));
+    const razones    = Object.entries(maqParoMap[maq]).sort((a,b) => b[1].minutos - a[1].minutos);
+    const maqTotal   = razones.reduce((s,[,v]) => s + v.minutos, 0);
+    const dispMin    = maqDisponibleMin[maq] || 480;  // fallback 8h
+    const pctTurno   = (maqTotal / dispMin * 100);
+
+    const detRows = razones.map(([razon, v]) => {
+      // % sobre el tiempo de turno disponible de esa máquina
+      const pctT   = (v.minutos / dispMin * 100).toFixed(1);
+      const pctBar = Math.min(100, parseFloat(pctT));
       const obsStr = [...v.obs].join('; ') || '—';
       return `<tr>
         <td style="padding:8px 10px">${razon}</td>
         <td style="text-align:right;padding:8px 10px">${Math.round(v.minutos).toLocaleString()}</td>
         <td style="text-align:right;padding:8px 10px">${(v.minutos/60).toFixed(2)}</td>
-        <td style="padding:8px 10px;min-width:140px">
+        <td style="padding:8px 10px;min-width:160px">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;background:#374151;border-radius:99px;height:8px;overflow:hidden">
               <div style="width:${pctBar}%;height:100%;background:#EF4444;border-radius:99px"></div>
             </div>
-            <span style="font-size:.75rem;color:#EF4444;font-weight:600;white-space:nowrap">${pct}%</span>
+            <span style="font-size:.75rem;color:#EF4444;font-weight:600;white-space:nowrap">${pctT}%</span>
           </div>
         </td>
         <td style="font-size:.78rem;color:#9CA3AF;padding:8px 10px">${obsStr}</td>
@@ -2145,7 +2172,7 @@ function renderReporteDiario() {
           <i class="fa-solid fa-industry" style="color:#EF4444;margin-right:6px"></i>Máquina ${maq}
         </div>
         <div style="font-size:.8rem;background:#374151;border-radius:6px;padding:4px 12px;color:#EF4444;font-weight:600">
-          Total paro: ${Math.round(maqTotal).toLocaleString()} min &nbsp;|&nbsp; ${(maqTotal/60).toFixed(2)} h
+          Paro: ${(maqTotal/60).toFixed(2)} h &nbsp;/&nbsp; Turno: ${(dispMin/60).toFixed(0)} h &nbsp;|&nbsp; ${pctTurno.toFixed(1)}% del turno
         </div>
       </div>
       <table class="tbl" style="width:100%">
@@ -2153,17 +2180,10 @@ function renderReporteDiario() {
           <th>Razón de Paro</th>
           <th style="text-align:right">Minutos</th>
           <th style="text-align:right">Horas</th>
-          <th>% de la Máquina</th>
+          <th>% del Turno Trabajado</th>
           <th>Observación</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr style="background:#1F2937;font-weight:700">
-          <td style="padding:7px 10px">SUBTOTAL</td>
-          <td style="text-align:right;color:#EF4444;padding:7px 10px">${Math.round(maqTotal).toLocaleString()}</td>
-          <td style="text-align:right;color:#EF4444;padding:7px 10px">${(maqTotal/60).toFixed(2)}</td>
-          <td style="color:#6B7280;padding:7px 10px">${totalMinParo>0?(maqTotal/totalMinParo*100).toFixed(1):0}% del total planta</td>
-          <td></td>
-        </tr></tfoot>
+        <tbody>${detRows}</tbody>
       </table>
     </div>`;
   }).join('');
