@@ -963,12 +963,12 @@ function filterProd() {
   );
 }
 function filterCostos() {
-  const m   = getVal('costos-f-mes').toLowerCase();
-  const maq = getVal('costos-f-maq');   // raw r._maq value e.g. "1" or "Máq 1"
-  const dias = SEL_DIAS_COSTOS;
+  const m   = (getVal('costos-f-mes') || getVal('g-mes')).toLowerCase();
+  const maq = getVal('costos-f-maq');
+  const dias = SEL_DIAS_COSTOS.size ? SEL_DIAS_COSTOS : SEL_DIAS;
   return DATA.prod.filter(r =>
     (!m    || r._mes === m) &&
-    (!dias.size || dias.has(String(r['DIA']||''))) &&
+    (!dias.size || dias.has(String(r['DIA']||'').trim())) &&
     (!maq  || String(r._maq) === maq)
   );
 }
