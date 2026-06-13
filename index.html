@@ -1684,22 +1684,21 @@ function renderCostos() {
   const d = filterCostos();
   buildTarifasForm();
 
-  // ── DEBUG temporal: mostrar valores de columnas clave
+  // ── DEBUG temporal: distribución de getCav y dias
   const _dbg = document.getElementById('costos-debug');
   if (_dbg && d.length > 0) {
-    const _r = d[0];
-    const _cicloRealVal = _r['T. CICLO REAL'];
-    const _cicloEstVal  = _r['T. CICLO EST'];
-    const _cicloAbVal   = _r['CICLO REAL'];
-    const _cavVal       = _r['CAVIDADES'];
-    const _cavTeorVal   = _r['CAV.TEORICAS'];
-    const _getCiclo     = _getCicloReal(_r);
-    const _getCavFinal  = _findColVal(_r,'CAVIDAD','TEOR') || CAV_MAP[_r._prod] || 1;
-    _dbg.innerHTML = `<b>DEBUG fila[0] (${_r._prod||'?'} Máq${_r._maq}):</b><br>
-      T. CICLO REAL="${_cicloRealVal}" | T. CICLO EST="${_cicloEstVal}" | CICLO REAL(AB)="${_cicloAbVal}"<br>
-      _getCicloReal()=${_getCiclo} | CAVIDADES="${_cavVal}" | CAV.TEORICAS="${_cavTeorVal}"<br>
-      getCav usado=${_getCavFinal} | _cant=${_r._cant} | _paro=${_r._paro}<br>
-      rowFabHoras=${rowFabHoras(_r).toFixed(4)}h`;
+    const _cavDist = {}, _diaDist = {};
+    d.forEach(_r => {
+      const _c = _findColVal(_r,'CAVIDAD','TEOR') || CAV_MAP[_r._prod] || 1;
+      _cavDist[_c] = (_cavDist[_c]||0) + 1;
+      const _dia = _r._diaTurno || 'null';
+      _diaDist[_dia] = (_diaDist[_dia]||0) + 1;
+    });
+    const _r0 = d[0];
+    _dbg.innerHTML = `<b>DEBUG: ${d.length} filas filtradas</b><br>
+      getCav dist: ${JSON.stringify(_cavDist)}<br>
+      dias dist: ${JSON.stringify(_diaDist)}<br>
+      fila[0]: cicloReal=${_getCicloReal(_r0)} cav=${_findColVal(_r0,'CAVIDAD','TEOR')||CAV_MAP[_r0._prod]||1} cant=${_r0._cant} dia=${_r0._diaTurno}`;
   } else if (_dbg) { _dbg.innerHTML = 'Sin datos filtrados'; }
 
   // ── Tabla 1: Costo fabricación por producto
