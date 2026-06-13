@@ -158,6 +158,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="nav-item" onclick="showSection('costos')" data-section="costos" data-color="#84CC16">
       <span class="nav-icon"><i class="fa-solid fa-dollar-sign"></i></span> Costos
     </div>
+    <div class="nav-item" onclick="showSection('forecast')" data-section="forecast" data-color="#38BDF8">
+      <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Forecast
+    </div>
   </div>
   <!-- Tagline -->
   <div style="padding:12px 16px;border-top:1px solid #374151;font-size:.68rem;color:#4B5563;font-style:italic;line-height:1.5">
@@ -579,6 +582,22 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ======================================= FORECAST == -->
+    <div class="section" id="sec-forecast" style="padding:24px">
+
+      <!-- Descripción de modelos -->
+      <div class="section-title" style="margin-bottom:16px"><i class="fa-solid fa-circle-info" style="color:#38BDF8;margin-right:8px"></i>Descripción de Modelos e Indicadores</div>
+      <div id="fc-modelos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:30px"></div>
+
+      <!-- Forecast unidades recomendadas -->
+      <div class="section-title" style="margin-bottom:16px"><i class="fa-solid fa-chart-line" style="color:#38BDF8;margin-right:8px"></i>Unidades Recomendadas por Mes y Referencia</div>
+      <p style="font-size:.72rem;color:#6B7280;margin-bottom:14px">Basado en el máximo histórico producido por referencia por mes — representa la capacidad real demostrada de la planta.</p>
+      <div class="chart-card" style="overflow-x:auto;margin-bottom:24px">
+        <table class="tbl" id="fc-units-tbl"></table>
+      </div>
+
     </div>
 
   </div><!-- /content -->
@@ -2380,13 +2399,13 @@ const TITLES = {
   'reporte-diario':'Reporte Diario de Producción',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
-  accid:'Status Personal', costos:'Costos de Producción'
+  accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
   'plan-mensual':renderPlanMensual,
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
-  paros:renderParos, accid:renderAccid, costos:renderCostos
+  paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast
 };
 // Secciones protegidas con clave
 const PROTECTED = { costos: 'fvlco2026' };
@@ -2764,6 +2783,138 @@ function exportPDF() {
 
   btn.disabled = false;
   btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Descargar PDF';
+}
+
+// =======================================================
+// FORECAST
+// =======================================================
+function renderForecast() {
+  // ── Modelos: descripción + error conocido ──────────────────────────────
+  const MODELOS = [
+    {
+      icon: 'fa-gauge-high', color: '#6366F1', nombre: 'Resumen General',
+      desc: 'Vista consolidada del desempeño global de la planta: OEE, cumplimiento de plan, tiempos de paro y calidad. Agrega todos los datos del período seleccionado.',
+      error: 'Al ser un agregado de múltiples métricas, un área con buen desempeño puede enmascarar problemas puntuales en máquinas o referencias específicas.'
+    },
+    {
+      icon: 'fa-circle-nodes', color: '#10B981', nombre: 'OEE',
+      desc: 'Overall Equipment Effectiveness — mide la eficiencia real de las máquinas combinando Disponibilidad × Rendimiento × Calidad. Fuente: columnas pre-calculadas del Google Sheet.',
+      error: 'El OEE depende de la calidad del registro de paros y ciclos. Si los operarios no reportan paros correctamente, la Disponibilidad queda inflada.'
+    },
+    {
+      icon: 'fa-calendar-day', color: '#3B82F6', nombre: 'Reporte Diario',
+      desc: 'OEE ponderado en dos versiones: Por Tiempo (compara H.Real vs H.Teórico) y Por Unidades (compara unidades reales vs teóricas según cavidades del molde).',
+      error: 'OEE por Unidades requiere que el campo CAV.TEORICAS esté correctamente diligenciado en el sheet. Slots sin T.CICLO EST usan producción real como teórica (Rend=100% para esos registros).'
+    },
+    {
+      icon: 'fa-calendar-check', color: '#F59E0B', nombre: 'Plan vs Real Mensual',
+      desc: 'Compara las unidades planeadas contra las producidas mes a mes por referencia. Permite identificar referencias con incumplimiento recurrente.',
+      error: 'Si el plan no está actualizado en el sheet, la comparación pierde validez. Las unidades programadas dependen de la correcta parametrización de ciclos y cavidades.'
+    },
+    {
+      icon: 'fa-boxes-stacked', color: '#8B5CF6', nombre: 'Plan vs Real Referencias',
+      desc: 'Detalle por referencia del cumplimiento acumulado versus el plan. Permite ver qué referencias son las más críticas en términos de volumen faltante.',
+      error: 'No distingue si el incumplimiento es por capacidad de máquina, falta de material o cambio de programa. Requiere cruzar con Tiempos de Paro para el diagnóstico.'
+    },
+    {
+      icon: 'fa-triangle-exclamation', color: '#EF4444', nombre: 'No Conformes',
+      desc: 'Registra las unidades rechazadas por referencia y causa. La calidad (NC) se calcula por ORDEN/REFERENCIA, no por máquina, para mayor precisión.',
+      error: 'Si el operario no registra el NC en el sistema o lo asigna a la orden incorrecta, el indicador de Calidad queda sobreestimado (aparece mejor de lo real).'
+    },
+    {
+      icon: 'fa-truck-fast', color: '#06B6D4', nombre: 'OTIF',
+      desc: 'On Time In Full — mide el porcentaje de pedidos entregados completos y a tiempo. Indica el nivel de servicio al cliente.',
+      error: 'Depende de la exactitud del registro de fechas de entrega comprometidas y reales. Errores de digitación en fechas distorsionan el indicador.'
+    },
+    {
+      icon: 'fa-clock', color: '#F97316', nombre: 'Tiempos de Paro',
+      desc: 'Clasifica y cuantifica las horas de paro por máquina y causa. Permite identificar las principales pérdidas de disponibilidad.',
+      error: 'La calidad del análisis depende del nivel de detalle con que se registren las causas de paro. Causas genéricas como "mantenimiento" dificultan el análisis Pareto.'
+    },
+    {
+      icon: 'fa-helmet-safety', color: '#EC4899', nombre: 'Status Personal',
+      desc: 'Seguimiento de indicadores de seguridad y talento humano: accidentalidad, incapacidades y fuerza laboral disponible.',
+      error: 'Indicador rezagado — los datos se conocen después de que ocurre el evento. No permite acciones preventivas en tiempo real.'
+    },
+    {
+      icon: 'fa-dollar-sign', color: '#84CC16', nombre: 'Costos',
+      desc: 'Calcula el costo de fabricación por producto y máquina usando tarifas de utilización por hora. Incluye análisis de unidades perdidas por diferencia de ciclo.',
+      error: 'Las tarifas de máquina deben mantenerse actualizadas manualmente. Si el ciclo real no se registra, el cálculo de unidades perdidas usa el ciclo estándar como referencia.'
+    }
+  ];
+
+  document.getElementById('fc-modelos').innerHTML = MODELOS.map(m => `
+    <div class="chart-card" style="border-left:4px solid ${m.color};padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="width:34px;height:34px;border-radius:9px;background:${m.color}22;display:flex;align-items:center;justify-content:center;color:${m.color};font-size:.95rem;flex-shrink:0">
+          <i class="fa-solid ${m.icon}"></i>
+        </div>
+        <div style="font-weight:700;font-size:.88rem;color:#F3F4F6">${m.nombre}</div>
+      </div>
+      <p style="font-size:.75rem;color:#9CA3AF;margin:0 0 10px;line-height:1.55">${m.desc}</p>
+      <div style="background:#1F2937;border-radius:7px;padding:8px 12px;display:flex;gap:8px;align-items:flex-start">
+        <i class="fa-solid fa-circle-exclamation" style="color:#F59E0B;margin-top:2px;font-size:.75rem;flex-shrink:0"></i>
+        <span style="font-size:.72rem;color:#D97706;line-height:1.5"><strong>Error conocido:</strong> ${m.error}</span>
+      </div>
+    </div>`).join('');
+
+  // ── Unidades recomendadas por mes ────────────────────────────────────
+  // Máximo histórico producido por referencia por mes
+  const pNum = v => { const n = parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+  const mesMap = {}; // prod → { mes → cant }
+  const mesesSet = new Set();
+
+  DATA.prod.forEach(r => {
+    const prod = r._prod; if (!prod) return;
+    const mes  = r._mes;  if (!mes)  return;
+    const cant = pNum(r._cant); if (cant <= 0) return;
+    if (!mesMap[prod]) mesMap[prod] = {};
+    mesMap[prod][mes] = (mesMap[prod][mes] || 0) + cant;
+    mesesSet.add(mes);
+  });
+
+  const meses = [...mesesSet].sort((a,b) => {
+    const ia = MESES_ES.indexOf(a.toLowerCase()), ib = MESES_ES.indexOf(b.toLowerCase());
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  const prods = Object.keys(mesMap).sort((a,b) => a.localeCompare(b));
+
+  if (!prods.length) {
+    document.getElementById('fc-units-tbl').innerHTML = '<tr><td style="padding:20px;color:#6B7280;text-align:center">Sin datos de producción</td></tr>';
+    return;
+  }
+
+  // Calcular recomendación = 95% del máximo histórico por mes y producto
+  // (máximo histórico como techo realista, 95% como meta alcanzable)
+  const maxByProd = {}; // prod → max mensual global
+  prods.forEach(p => {
+    const vals = Object.values(mesMap[p]);
+    maxByProd[p] = vals.length ? Math.max(...vals) : 0;
+  });
+
+  const thead = `<thead><tr>
+    <th>Referencia</th>
+    ${meses.map(m => `<th style="text-align:right">${MESES_CAP[MESES_ES.indexOf(m.toLowerCase())] || m}</th>`).join('')}
+    <th style="text-align:right;color:#38BDF8">Rec. Mensual</th>
+    <th style="text-align:right;color:#38BDF8">Rec. Anual</th>
+  </tr></thead>`;
+
+  const tbody = prods.map(p => {
+    const rec = Math.round(maxByProd[p] * 0.95);
+    const recAnual = rec * 12;
+    const cells = meses.map(m => {
+      const v = mesMap[p][m] || 0;
+      return `<td style="text-align:right;color:${v>0?'#D1D5DB':'#4B5563'}">${v>0?v.toLocaleString():'-'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="font-weight:600">${p}</td>
+      ${cells}
+      <td style="text-align:right;font-weight:700;color:#38BDF8">${rec.toLocaleString()}</td>
+      <td style="text-align:right;font-weight:700;color:#38BDF8">${recAnual.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('fc-units-tbl').innerHTML = thead + `<tbody>${tbody}</tbody>`;
 }
 
 // =======================================================
