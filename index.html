@@ -2010,10 +2010,11 @@ function renderReporteDiario() {
     const maq   = String(r._maq || '?');
     const dia   = String(r._diaTurno || '');
     const turno = String(r._turno || '');
-    if (!oeeByMaq[maq]) oeeByMaq[maq] = { dtMap:{}, hParo:0, cant:0,
-      rendTNumer:0,   // Σ(cant × cicloReal / cavReal) → tiempo ocupado corriendo
-      rendUNumer:0,   // Σ(cant × cicloEst  / cavTeor) → tiempo equivalente estándar
-      _est:0, _cavTeor:1 };
+    if (!oeeByMaq[maq]) oeeByMaq[maq] = {
+      dtMap:{}, hParo:0, cant:0,
+      segReal:0,    // Σ (cant/cavReal)×cicloReal  → seg reales corriendo
+      _est:0, _cavTeor:1, _nc:0
+    };
     const m = oeeByMaq[maq];
     if (dia && TURNO_INTERVALS[turno]) {
       if (!m.dtMap[dia]) m.dtMap[dia] = new Set();
@@ -2024,17 +2025,16 @@ function renderReporteDiario() {
     const real     = pNum(r['T. CICLO REAL']) || pNum(r['T.CICLO REAL']);
     const cavTeorR = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
     const cavRealR = Math.max(_findColVal(r,'CAVIDAD','TEOR') || cavTeorR, 1);
-    m.hParo += (r._paro || 0) / 60;
-    m.cant  += cant;
-    // Rend_t: tiempo real corriendo = ciclos × cicloReal = (cant/cavReal) × cicloReal
-    if (real > 0 && cavRealR > 0) m.rendTNumer += (cant / cavRealR) * real;
-    // Rend_u: tiempo estándar equivalente = ciclos × cicloEst = (cant/cavTeor) × cicloEst
-    if (est  > 0 && cavTeorR > 0) m.rendUNumer += (cant / cavTeorR) * est;
-    if (!m._est     && est  > 0) m._est     = est;
+    m.hParo  += (r._paro || 0) / 60;
+    m.cant   += cant;
+    // Tiempo real corriendo = (ciclos) × cicloReal = (cant/cavReal) × cicloReal
+    if (real > 0) m.segReal += (cant / cavRealR) * real;
+    // Primer cicloEst y cavTeor válidos para calcular Und.Teóricas
+    if (!m._est    && est      > 0) m._est     = est;
     if (m._cavTeor === 1 && cavTeorR > 1) m._cavTeor = cavTeorR;
   });
 
-  // NC filtrado por mes+dia
+  // NC del sheet de no conformes, filtrado por mismo período
   const ncMesLow = fMes.toLowerCase();
   DATA.nc.forEach(r => {
     const maq = String(r['MÁQUINA'] ?? r['MAQUINA'] ?? '');
@@ -2043,41 +2043,55 @@ function renderReporteDiario() {
     if (fMes && mes !== ncMesLow) return;
     if (fDia && String(r._diaTurno) !== fDia) return;
     const nc = pNum(r['CANTIDAD NC']);
-    if (nc > 0) oeeByMaq[maq]._nc = (oeeByMaq[maq]._nc||0) + nc;
+    if (nc > 0) oeeByMaq[maq]._nc += nc;
   });
 
-  let totHT=0, totHF=0, totCantO=0, totNC_O=0, totRendTN=0, totRendUN=0;
+  // Agregar por máquina y calcular Und.Teóricas
+  let totHT=0, totHF=0, totCantO=0, totNC_O=0, totSegReal=0, totUndTeo=0;
   Object.values(oeeByMaq).forEach(m => {
     const hT = Object.values(m.dtMap).reduce((s,ts)=>s+calcShiftHours(ts),0);
     const hF = Math.max(0, hT - m.hParo);
     m.hTurno = hT; m.hFab = hF;
-    totHT      += hT;  totHF    += hF;
+    // Und.Teóricas = (H.TURNO × 3600 / cicloEst) × cavTeor  → capacidad total del turno
+    const undTeo = m._est > 0 ? (hT * 3600 / m._est) * m._cavTeor : 0;
+    totHT      += hT;   totHF      += hF;
     totCantO   += m.cant;
-    totNC_O    += m._nc||0;
-    totRendTN  += m.rendTNumer;   // segundos reales corriendo
-    totRendUN  += m.rendUNumer;   // segundos estándar equivalentes
+    totNC_O    += m._nc;
+    totSegReal += m.segReal;
+    totUndTeo  += undTeo;
   });
-  const undBuenas = Math.max(0, totCantO - totNC_O);
+  const totHTseg  = totHT * 3600;
   const totHFseg  = totHF * 3600;
+  const undBuenas = Math.max(0, totCantO - totNC_O);
 
-  // ── OEE por Tiempo ─────────────────────────────────────────────────
-  // Rend_t = segundos_reales_corriendo / H.FAB  → qué % del FAB estuvo la máquina corriendo
-  // Con cicloReal > cicloEst → rendTNumer > rendUNumer → Rend_t > Rend_u → OEE_t > OEE_u
-  const disp_t = totHT>0 ? totHF/totHT : 0;
-  const rend_t = totHFseg>0 ? Math.min(totRendTN/totHFseg, 1) : 0;
-  const cal_t  = totCantO>0 ? undBuenas/totCantO : 0;
+  // ── OEE por Tiempo = Tiempo Real / Tiempo Teórico ──────────────────
+  // Tiempo real corriendo: Σ(cant/cavReal × cicloReal)
+  // Tiempo teórico: H.TURNO × 3600
+  // Componentes:
+  //   Disp_t = H.FAB / H.TURNO
+  //   Rend_t = segReal / (H.FAB × 3600)  [fracción de FAB realmente ocupada]
+  //   Cal_t  = Und.Buenas / Und.Producidas
+  //   OEE_t  = segReal_buenas / (H.TURNO × 3600)  ≈ Disp × Rend × Cal
+  const disp_t = totHT > 0 ? totHF / totHT : 0;
+  const rend_t = totHFseg > 0 ? Math.min(totSegReal / totHFseg, 1) : 0;
+  const cal_t  = totCantO > 0 ? undBuenas / totCantO : 0;
   const oee_t  = disp_t * rend_t * cal_t;
 
-  // ── OEE por Unidades ──────────────────────────────────────────────
-  // Rend_u = segundos_estándar_equivalentes / H.FAB → qué % del FAB se usó eficientemente
-  // Con cicloReal > cicloEst → rendUNumer < rendTNumer → Rend_u < Rend_t → OEE_u < OEE_t
-  const disp_u = totHT>0 ? totHF/totHT : 0;
-  const rend_u = totHFseg>0 ? Math.min(totRendUN/totHFseg, 1) : 0;
-  const cal_u  = totCantO>0 ? undBuenas/totCantO : 0;
-  const oee_u  = disp_u * rend_u * cal_u;
+  // ── OEE por Unidades = Und.Buenas / Und.Teóricas ───────────────────
+  // Und.Teóricas = Σ_maq (H.TURNO × 3600 / cicloEst × cavTeor)
+  // Componentes:
+  //   Disp_u = H.FAB / H.TURNO  (mismo)
+  //   Rend_u = Und.Prod / Und.Teo_en_FAB  = cant / [(H.FAB/H.TURNO)×Und.Teo]
+  //   Cal_u  = Und.Buenas / Und.Prod  (mismo)
+  //   OEE_u  = Und.Buenas / Und.Teóricas
+  const disp_u  = totHT > 0 ? totHF / totHT : 0;
+  const undTeoFAB = totUndTeo > 0 ? totUndTeo * (totHF / totHT) : 0; // Und teóricas en H.FAB
+  const rend_u  = undTeoFAB > 0 ? Math.min(totCantO / undTeoFAB, 1) : 0;
+  const cal_u   = totCantO > 0 ? undBuenas / totCantO : 0;
+  const oee_u   = totUndTeo > 0 ? undBuenas / totUndTeo : 0;
 
-  const infoT = `H.Turno ${totHT.toFixed(1)}h · H.Fab ${totHF.toFixed(1)}h · H.Paro ${(totHT-totHF).toFixed(1)}h`;
-  const infoU = `Prod ${totCantO.toLocaleString()} · NC ${totNC_O.toLocaleString()} · Buenas ${undBuenas.toLocaleString()}`;
+  const infoT = `H.Turno: ${totHT.toFixed(1)}h · H.Fab: ${totHF.toFixed(1)}h · H.Paro: ${(totHT-totHF).toFixed(1)}h`;
+  const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${totNC_O.toLocaleString()} · Buenas: ${undBuenas.toLocaleString()} · Teóricas: ${Math.round(totUndTeo).toLocaleString()}`;
   const elT = document.getElementById('rd-oee-tiempo');
   const elU = document.getElementById('rd-oee-unid');
   if (elT) elT.innerHTML = _oeeCard('OEE por Tiempo',    oee_t, disp_t, rend_t, cal_t, infoT);
