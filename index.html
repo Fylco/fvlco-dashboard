@@ -161,6 +161,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="nav-item" onclick="showSection('forecast')" data-section="forecast" data-color="#38BDF8">
       <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Forecast
     </div>
+    <div class="nav-item" onclick="showSection('descripcion')" data-section="descripcion" data-color="#A78BFA">
+      <span class="nav-icon"><i class="fa-solid fa-book-open"></i></span> Descripción de Indicadores
+    </div>
   </div>
   <!-- Tagline -->
   <div style="padding:12px 16px;border-top:1px solid #374151;font-size:.68rem;color:#4B5563;font-style:italic;line-height:1.5">
@@ -203,26 +206,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="section active" id="sec-resumen">
       <div class="section-title">Indicadores Clave <span style="color:#8B5CF6;font-size:.7rem">2026</span></div>
       <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px"></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:18px;margin-bottom:24px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:18px">
         <div class="chart-card"><div class="section-title">OEE por Máquina</div><div style="height:220px"><canvas id="r-oee-maq"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Plan vs Real Mensual</div><div style="height:220px"><canvas id="r-plan-mes"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Top No Conformes (Causa)</div><div style="height:220px"><canvas id="r-nc-causa"></canvas></div></div>
         <div class="chart-card"><div class="section-title">OTIF por Mes</div><div style="height:220px"><canvas id="r-otif-mes"></canvas></div></div>
-      </div>
-
-      <!-- Descripciones de módulos -->
-      <div style="margin-bottom:10px;font-size:.82rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px">
-        <i class="fa-solid fa-circle-info" style="color:#38BDF8"></i> Descripción de Módulos e Indicadores
-      </div>
-      <div id="r-modelos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:28px"></div>
-
-      <!-- Unidades recomendadas por mes -->
-      <div style="margin-bottom:10px;font-size:.82rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <i class="fa-solid fa-chart-line" style="color:#38BDF8"></i> Unidades Recomendadas por Mes y Referencia
-        <span style="font-size:.68rem;color:#6B7280;font-weight:400">(95% del máximo histórico producido por referencia)</span>
-      </div>
-      <div class="chart-card" style="overflow-x:auto">
-        <table class="tbl" id="r-fc-tbl"></table>
       </div>
     </div>
 
@@ -602,17 +590,45 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================= FORECAST == -->
     <div class="section" id="sec-forecast" style="padding:24px">
 
-      <!-- Descripción de modelos -->
-      <div class="section-title" style="margin-bottom:16px"><i class="fa-solid fa-circle-info" style="color:#38BDF8;margin-right:8px"></i>Descripción de Modelos e Indicadores</div>
-      <div id="fc-modelos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:30px"></div>
+      <!-- KPIs de pronóstico -->
+      <div id="fc-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px"></div>
 
-      <!-- Forecast unidades recomendadas -->
-      <div class="section-title" style="margin-bottom:16px"><i class="fa-solid fa-chart-line" style="color:#38BDF8;margin-right:8px"></i>Unidades Recomendadas por Mes y Referencia</div>
-      <p style="font-size:.72rem;color:#6B7280;margin-bottom:14px">Basado en el máximo histórico producido por referencia por mes — representa la capacidad real demostrada de la planta.</p>
+      <!-- Gráfico de tendencia por referencia -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px">
+        <div class="chart-card">
+          <div class="section-title">Tendencia de Producción por Mes</div>
+          <div style="height:240px"><canvas id="fc-trend-chart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title">Proyección Próximos 3 Meses (Promedio Móvil)</div>
+          <div style="height:240px"><canvas id="fc-proj-chart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Tabla unidades recomendadas -->
+      <div style="margin-bottom:10px;font-size:.82rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <i class="fa-solid fa-table" style="color:#38BDF8"></i> Unidades Recomendadas por Mes y Referencia
+        <span style="font-size:.68rem;color:#6B7280;font-weight:400">(95% del máximo histórico producido)</span>
+      </div>
       <div class="chart-card" style="overflow-x:auto;margin-bottom:24px">
         <table class="tbl" id="fc-units-tbl"></table>
       </div>
 
+      <!-- Modelos de pronóstico -->
+      <div style="margin-bottom:10px;font-size:.82rem;font-weight:700;color:#F3F4F6;display:flex;align-items:center;gap:8px">
+        <i class="fa-solid fa-brain" style="color:#38BDF8"></i> Modelos de Pronóstico Aplicados
+      </div>
+      <div id="fc-model-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px"></div>
+
+    </div>
+
+    <!-- ======================================= DESCRIPCION == -->
+    <div class="section" id="sec-descripcion" style="padding:24px">
+      <div class="section-title" style="margin-bottom:16px">
+        <i class="fa-solid fa-book-open" style="color:#A78BFA;margin-right:8px"></i>Descripción de Indicadores
+      </div>
+      <p style="font-size:.75rem;color:#6B7280;margin-bottom:20px">Guía de referencia de cada módulo del dashboard: qué mide, cómo se calcula y cuáles son sus limitaciones conocidas.</p>
+      <div id="desc-modelos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px"></div>
     </div>
 
   </div><!-- /content -->
@@ -1247,94 +1263,6 @@ function renderResumen() {
   makeChart('r-otif-mes','line', otifMes.map(x=>cap(x.mes)),
     [{label:'OTIF %', data:otifMes.map(x=>x.otif), borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.4, fill:true, pointRadius:3}]);
 
-  // ── Descripciones de módulos ────────────────────────────────────────
-  const MODELOS_R = [
-    { icon:'fa-gauge-high',         color:'#6366F1', nombre:'Resumen General',
-      desc:'Vista consolidada: OEE, cumplimiento, paros y calidad de toda la planta.',
-      error:'Un área con buen desempeño puede enmascarar problemas puntuales en máquinas específicas.' },
-    { icon:'fa-circle-nodes',       color:'#10B981', nombre:'OEE',
-      desc:'Disponibilidad × Rendimiento × Calidad. Fuente: columnas pre-calculadas del sheet.',
-      error:'Si los operarios no reportan paros, la Disponibilidad queda inflada.' },
-    { icon:'fa-calendar-day',       color:'#3B82F6', nombre:'Reporte Diario',
-      desc:'OEE por Tiempo (H.Real vs H.Teórico) y por Unidades (reales vs teóricas según cavidades).',
-      error:'Slots sin T.CICLO EST asumen Rend=100%. Requiere CAV.TEORICAS bien diligenciado.' },
-    { icon:'fa-calendar-check',     color:'#F59E0B', nombre:'Plan vs Real Mensual',
-      desc:'Compara unidades planeadas vs producidas mes a mes por referencia.',
-      error:'Si el plan no está actualizado, la comparación pierde validez.' },
-    { icon:'fa-boxes-stacked',      color:'#8B5CF6', nombre:'Plan vs Real Referencias',
-      desc:'Detalle por referencia del cumplimiento acumulado versus el plan.',
-      error:'No distingue causa del incumplimiento (capacidad, material, programa).' },
-    { icon:'fa-triangle-exclamation', color:'#EF4444', nombre:'No Conformes',
-      desc:'Unidades rechazadas por referencia y causa. NC calculado por ORDEN, no por máquina.',
-      error:'NC no registrado o asignado a orden incorrecta infla el indicador de Calidad.' },
-    { icon:'fa-truck-fast',         color:'#06B6D4', nombre:'OTIF',
-      desc:'On Time In Full — pedidos entregados completos y a tiempo.',
-      error:'Errores de digitación en fechas de entrega distorsionan el indicador.' },
-    { icon:'fa-clock',              color:'#F97316', nombre:'Tiempos de Paro',
-      desc:'Horas de paro por máquina y causa — pérdidas de disponibilidad.',
-      error:'Causas genéricas ("mantenimiento") dificultan el análisis Pareto.' },
-    { icon:'fa-helmet-safety',      color:'#EC4899', nombre:'Status Personal',
-      desc:'Accidentalidad, incapacidades y fuerza laboral disponible.',
-      error:'Indicador rezagado — los datos se conocen después de que ocurre el evento.' },
-    { icon:'fa-dollar-sign',        color:'#84CC16', nombre:'Costos',
-      desc:'Costo de fabricación por producto y máquina con análisis de ciclo real vs estándar.',
-      error:'Las tarifas deben mantenerse actualizadas. Sin ciclo real se usa el estándar.' }
-  ];
-  const modelosEl = document.getElementById('r-modelos');
-  if (modelosEl) modelosEl.innerHTML = MODELOS_R.map(m=>`
-    <div class="chart-card" style="border-left:3px solid ${m.color};padding:12px 14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="width:28px;height:28px;border-radius:7px;background:${m.color}22;display:flex;align-items:center;justify-content:center;color:${m.color};font-size:.8rem;flex-shrink:0">
-          <i class="fa-solid ${m.icon}"></i></div>
-        <div style="font-weight:700;font-size:.82rem;color:#F3F4F6">${m.nombre}</div>
-      </div>
-      <p style="font-size:.72rem;color:#9CA3AF;margin:0 0 8px;line-height:1.5">${m.desc}</p>
-      <div style="background:#1F2937;border-radius:6px;padding:6px 10px;display:flex;gap:6px;align-items:flex-start">
-        <i class="fa-solid fa-circle-exclamation" style="color:#F59E0B;font-size:.7rem;margin-top:2px;flex-shrink:0"></i>
-        <span style="font-size:.68rem;color:#D97706;line-height:1.45"><strong>Error conocido:</strong> ${m.error}</span>
-      </div>
-    </div>`).join('');
-
-  // ── Tabla unidades recomendadas por mes ──────────────────────────────
-  const pNumR = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
-  const mesMapR = {}, mesesSetR = new Set();
-  DATA.prod.forEach(r => {
-    const prod=r._prod; if(!prod) return;
-    const mes=r._mes;   if(!mes)  return;
-    const cant=pNumR(r._cant); if(cant<=0) return;
-    if(!mesMapR[prod]) mesMapR[prod]={};
-    mesMapR[prod][mes]=(mesMapR[prod][mes]||0)+cant;
-    mesesSetR.add(mes);
-  });
-  const mesesR = [...mesesSetR].sort((a,b)=>{
-    const ia=MESES_ES.indexOf(a.toLowerCase()), ib=MESES_ES.indexOf(b.toLowerCase());
-    return (ia<0?99:ia)-(ib<0?99:ib);
-  });
-  const prodsR = Object.keys(mesMapR).sort((a,b)=>a.localeCompare(b));
-  const fcTbl  = document.getElementById('r-fc-tbl');
-  if (!fcTbl) return;
-  if (!prodsR.length) { fcTbl.innerHTML='<tr><td style="padding:20px;color:#6B7280;text-align:center">Sin datos</td></tr>'; return; }
-
-  const maxByProdR = {};
-  prodsR.forEach(p=>{ const vals=Object.values(mesMapR[p]); maxByProdR[p]=vals.length?Math.max(...vals):0; });
-
-  const thead2 = `<thead><tr>
-    <th>Referencia</th>
-    ${mesesR.map(m=>`<th style="text-align:right">${MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m}</th>`).join('')}
-    <th style="text-align:right;color:#38BDF8">Rec./Mes</th>
-    <th style="text-align:right;color:#38BDF8">Rec./Año</th>
-  </tr></thead>`;
-  const tbody2 = prodsR.map(p=>{
-    const rec=Math.round(maxByProdR[p]*0.95);
-    const cells=mesesR.map(m=>{
-      const v=mesMapR[p][m]||0;
-      return `<td style="text-align:right;color:${v>0?'#D1D5DB':'#4B5563'}">${v>0?v.toLocaleString():'-'}</td>`;
-    }).join('');
-    return `<tr><td style="font-weight:600">${p}</td>${cells}
-      <td style="text-align:right;font-weight:700;color:#38BDF8">${rec.toLocaleString()}</td>
-      <td style="text-align:right;font-weight:700;color:#38BDF8">${(rec*12).toLocaleString()}</td></tr>`;
-  }).join('');
-  fcTbl.innerHTML = thead2+`<tbody>${tbody2}</tbody>`;
 }
 
 // ── OEE
@@ -2503,13 +2431,13 @@ const TITLES = {
   'reporte-diario':'Reporte Diario de Producción',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
-  accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast'
+  accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', descripcion:'Descripción de Indicadores'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
   'plan-mensual':renderPlanMensual,
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
-  paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast
+  paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, descripcion:renderDescripcion
 };
 // Secciones protegidas con clave
 const PROTECTED = { costos: 'fvlco2026' };
@@ -2892,133 +2820,189 @@ function exportPDF() {
 // =======================================================
 // FORECAST
 // =======================================================
-function renderForecast() {
-  // ── Modelos: descripción + error conocido ──────────────────────────────
-  const MODELOS = [
-    {
-      icon: 'fa-gauge-high', color: '#6366F1', nombre: 'Resumen General',
-      desc: 'Vista consolidada del desempeño global de la planta: OEE, cumplimiento de plan, tiempos de paro y calidad. Agrega todos los datos del período seleccionado.',
-      error: 'Al ser un agregado de múltiples métricas, un área con buen desempeño puede enmascarar problemas puntuales en máquinas o referencias específicas.'
-    },
-    {
-      icon: 'fa-circle-nodes', color: '#10B981', nombre: 'OEE',
-      desc: 'Overall Equipment Effectiveness — mide la eficiencia real de las máquinas combinando Disponibilidad × Rendimiento × Calidad. Fuente: columnas pre-calculadas del Google Sheet.',
-      error: 'El OEE depende de la calidad del registro de paros y ciclos. Si los operarios no reportan paros correctamente, la Disponibilidad queda inflada.'
-    },
-    {
-      icon: 'fa-calendar-day', color: '#3B82F6', nombre: 'Reporte Diario',
-      desc: 'OEE ponderado en dos versiones: Por Tiempo (compara H.Real vs H.Teórico) y Por Unidades (compara unidades reales vs teóricas según cavidades del molde).',
-      error: 'OEE por Unidades requiere que el campo CAV.TEORICAS esté correctamente diligenciado en el sheet. Slots sin T.CICLO EST usan producción real como teórica (Rend=100% para esos registros).'
-    },
-    {
-      icon: 'fa-calendar-check', color: '#F59E0B', nombre: 'Plan vs Real Mensual',
-      desc: 'Compara las unidades planeadas contra las producidas mes a mes por referencia. Permite identificar referencias con incumplimiento recurrente.',
-      error: 'Si el plan no está actualizado en el sheet, la comparación pierde validez. Las unidades programadas dependen de la correcta parametrización de ciclos y cavidades.'
-    },
-    {
-      icon: 'fa-boxes-stacked', color: '#8B5CF6', nombre: 'Plan vs Real Referencias',
-      desc: 'Detalle por referencia del cumplimiento acumulado versus el plan. Permite ver qué referencias son las más críticas en términos de volumen faltante.',
-      error: 'No distingue si el incumplimiento es por capacidad de máquina, falta de material o cambio de programa. Requiere cruzar con Tiempos de Paro para el diagnóstico.'
-    },
-    {
-      icon: 'fa-triangle-exclamation', color: '#EF4444', nombre: 'No Conformes',
-      desc: 'Registra las unidades rechazadas por referencia y causa. La calidad (NC) se calcula por ORDEN/REFERENCIA, no por máquina, para mayor precisión.',
-      error: 'Si el operario no registra el NC en el sistema o lo asigna a la orden incorrecta, el indicador de Calidad queda sobreestimado (aparece mejor de lo real).'
-    },
-    {
-      icon: 'fa-truck-fast', color: '#06B6D4', nombre: 'OTIF',
-      desc: 'On Time In Full — mide el porcentaje de pedidos entregados completos y a tiempo. Indica el nivel de servicio al cliente.',
-      error: 'Depende de la exactitud del registro de fechas de entrega comprometidas y reales. Errores de digitación en fechas distorsionan el indicador.'
-    },
-    {
-      icon: 'fa-clock', color: '#F97316', nombre: 'Tiempos de Paro',
-      desc: 'Clasifica y cuantifica las horas de paro por máquina y causa. Permite identificar las principales pérdidas de disponibilidad.',
-      error: 'La calidad del análisis depende del nivel de detalle con que se registren las causas de paro. Causas genéricas como "mantenimiento" dificultan el análisis Pareto.'
-    },
-    {
-      icon: 'fa-helmet-safety', color: '#EC4899', nombre: 'Status Personal',
-      desc: 'Seguimiento de indicadores de seguridad y talento humano: accidentalidad, incapacidades y fuerza laboral disponible.',
-      error: 'Indicador rezagado — los datos se conocen después de que ocurre el evento. No permite acciones preventivas en tiempo real.'
-    },
-    {
-      icon: 'fa-dollar-sign', color: '#84CC16', nombre: 'Costos',
-      desc: 'Calcula el costo de fabricación por producto y máquina usando tarifas de utilización por hora. Incluye análisis de unidades perdidas por diferencia de ciclo.',
-      error: 'Las tarifas de máquina deben mantenerse actualizadas manualmente. Si el ciclo real no se registra, el cálculo de unidades perdidas usa el ciclo estándar como referencia.'
-    }
-  ];
-
-  document.getElementById('fc-modelos').innerHTML = MODELOS.map(m => `
-    <div class="chart-card" style="border-left:4px solid ${m.color};padding:16px 18px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div style="width:34px;height:34px;border-radius:9px;background:${m.color}22;display:flex;align-items:center;justify-content:center;color:${m.color};font-size:.95rem;flex-shrink:0">
-          <i class="fa-solid ${m.icon}"></i>
-        </div>
-        <div style="font-weight:700;font-size:.88rem;color:#F3F4F6">${m.nombre}</div>
-      </div>
-      <p style="font-size:.75rem;color:#9CA3AF;margin:0 0 10px;line-height:1.55">${m.desc}</p>
-      <div style="background:#1F2937;border-radius:7px;padding:8px 12px;display:flex;gap:8px;align-items:flex-start">
-        <i class="fa-solid fa-circle-exclamation" style="color:#F59E0B;margin-top:2px;font-size:.75rem;flex-shrink:0"></i>
-        <span style="font-size:.72rem;color:#D97706;line-height:1.5"><strong>Error conocido:</strong> ${m.error}</span>
-      </div>
-    </div>`).join('');
-
-  // ── Unidades recomendadas por mes ────────────────────────────────────
-  // Máximo histórico producido por referencia por mes
-  const pNum = v => { const n = parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
-  const mesMap = {}; // prod → { mes → cant }
-  const mesesSet = new Set();
-
-  DATA.prod.forEach(r => {
-    const prod = r._prod; if (!prod) return;
-    const mes  = r._mes;  if (!mes)  return;
-    const cant = pNum(r._cant); if (cant <= 0) return;
-    if (!mesMap[prod]) mesMap[prod] = {};
-    mesMap[prod][mes] = (mesMap[prod][mes] || 0) + cant;
+function _fcBuildMesMap() {
+  const pN = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+  const mesMap={}, mesesSet=new Set();
+  DATA.prod.forEach(r=>{
+    const prod=r._prod; if(!prod) return;
+    const mes=r._mes;   if(!mes)  return;
+    const cant=pN(r._cant); if(cant<=0) return;
+    if(!mesMap[prod]) mesMap[prod]={};
+    mesMap[prod][mes]=(mesMap[prod][mes]||0)+cant;
     mesesSet.add(mes);
   });
-
-  const meses = [...mesesSet].sort((a,b) => {
-    const ia = MESES_ES.indexOf(a.toLowerCase()), ib = MESES_ES.indexOf(b.toLowerCase());
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  const meses=[...mesesSet].sort((a,b)=>{
+    const ia=MESES_ES.indexOf(a.toLowerCase()),ib=MESES_ES.indexOf(b.toLowerCase());
+    return (ia<0?99:ia)-(ib<0?99:ib);
   });
-  const prods = Object.keys(mesMap).sort((a,b) => a.localeCompare(b));
+  return { mesMap, meses, prods: Object.keys(mesMap).sort((a,b)=>a.localeCompare(b)) };
+}
 
-  if (!prods.length) {
-    document.getElementById('fc-units-tbl').innerHTML = '<tr><td style="padding:20px;color:#6B7280;text-align:center">Sin datos de producción</td></tr>';
-    return;
-  }
+function renderForecast() {
+  const { mesMap, meses, prods } = _fcBuildMesMap();
+  if (!prods.length) return;
 
-  // Calcular recomendación = 95% del máximo histórico por mes y producto
-  // (máximo histórico como techo realista, 95% como meta alcanzable)
-  const maxByProd = {}; // prod → max mensual global
-  prods.forEach(p => {
-    const vals = Object.values(mesMap[p]);
-    maxByProd[p] = vals.length ? Math.max(...vals) : 0;
+  // ── KPIs globales ────────────────────────────────────────────────────
+  const totalPorMes = meses.map(m => prods.reduce((s,p)=>s+(mesMap[p][m]||0),0));
+  const promMensual = totalPorMes.reduce((s,v)=>s+v,0) / (totalPorMes.filter(v=>v>0).length||1);
+  const maxMes      = Math.max(...totalPorMes);
+  const minMes      = Math.min(...totalPorMes.filter(v=>v>0));
+  // Promedio móvil 3 meses para proyección
+  const ultTres     = totalPorMes.slice(-3).filter(v=>v>0);
+  const proyMes     = ultTres.length ? Math.round(ultTres.reduce((s,v)=>s+v,0)/ultTres.length) : 0;
+
+  document.getElementById('fc-kpis').innerHTML =
+    kpiCard('Promedio Mensual',  fmt(Math.round(promMensual)), '#38BDF8','Total unidades/mes','fa-solid fa-chart-bar')+
+    kpiCard('Máximo Histórico',  fmt(maxMes), '#10B981', meses[totalPorMes.indexOf(maxMes)] ? cap(meses[totalPorMes.indexOf(maxMes)]) : '','fa-solid fa-arrow-trend-up')+
+    kpiCard('Mínimo Histórico',  fmt(minMes), '#F59E0B','','fa-solid fa-arrow-trend-down')+
+    kpiCard('Proyección Próx. Mes', fmt(proyMes), '#A78BFA','Promedio móvil 3 meses','fa-solid fa-brain');
+
+  // ── Gráfico tendencia por referencia ─────────────────────────────────
+  const topProds = prods.slice(0, 6);
+  makeChart('fc-trend-chart','line', meses.map(m=>MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m),
+    topProds.map((p,i)=>({
+      label: p, tension:.35, pointRadius:3, fill:false,
+      borderColor: PAL[i%PAL.length],
+      data: meses.map(m=>mesMap[p][m]||null)
+    })));
+
+  // ── Gráfico proyección próximos 3 meses (promedio móvil) ─────────────
+  const PROX_MESES = ['Julio','Agosto','Septiembre'];
+  const projData = topProds.map((p,i) => {
+    const vals = meses.map(m=>mesMap[p][m]||0).filter(v=>v>0);
+    const last3 = vals.slice(-3);
+    const proy  = last3.length ? Math.round(last3.reduce((s,v)=>s+v,0)/last3.length) : 0;
+    return { label:p, proy, color: PAL[i%PAL.length] };
   });
+  makeChart('fc-proj-chart','bar', PROX_MESES,
+    projData.map(d=>({
+      label:d.label, borderRadius:5,
+      backgroundColor: d.color+'99', borderColor: d.color, borderWidth:2,
+      data:[d.proy, Math.round(d.proy*1.02), Math.round(d.proy*1.04)]
+    })));
 
-  const thead = `<thead><tr>
+  // ── Tabla unidades recomendadas ───────────────────────────────────────
+  const maxByProd={};
+  prods.forEach(p=>{ const v=Object.values(mesMap[p]); maxByProd[p]=v.length?Math.max(...v):0; });
+
+  const thead=`<thead><tr>
     <th>Referencia</th>
-    ${meses.map(m => `<th style="text-align:right">${MESES_CAP[MESES_ES.indexOf(m.toLowerCase())] || m}</th>`).join('')}
-    <th style="text-align:right;color:#38BDF8">Rec. Mensual</th>
-    <th style="text-align:right;color:#38BDF8">Rec. Anual</th>
+    ${meses.map(m=>`<th style="text-align:right">${MESES_CAP[MESES_ES.indexOf(m.toLowerCase())]||m}</th>`).join('')}
+    <th style="text-align:right;color:#38BDF8">Rec./Mes</th>
+    <th style="text-align:right;color:#38BDF8">Rec./Año</th>
   </tr></thead>`;
-
-  const tbody = prods.map(p => {
-    const rec = Math.round(maxByProd[p] * 0.95);
-    const recAnual = rec * 12;
-    const cells = meses.map(m => {
-      const v = mesMap[p][m] || 0;
+  const tbody=prods.map(p=>{
+    const rec=Math.round(maxByProd[p]*0.95);
+    const cells=meses.map(m=>{
+      const v=mesMap[p][m]||0;
       return `<td style="text-align:right;color:${v>0?'#D1D5DB':'#4B5563'}">${v>0?v.toLocaleString():'-'}</td>`;
     }).join('');
-    return `<tr>
-      <td style="font-weight:600">${p}</td>
-      ${cells}
+    return `<tr><td style="font-weight:600">${p}</td>${cells}
       <td style="text-align:right;font-weight:700;color:#38BDF8">${rec.toLocaleString()}</td>
-      <td style="text-align:right;font-weight:700;color:#38BDF8">${recAnual.toLocaleString()}</td>
-    </tr>`;
+      <td style="text-align:right;font-weight:700;color:#38BDF8">${(rec*12).toLocaleString()}</td></tr>`;
   }).join('');
+  document.getElementById('fc-units-tbl').innerHTML = thead+`<tbody>${tbody}</tbody>`;
 
-  document.getElementById('fc-units-tbl').innerHTML = thead + `<tbody>${tbody}</tbody>`;
+  // ── Tarjetas modelos de pronóstico ────────────────────────────────────
+  const FC_MODELOS = [
+    { icon:'fa-chart-line', color:'#38BDF8', nombre:'Promedio Móvil 3 Meses',
+      formula:'PM₃ = (M-1 + M-2 + M-3) / 3',
+      desc:'Suaviza variaciones estacionales. Recomendado cuando la producción es estable sin tendencia marcada.',
+      uso:'Proyección del mes siguiente a partir del comportamiento reciente.' },
+    { icon:'fa-arrow-trend-up', color:'#10B981', nombre:'Máximo Histórico Ajustado',
+      formula:'Rec. = MAX(meses) × 95%',
+      desc:'Usa la mejor marca mensual alcanzada como techo de capacidad real. El 95% da margen operativo.',
+      uso:'Definición de metas de producción por referencia.' },
+    { icon:'fa-calculator', color:'#8B5CF6', nombre:'Promedio Simple Mensual',
+      formula:'PM = Σ(producción mensual) / n_meses',
+      desc:'Baseline de producción esperada. Útil para presupuestar y comparar contra el plan comercial.',
+      uso:'Planeación de materiales y programación de producción.' },
+    { icon:'fa-layer-group', color:'#F59E0B', nombre:'Tendencia Lineal',
+      formula:'ŷ = a + b×t (mínimos cuadrados)',
+      desc:'Detecta si la producción está creciendo o decreciendo en el tiempo. Ideal para identificar referencias en declive.',
+      uso:'Alertas tempranas de referencias con tendencia negativa.' }
+  ];
+  document.getElementById('fc-model-cards').innerHTML = FC_MODELOS.map(m=>`
+    <div class="chart-card" style="border-left:3px solid ${m.color};padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
+        <div style="width:32px;height:32px;border-radius:8px;background:${m.color}22;display:flex;align-items:center;justify-content:center;color:${m.color};font-size:.85rem;flex-shrink:0">
+          <i class="fa-solid ${m.icon}"></i></div>
+        <div style="font-weight:700;font-size:.84rem;color:#F3F4F6">${m.nombre}</div>
+      </div>
+      <div style="font-family:monospace;font-size:.75rem;color:${m.color};background:${m.color}11;border-radius:6px;padding:5px 10px;margin-bottom:10px">${m.formula}</div>
+      <p style="font-size:.72rem;color:#9CA3AF;margin:0 0 8px;line-height:1.5">${m.desc}</p>
+      <div style="font-size:.7rem;color:#6B7280"><i class="fa-solid fa-circle-check" style="color:#10B981;margin-right:4px"></i><strong style="color:#D1D5DB">Uso:</strong> ${m.uso}</div>
+    </div>`).join('');
+}
+
+// =======================================================
+// DESCRIPCION DE INDICADORES
+// =======================================================
+function renderDescripcion() {
+  const MODELOS_D = [
+    { icon:'fa-gauge-high',           color:'#6366F1', nombre:'Resumen General',
+      desc:'Vista consolidada del desempeño global: OEE, cumplimiento de plan, paros y calidad. Agrega todos los datos del período seleccionado.',
+      calculo:'Promedio de OEE por máquina · Σ unidades producidas vs planeadas · Σ minutos de paro.',
+      error:'Un área con buen desempeño puede enmascarar problemas puntuales en máquinas específicas.' },
+    { icon:'fa-circle-nodes',         color:'#10B981', nombre:'OEE',
+      desc:'Overall Equipment Effectiveness — eficiencia real de las máquinas.',
+      calculo:'OEE = Disponibilidad × Rendimiento × Calidad. Fuente: columnas pre-calculadas del Google Sheet (OEE FINAL, % RENDIMIENTO, % DISPONIBILIDAD).',
+      error:'Si los operarios no reportan paros, la Disponibilidad queda inflada y el OEE no refleja la realidad.' },
+    { icon:'fa-calendar-day',         color:'#3B82F6', nombre:'Reporte Diario',
+      desc:'OEE ponderado en dos versiones para análisis detallado por turno y máquina.',
+      calculo:'Por Tiempo: avg(OEE FINAL) del sheet. Por Unidades: Und.Buenas / Und.Teóricas (cavidades × ciclo estándar × 8h).',
+      error:'Slots sin T.CICLO EST asumen Rend=100%. Requiere CAV.TEORICAS correctamente diligenciado.' },
+    { icon:'fa-calendar-check',       color:'#F59E0B', nombre:'Plan vs Real Mensual',
+      desc:'Compara unidades planeadas vs producidas mes a mes por referencia.',
+      calculo:'Cumplimiento% = Σ(producidas) / Σ(planeadas) × 100. Plan tomado del sheet PLAN REFERENCIAS.',
+      error:'Si el plan no está actualizado en el sheet, la comparación pierde validez.' },
+    { icon:'fa-boxes-stacked',        color:'#8B5CF6', nombre:'Plan vs Real Referencias',
+      desc:'Detalle del cumplimiento acumulado vs plan por referencia individual.',
+      calculo:'Igual que Plan vs Real Mensual pero sin agrupación por mes — vista global por referencia.',
+      error:'No distingue causa del incumplimiento. Requiere cruzar con Tiempos de Paro.' },
+    { icon:'fa-triangle-exclamation', color:'#EF4444', nombre:'No Conformes',
+      desc:'Unidades rechazadas clasificadas por referencia y causa de defecto.',
+      calculo:'NC indexado por ORDEN (no por máquina). Calidad = (Und.Prod - NC) / Und.Prod × 100.',
+      error:'NC no registrado o asignado a orden incorrecta infla el indicador de Calidad.' },
+    { icon:'fa-truck-fast',           color:'#06B6D4', nombre:'OTIF',
+      desc:'On Time In Full — pedidos entregados completos y en fecha comprometida.',
+      calculo:'OTIF% = Pedidos(cantidad ok AND fecha ok) / Total pedidos × 100.',
+      error:'Errores de digitación en fechas de entrega distorsionan el indicador.' },
+    { icon:'fa-clock',                color:'#F97316', nombre:'Tiempos de Paro',
+      desc:'Horas de paro por máquina y causa — pérdidas de disponibilidad clasificadas.',
+      calculo:'Suma de minutos de paro agrupados por máquina y razón. Análisis Pareto de causas.',
+      error:'Causas genéricas ("mantenimiento") dificultan la identificación de la causa raíz.' },
+    { icon:'fa-helmet-safety',        color:'#EC4899', nombre:'Status Personal',
+      desc:'Accidentalidad, incapacidades, vacaciones y fuerza laboral disponible.',
+      calculo:'Días sin accidente = días desde último evento. Indicadores de absentismo vs fuerza total.',
+      error:'Indicador rezagado — los datos se conocen después de que ocurre el evento.' },
+    { icon:'fa-dollar-sign',          color:'#84CC16', nombre:'Costos',
+      desc:'Costo de fabricación por producto y máquina con análisis de eficiencia de ciclo.',
+      calculo:'Costo = H.Fab × Tarifa/hora. Und.Perdidas = (Und.Teóricas - Und.Reales) × Costo_unit.',
+      error:'Las tarifas deben mantenerse actualizadas. Sin ciclo real se usa el ciclo estándar.' },
+    { icon:'fa-chart-line',           color:'#38BDF8', nombre:'Forecast',
+      desc:'Modelos de pronóstico de producción: promedio móvil, máximo ajustado y tendencia lineal.',
+      calculo:'Basado en el histórico de DATA.prod. Rec. Mensual = MAX histórico × 95%. Proyección = PM3.',
+      error:'Sin suficientes meses históricos (< 3), las proyecciones tienen alta incertidumbre.' }
+  ];
+
+  document.getElementById('desc-modelos').innerHTML = MODELOS_D.map(m=>`
+    <div class="chart-card" style="border-left:4px solid ${m.color};padding:18px 20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:36px;height:36px;border-radius:10px;background:${m.color}22;display:flex;align-items:center;justify-content:center;color:${m.color};font-size:1rem;flex-shrink:0">
+          <i class="fa-solid ${m.icon}"></i></div>
+        <div style="font-weight:700;font-size:.9rem;color:#F3F4F6">${m.nombre}</div>
+      </div>
+      <p style="font-size:.75rem;color:#9CA3AF;margin:0 0 10px;line-height:1.55">${m.desc}</p>
+      <div style="background:#1F2937;border-radius:7px;padding:8px 12px;margin-bottom:8px">
+        <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Cálculo</div>
+        <div style="font-size:.72rem;color:#D1D5DB;line-height:1.45">${m.calculo}</div>
+      </div>
+      <div style="background:#1F2937;border-radius:7px;padding:8px 12px;display:flex;gap:7px;align-items:flex-start">
+        <i class="fa-solid fa-circle-exclamation" style="color:#F59E0B;font-size:.72rem;margin-top:2px;flex-shrink:0"></i>
+        <span style="font-size:.7rem;color:#D97706;line-height:1.45"><strong>Limitación:</strong> ${m.error}</span>
+      </div>
+    </div>`).join('');
 }
 
 // =======================================================
