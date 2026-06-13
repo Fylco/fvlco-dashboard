@@ -1638,7 +1638,7 @@ function getCav(r) {
 }
 // Horas reales de fabricación: cant × cicloReal(seg) / cavidades / 3600
 function rowFabHoras(r) {
-  const real = pNum(r['T. CICLO REAL']||r['CICLO REAL']) || pNum(r['T. CICLO EST']) || 0;
+  const real = pNum(r['T.CICLO REAL']||r['T. CICLO REAL']||r['CICLO REAL']) || pNum(r['T. CICLO EST']) || 0;
   const cav  = _findColVal(r,'CAVIDAD','TEOR') || _findColVal(r,'CAVIDAD','') || 1;
   const cant = r._cant || 0;
   return (real > 0 && cant > 0) ? (cant * real / cav) / 3600 : 0;
@@ -1739,14 +1739,14 @@ function renderCostos() {
 
   // ── Análisis ciclo: unidades teóricas vs reales
   const cicloRows = d.filter(r=>{
-    const est = pNum(r['T. CICLO EST']); const real = pNum(r['T. CICLO REAL']||r['CICLO REAL']);
+    const est = pNum(r['T. CICLO EST']); const real = pNum(r['T.CICLO REAL']||r['T. CICLO REAL']||r['CICLO REAL']);
     return est>0 && real>0;
   });
   let totalUnidTeor=0, totalUnidReal=0, totalUnidPerd=0, totalCostoPerd=0;
   const cicloMaq = {};
   cicloRows.forEach(r=>{
     const est  = pNum(r['T. CICLO EST']);
-    const real = pNum(r['T. CICLO REAL']||r['CICLO REAL']);
+    const real = pNum(r['T.CICLO REAL']||r['T. CICLO REAL']||r['CICLO REAL']);
     // Unidades teóricas: cuántas se habrían hecho en el mismo tiempo si el ciclo fuera estándar
     // tiempo_real = cant × cicloReal → unid_teoricas = tiempo_real / cicloEst = cant × (real/est)
     const cav      = Math.max(pNum(r['CAVIDADES'])||pNum(r['No. CAVIDADES'])||pNum(r['CAVI'])||1, 1);
@@ -2152,7 +2152,7 @@ function exportPDF() {
     const maqCostos={};
     dC.forEach(r=>{
       const m=r._maq||'?'; const tarifa=TARIFAS_MAQ[m]||25000;
-      const est=pNum(r['T. CICLO EST'])||0; const real2=pNum(r['T. CICLO REAL']||r['CICLO REAL'])||0;
+      const est=pNum(r['T. CICLO EST'])||0; const real2=pNum(r['T.CICLO REAL']||r['T. CICLO REAL']||r['CICLO REAL'])||0;
       const minFab=est>0?(r._cant||0)*est/60:0;
       const costoFab=(minFab/60)*tarifa; const costoParo=(r._paro||0)/60*tarifa;
       totFab+=costoFab; totParo2+=costoParo;
