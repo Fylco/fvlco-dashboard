@@ -1579,63 +1579,74 @@ function buildTarifasForm() {
     </div>`).join('');
 }
 
+// Horas reales de fabricación: cant × cicloReal(seg) / cavidades / 3600
+function rowFabHoras(r) {
+  const real = pNum(r['T. CICLO REAL']||r['CICLO REAL']) || pNum(r['T. CICLO EST']) || 0;
+  const cav  = Math.max(pNum(r['CAVIDADES'])||pNum(r['No. CAVIDADES'])||pNum(r['CAVI'])||1, 1);
+  const cant = r._cant||0;
+  return (real>0 && cant>0) ? (cant * real / cav) / 3600 : 0;
+}
+// Horas paro: TIEMPO_PARO_MIN → horas
+function rowParoHoras(r) { return (r._paro||0) / 60; }
+
 function renderCostos() {
   const d = filterCostos();
   buildTarifasForm();
 
   // ── Tabla 1: Costo fabricación por producto
-  // Horas estándar = CANT × T_CICLO_EST / 3600 (evita TIEMPO CAJA MIN corrompido)
   const prodMap = {};
   d.forEach(r=>{
     const k = r._prod||'Sin dato';
-    const est = pNum(r['T. CICLO EST'])||0;
-    const minEst = est>0 ? (r._cant||0)*est/60 : 0;
-    if (!prodMap[k]) prodMap[k]={unidades:0,minutos:0,paroMin:0,ordenes:new Set()};
+    const hFab  = rowFabHoras(r);
+    const hParo = rowParoHoras(r);
+    if (!prodMap[k]) prodMap[k]={unidades:0,hFab:0,hParo:0,ordenes:new Set()};
     prodMap[k].unidades += r._cant||0;
-    prodMap[k].minutos  += minEst;
-    prodMap[k].paroMin  += r._paro||0;
+    prodMap[k].hFab     += hFab;
+    prodMap[k].hParo    += hParo;
     if(r._orden) prodMap[k].ordenes.add(r._orden);
   });
   const prodRows = Object.entries(prodMap)
     .map(([prod,v])=>{
-      const maq = d.filter(r=>r._prod===prod).map(r=>r._maq);
-      const tarifa = maq.length ? maq.reduce((a,m)=>(a+(TARIFAS_MAQ[m]||25000)),0)/maq.length : 25000;
-      const costoFab = (v.minutos/60)*tarifa;
-      const costoParo = (v.paroMin/60)*tarifa;
-      return {prod,unidades:v.unidades,minutos:v.minutos,paroMin:v.paroMin,costoFab,costoParo,ordenes:v.ordenes.size,tarifa};
+      const maqArr = d.filter(r=>r._prod===prod).map(r=>r._maq);
+      const tarifa = maqArr.length ? maqArr.reduce((a,m)=>(a+(TARIFAS_MAQ[m]||25000)),0)/maqArr.length : 25000;
+      const costoFab  = v.hFab  * tarifa;
+      const costoParo = v.hParo * tarifa;
+      return {prod, unidades:v.unidades, hFab:v.hFab, hParo:v.hParo, costoFab, costoParo, ordenes:v.ordenes.size};
     })
     .sort((a,b)=>b.costoFab-a.costoFab).slice(0,20);
 
   document.getElementById('costos-prod-tbl').innerHTML=`
     <thead><tr>
       <th>Producto / Referencia</th><th>Órdenes</th><th style="text-align:right">Unidades</th>
-      <th style="text-align:right">Tiempo Fab (h)</th><th style="text-align:right">Costo Fabricación</th>
-      <th style="text-align:right">Costo Paros</th><th style="text-align:right">% Paro/Fab</th>
+      <th style="text-align:right">H. Fab.</th><th style="text-align:right">H. Paro</th>
+      <th style="text-align:right">H. Turno</th>
+      <th style="text-align:right">Costo Fabricación</th>
+      <th style="text-align:right">Costo Paros</th><th style="text-align:right">% Paro/Turno</th>
     </tr></thead>
     <tbody>${prodRows.map(r=>`<tr>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.prod}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.prod}</td>
       <td>${r.ordenes}</td>
       <td style="text-align:right">${fmt(r.unidades)}</td>
-      <td style="text-align:right">${(r.minutos/60).toFixed(1)}</td>
+      <td style="text-align:right">${r.hFab.toFixed(2)}</td>
+      <td style="text-align:right;color:#EF4444">${r.hParo.toFixed(2)}</td>
+      <td style="text-align:right;color:#9CA3AF">${(r.hFab+r.hParo).toFixed(2)}</td>
       <td style="text-align:right;color:#10B981;font-weight:600">${fmtCOP(r.costoFab)}</td>
       <td style="text-align:right;color:#EF4444">${fmtCOP(r.costoParo)}</td>
-      <td style="text-align:right">${r.minutos>0?badge(100-r.paroMin/r.minutos*100,95,85):badge(null)}</td>
+      <td style="text-align:right">${(r.hFab+r.hParo)>0?badge(r.hParo/(r.hFab+r.hParo)*100,5,15,true):badge(null)}</td>
     </tr>`).join('')}</tbody>`;
 
   // ── Tabla 2: Costo por máquina
   const maqList = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
   const maqRows = maqList.map(m=>{
-    const rows = d.filter(r=>r._maq==m);
-    const minFab = rows.reduce((s,r)=>{
-      const est=pNum(r['T. CICLO EST'])||0; return s+(est>0?(r._cant||0)*est/60:0);
-    },0);
-    const minParo = sum(rows,'_paro');
+    const rows   = d.filter(r=>r._maq==m);
+    const hFab   = rows.reduce((s,r)=>s+rowFabHoras(r), 0);
+    const hParo  = rows.reduce((s,r)=>s+rowParoHoras(r), 0);
     const tarifa = TARIFAS_MAQ[m]||25000;
-    const costoTotal = (minFab/60)*tarifa;
-    const costoParo  = (minParo/60)*tarifa;
+    const costoTotal = hFab  * tarifa;
+    const costoParo  = hParo * tarifa;
     const unidades   = sum(rows,'_cant');
-    const costUnit   = unidades>0?costoTotal/unidades:0;
-    return {m,minFab,minParo,tarifa,costoTotal,costoParo,unidades,costUnit};
+    const costUnit   = unidades>0 ? costoTotal/unidades : 0;
+    return {m, hFab, hParo, tarifa, costoTotal, costoParo, unidades, costUnit};
   });
 
   const totalCosto = maqRows.reduce((s,r)=>s+r.costoTotal,0);
@@ -1644,7 +1655,8 @@ function renderCostos() {
   document.getElementById('costos-maq-tbl').innerHTML=`
     <thead><tr>
       <th>Máquina</th><th style="text-align:right">Tarifa/h</th>
-      <th style="text-align:right">Horas Fab.</th><th style="text-align:right">Horas Paro</th>
+      <th style="text-align:right">H. Fab.</th><th style="text-align:right">H. Paro</th>
+      <th style="text-align:right">H. Turno</th>
       <th style="text-align:right">Costo Total</th><th style="text-align:right">Costo Paros</th>
       <th style="text-align:right">Unidades</th><th style="text-align:right">Costo/Unidad</th>
     </tr></thead>
@@ -1652,15 +1664,16 @@ function renderCostos() {
       ${maqRows.map(r=>`<tr>
         <td style="font-weight:600">Máq ${r.m}</td>
         <td style="text-align:right;color:#9CA3AF">${fmtCOP(r.tarifa)}</td>
-        <td style="text-align:right">${(r.minFab/60).toFixed(1)} h</td>
-        <td style="text-align:right;color:#EF4444">${(r.minParo/60).toFixed(1)} h</td>
+        <td style="text-align:right">${r.hFab.toFixed(2)} h</td>
+        <td style="text-align:right;color:#EF4444">${r.hParo.toFixed(2)} h</td>
+        <td style="text-align:right;color:#9CA3AF">${(r.hFab+r.hParo).toFixed(2)} h</td>
         <td style="text-align:right;color:#10B981;font-weight:700">${fmtCOP(r.costoTotal)}</td>
         <td style="text-align:right;color:#EF4444;font-weight:600">${fmtCOP(r.costoParo)}</td>
         <td style="text-align:right">${fmt(r.unidades)}</td>
         <td style="text-align:right;color:#F59E0B">${fmtCOP(r.costUnit)}</td>
       </tr>`).join('')}
       <tr style="border-top:2px solid #374151;font-weight:700">
-        <td>TOTAL</td><td></td><td></td><td></td>
+        <td>TOTAL</td><td></td><td></td><td></td><td></td>
         <td style="text-align:right;color:#10B981">${fmtCOP(totalCosto)}</td>
         <td style="text-align:right;color:#EF4444">${fmtCOP(totalParo)}</td>
         <td></td><td></td>
@@ -1679,11 +1692,12 @@ function renderCostos() {
     const real = pNum(r['T. CICLO REAL']||r['CICLO REAL']);
     // Unidades teóricas: cuántas se habrían hecho en el mismo tiempo si el ciclo fuera estándar
     // tiempo_real = cant × cicloReal → unid_teoricas = tiempo_real / cicloEst = cant × (real/est)
+    const cav      = Math.max(pNum(r['CAVIDADES'])||pNum(r['No. CAVIDADES'])||pNum(r['CAVI'])||1, 1);
     const unidReal = r._cant||0;
     const unidTeor = est>0&&real>0 ? Math.round(unidReal*(real/est)) : unidReal;
     const perdidas = Math.max(0, unidTeor - unidReal);
     const tarifa   = TARIFAS_MAQ[r._maq]||25000;
-    const costUnit = est>0 ? tarifa/3600*est : 0;
+    const costUnit = est>0 ? (tarifa/3600)*(est/cav) : 0;
     const costoPerd= perdidas * costUnit;
     totalUnidTeor += unidTeor; totalUnidReal += unidReal;
     totalUnidPerd += perdidas; totalCostoPerd += costoPerd;
@@ -1720,10 +1734,12 @@ function renderCostos() {
     </tr>`).join('')}</tbody>`;
 
   // KPIs resumen
+  const totalHFab  = maqRows.reduce((s,r)=>s+r.hFab, 0);
+  const totalHTurno= maqRows.reduce((s,r)=>s+r.hFab+r.hParo, 0);
   document.getElementById('costos-kpis').innerHTML=
     kpiCard('Costo Total Fabricación',fmtCOP(totalCosto),'#10B981',`${maqList.length} máquinas`,'fa-solid fa-factory')+
     kpiCard('Costo Total Paros',fmtCOP(totalParo),'#EF4444',`${pct(totalCosto>0?totalParo/totalCosto*100:null)} del total`,'fa-solid fa-circle-pause')+
-    kpiCard('Lucro Cesante Ciclo',fmtCOP(totalCostoPerd),'#F59E0B','Ciclo real vs estándar','fa-solid fa-money-bill-trend-up')+
+    kpiCard('Horas Turno Real',totalHTurno.toFixed(1)+' h','#06B6D4',`Fab: ${totalHFab.toFixed(1)} h + Paros: ${(totalHTurno-totalHFab).toFixed(1)} h`,'fa-solid fa-clock')+
     kpiCard('Costo por Unidad Prom.',fmtCOP(totalUnidReal>0?totalCosto/totalUnidReal:null),'#8B5CF6','Promedio todas máquinas','fa-solid fa-tag');
 }
 
