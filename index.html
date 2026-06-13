@@ -392,7 +392,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <!-- KPIs superiores -->
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px" id="accid-kpis"></div>
         <!-- Tarjetas de días -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;margin-bottom:24px">
 
           <!-- DÍAS SIN INCIDENTES -->
           <div id="accid-card-incidentes" style="background:linear-gradient(135deg,#1F2937 0%,#111827 100%);
@@ -432,6 +432,27 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
               <div style="font-size:.75rem;color:#9CA3AF" id="accid-lbl-accidentes">días consecutivos</div>
               <div style="margin-top:16px;height:4px;background:#374151;border-radius:2px">
                 <div id="accid-bar-accidentes" style="height:4px;background:#10B981;border-radius:2px;width:0%;transition:width .8s ease"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- VACACIONES -->
+          <div id="accid-card-vacaciones" style="background:linear-gradient(135deg,#1F2937 0%,#111827 100%);
+            border:1px solid #374151;border-radius:20px;overflow:hidden;position:relative;min-height:220px">
+            <div style="position:absolute;inset:0;opacity:.06;background:url('https://cdn-icons-png.flaticon.com/512/201/201623.png') center/60% no-repeat"></div>
+            <div style="position:relative;z-index:1;padding:28px 28px 24px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+                <div style="width:42px;height:42px;border-radius:12px;background:#8B5CF622;
+                  display:flex;align-items:center;justify-content:center;font-size:1.4rem">🏖️</div>
+                <div>
+                  <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.08em">Indicador</div>
+                  <div style="font-size:.85rem;font-weight:700;color:#EEEEEE">Vacaciones</div>
+                </div>
+              </div>
+              <div style="font-size:4.5rem;font-weight:800;color:#8B5CF6;line-height:1;margin-bottom:8px" id="accid-vacaciones">—</div>
+              <div style="font-size:.75rem;color:#9CA3AF" id="accid-lbl-vacaciones">personas en vacaciones</div>
+              <div style="margin-top:16px;height:4px;background:#374151;border-radius:2px">
+                <div id="accid-bar-vacaciones" style="height:4px;background:#8B5CF6;border-radius:2px;width:0%;transition:width .8s ease"></div>
               </div>
             </div>
           </div>
@@ -1386,7 +1407,7 @@ function getAccDias() {
 }
 function renderAccid() {
   let totalPersonal=null, incap=null, fuerzaLaboral=null;
-  let diasIncidentes=null, diasAccidentes=null;
+  let diasIncidentes=null, diasAccidentes=null, vacaciones=null;
 
   DATA.accid.forEach(row=>{
     const vals=Object.values(row).map(v=>String(v||''));
@@ -1399,6 +1420,8 @@ function renderAccid() {
         { const n=pNum(vals[i+1]); if(n!=null) diasIncidentes=n; }
       if(up==='DIAS SIN ACCIDENTES'||up==='DÍAS SIN ACCIDENTES'||up==='DIAS SIN ACCIDENTES ')
         { const n=pNum(vals[i+1]); if(n!=null) diasAccidentes=n; }
+      if(up==='VACACIONES')
+        { const n=pNum(vals[i+1]); if(n!=null) vacaciones=n; }
     });
   });
 
@@ -1428,12 +1451,23 @@ function renderAccid() {
     ? '<span style="color:#EF4444">⚠ Accidente registrado — revisar</span>'
     : `<span style="color:#10B981">✓ días consecutivos sin accidentes</span>`;
 
+  // Tarjeta VACACIONES
+  const elVac = document.getElementById('accid-vacaciones');
+  const lblVac = document.getElementById('accid-lbl-vacaciones');
+  if(elVac) elVac.textContent = vacaciones ?? '—';
+  if(lblVac) lblVac.textContent = vacaciones===1 ? 'persona en vacaciones' : 'personas en vacaciones';
+
   // Barra de progreso (meta 365 días)
   setTimeout(()=>{
     const barDI = document.getElementById('accid-bar-incidentes');
     const barDA = document.getElementById('accid-bar-accidentes');
+    const barVac = document.getElementById('accid-bar-vacaciones');
     if(barDI) barDI.style.width = Math.min(di/maxDias*100,100)+'%';
     if(barDA) barDA.style.width = Math.min(da/maxDias*100,100)+'%';
+    if(barVac && vacaciones!=null) {
+      const maxVac = Math.max(vacaciones, 20);
+      barVac.style.width = Math.min(vacaciones/maxVac*100,100)+'%';
+    }
     // color dinámico según días
     if(barDI) barDI.style.background = di<7?'#EF4444':di<30?'#F59E0B':'#10B981';
     const cardDI = document.getElementById('accid-card-incidentes');
