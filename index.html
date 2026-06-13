@@ -148,7 +148,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <i class="fa-solid fa-clock w-4"></i> Tiempos de Paro
     </div>
     <div class="nav-item" onclick="showSection('accid')" data-section="accid">
-      <i class="fa-solid fa-helmet-safety w-4"></i> Accidentalidad
+      <i class="fa-solid fa-helmet-safety w-4"></i> Status Personal
     </div>
     <div class="nav-item" onclick="showSection('costos')" data-section="costos">
       <i class="fa-solid fa-dollar-sign w-4"></i> Costos
@@ -1420,7 +1420,7 @@ function renderAccid() {
         { const n=pNum(vals[i+1]); if(n!=null) diasIncidentes=n; }
       if(up==='DIAS SIN ACCIDENTES'||up==='DÍAS SIN ACCIDENTES'||up==='DIAS SIN ACCIDENTES ')
         { const n=pNum(vals[i+1]); if(n!=null) diasAccidentes=n; }
-      if(up==='VACACIONES')
+      if(up.includes('VACACIONES'))
         { const n=pNum(vals[i+1]); if(n!=null) vacaciones=n; }
     });
   });
@@ -1682,7 +1682,7 @@ const TITLES = {
   resumen:'Resumen General', oee:'OEE — Eficiencia Global',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
-  accid:'Accidentalidad', costos:'Costos de Producción'
+  accid:'Status Personal', costos:'Costos de Producción'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'plan-mensual':renderPlanMensual,
