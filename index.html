@@ -631,6 +631,14 @@ function buildCavMap() {
     if (cav > 0 && r._prod) CAV_MAP[r._prod] = cav;
   });
 }
+let CAV_TEOR_MAP = {}; // producto → cavidades TEÓRICAS (capacidad total del molde)
+function buildCavTeorMap() {
+  CAV_TEOR_MAP = {};
+  DATA.prod.forEach(r => {
+    const cav = pNum(r['CAV.TEORICAS']);
+    if (cav > 0 && r._prod) CAV_TEOR_MAP[r._prod] = cav;
+  });
+}
 
 function loadTarifasFromSheet() {
   let inMaq = false, isHeader = false;
@@ -970,6 +978,7 @@ async function loadAll() {
     populateAllFilters();
     loadTarifasFromSheet();
     buildCavMap();
+    buildCavTeorMap();
     renderAll();
     setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
   } catch(e) {
@@ -1993,10 +2002,10 @@ function renderReporteDiario() {
     if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0 };
     const s = slotCap[sKey];
     if (!s.undProg) {
-      const est     = pNum(r['T. CICLO EST']);
-      const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
-      // Siempre 28800 s (8h) como base de planificación — T4/T5 son clasificación
-      // operativa del turno pero la unidad de plan estándar es siempre 8 horas
+      const est = pNum(r['T. CICLO EST']);
+      // Cavidades TEÓRICAS (capacidad total del molde, sin importar cavidades rotas)
+      // CAV_TEOR_MAP usa solo r['CAV.TEORICAS'] — NO cae a cavidades reales
+      const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
       if (est > 0) s.undProg = Math.round((28800 / est) * cavTeor);
     }
     s.cantTotal += pNum(r._cant);
@@ -2075,28 +2084,18 @@ function renderReporteDiario() {
 
   // totUndTeo = Σ capacidades de slot (undProg por slot = turnoSeg/cicloEst × cavTeor)
   // Usa slotCap que ya tiene el valor correcto con las cavidades reales del producto
-  let totHT=0, totHF=0, totCantO=0, totNC_O=0, totSegReal=0;
+  let totHT=0, totHF=0, totCantO=0;
   Object.entries(oeeByMaq).forEach(([maq, m]) => {
     const hT = Object.values(m.dtMap).reduce((s,ts)=>s+calcShiftHours(ts),0);
     const hF = Math.max(0, hT - m.hParo);
     m.hTurno = hT; m.hFab = hF;
-    totHT      += hT;  totHF      += hF;
-    totCantO   += m.cant;
-    totNC_O    += m._nc;
-    totSegReal += m.segReal;
+    totHT += hT;  totHF += hF;
+    totCantO += m.cant;
   });
-  // Und.Teóricas = suma de capacidades de slot (ya calculadas en slotCap)
+  // Und.Teóricas = suma de capacidades de slot con cavidades TEÓRICAS del molde
   let totUndTeo = 0;
   Object.values(slotCap).forEach(s => { if (s.undProg > 0) totUndTeo += s.undProg; });
-  const totHTseg  = totHT * 3600;
-  const totHFseg  = totHF * 3600;
-  const undBuenas = Math.max(0, totCantO - totNC_O);
 
-  // ── OEE por Tiempo = Tiempo Real / Tiempo Teórico ──────────────────
-  // Tiempo real corriendo: Σ(cant/cavReal × cicloReal)
-  // Tiempo teórico: H.TURNO × 3600
-  // Componentes:
-  //   Disp_t = H.FAB / H.TURNO
   // ── OEE Ponderado por Tiempo ─────────────────────────────────────────
   // Usa las columnas del sheet (OEE FINAL, % RENDIMIENTO, % DISPONIBILIDAD)
   // para coincidir con los valores reportados en la pestaña OEE del sistema
@@ -2106,15 +2105,18 @@ function renderReporteDiario() {
   const oee_t  = (avg(rows, '_oee')  || 0) / 100;
 
   // ── OEE Ponderado por Unidades = Und.Buenas / Und.Teóricas ──────────
-  // Rend_u = Und.Prod / Und.Teo en H.TURNO  (capacidad plena del turno)
-  // → Rend_u < Rend_t porque divide entre una capacidad mayor (turno completo)
-  const disp_u = totHT > 0 ? totHF / totHT : 0;
-  const rend_u = totUndTeo > 0 ? Math.min(totCantO / totUndTeo, 1) : 0;
-  const cal_u  = totCantO > 0 ? undBuenas / totCantO : 0;
-  const oee_u  = totUndTeo > 0 ? undBuenas / totUndTeo : 0;
+  // NC por referencia/orden (no por máquina) — igual que la pestaña OEE
+  const cal_u_pct = calcCalidad(rows) || 0;                // 0–100
+  const cal_u     = cal_u_pct / 100;
+  const undBuenas = Math.round(totCantO * cal_u);
+  const disp_u    = totHT > 0 ? totHF / totHT : 0;
+  // Rend_u = Und.Prod / Und.Teo (con cavidades TEÓRICAS → captura pérdida de cavidades)
+  const rend_u    = totUndTeo > 0 ? Math.min(totCantO / totUndTeo, 1) : 0;
+  const oee_u     = totUndTeo > 0 ? undBuenas / totUndTeo : 0;
 
   const infoT = `H.Turno: ${totHT.toFixed(1)}h · H.Fab: ${totHF.toFixed(1)}h · H.Paro: ${(totHT-totHF).toFixed(1)}h`;
-  const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${totNC_O.toLocaleString()} · Buenas: ${undBuenas.toLocaleString()} · Teóricas: ${Math.round(totUndTeo).toLocaleString()}`;
+  const ncCount = Math.round(totCantO - undBuenas);
+  const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${ncCount.toLocaleString()} · Buenas: ${undBuenas.toLocaleString()} · Teóricas: ${Math.round(totUndTeo).toLocaleString()}`;
   const elT = document.getElementById('rd-oee-tiempo');
   const elU = document.getElementById('rd-oee-unid');
   if (elT) elT.innerHTML = _oeeCard('OEE Ponderado por Tiempo',    oee_t, disp_t, rend_t, cal_t, infoT);
