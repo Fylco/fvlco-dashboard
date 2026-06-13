@@ -1980,7 +1980,27 @@ function renderReporteDiario() {
   // Segundos por turno
   const TURNO_SEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
 
-  // Agrupar por Día + Máquina + Turno + Producto
+  // ── Paso 1: capacidad por Máquina+Turno+Día (1 valor por slot de máquina) ─────
+  // Un slot de máquina solo puede producir UN turno de unidades en total,
+  // sin importar cuántos productos distintos corrió en ese turno.
+  const slotCap = {}; // key: dia|maq|turno → { undProg, cantTotal }
+  rows.forEach(r => {
+    const dia   = r._diaTurno || '?';
+    const maq   = String(r._maq || '?');
+    const turno = String(r._turno || '?');
+    const sKey  = `${dia}|${maq}|${turno}`;
+    if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0 };
+    const s = slotCap[sKey];
+    if (!s.undProg) {
+      const est     = pNum(r['T. CICLO EST']);
+      const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
+      if (est > 0) s.undProg = Math.round(((TURNO_SEG[turno]||28800) / est) * cavTeor);
+    }
+    s.cantTotal += pNum(r._cant);
+  });
+
+  // ── Paso 2: agrupar por Día + Máquina + Turno + Producto ─────────────────────
+  // undProg se distribuye proporcionalmente al cant producido dentro del slot
   const groups = {};
   rows.forEach(r => {
     const dia   = r._diaTurno || '?';
@@ -1990,18 +2010,23 @@ function renderReporteDiario() {
     const key   = `${dia}|${maq}|${turno}|${prod}`;
     if (!groups[key]) groups[key] = { dia, maq, turno, prod, est:0, cavTeor:1, cavReal:1, undProg:0, cantSum:0 };
     const g = groups[key];
-    // Tomar primer cicloEst válido (>0) del grupo
     if (!g.est) {
       const est = pNum(r['T. CICLO EST']);
       if (est > 0) {
-        const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[prod] || 1, 1);
-        const cavReal = Math.max(_findColVal(r,'CAVIDAD','TEOR') || cavTeor, 1);
-        const seg     = TURNO_SEG[turno] || 28800;
-        g.est = est; g.cavTeor = cavTeor; g.cavReal = cavReal;
-        g.undProg = Math.round((seg / est) * cavTeor);
+        g.est     = est;
+        g.cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[prod] || 1, 1);
+        g.cavReal = Math.max(_findColVal(r,'CAVIDAD','TEOR') || g.cavTeor, 1);
       }
     }
     g.cantSum += pNum(r._cant);
+  });
+  // Asignar undProg proporcional al slot del turno
+  Object.values(groups).forEach(g => {
+    const sKey = `${g.dia}|${g.maq}|${g.turno}`;
+    const s    = slotCap[sKey];
+    if (!s || !s.undProg) { g.undProg = g.cantSum; return; }
+    const frac   = s.cantTotal > 0 ? g.cantSum / s.cantTotal : 1;
+    g.undProg    = Math.round(s.undProg * frac);
   });
 
   // ── OEE: acumular por máquina ─────────────────────────────────────
