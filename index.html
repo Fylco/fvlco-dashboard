@@ -2107,27 +2107,35 @@ function renderReporteDiario() {
 
   // ── Paso 1: capacidad por Máquina+Turno+Día (1 valor por slot de máquina) ─────
   // Un slot de máquina solo puede producir UN turno de unidades en total,
-  // sin importar cuántos productos distintos corrió en ese turno.
-  const slotCap = {}; // key: dia|maq|turno → { undProg, cantTotal }
+  // descontando el tiempo de paro real (mantenimiento, molde, etc.).
+  const slotCap = {}; // key: dia|maq|turno → { undProg, cantTotal, paroSeg, _est, _cavTeor }
   rows.forEach(r => {
     const dia   = r._diaTurno || '?';
     const maq   = String(r._maq || '?');
     const turno = String(r._turno || '?');
     const sKey  = `${dia}|${maq}|${turno}`;
-    if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0 };
+    if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0, paroSeg:0, _est:0, _cavTeor:0 };
     const s = slotCap[sKey];
-    // Solo calcular undProg por ciclo cuando se conoce la máquina.
-    // Cuando maq='?' varios productos distintos comparten el slot y el ciclo
-    // de uno solo daría un teórico incorrecto para los demás → usar cantTotal
-    // como fallback (teórico = real → Rendimiento neutro, sin distorsión).
-    if (!s.undProg && maq !== '?') {
+    // Acumular tiempo de paro del slot (minutos → segundos)
+    s.paroSeg += (pNum(r._paro) || 0) * 60;
+    s.cantTotal += pNum(r._cant);
+    // Guardar ciclo y cavidades del primer producto válido (maq conocida)
+    if (!s._est && maq !== '?') {
       const est = pNum(r['T. CICLO EST']);
       if (est > 0) {
-        const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
-        s.undProg = Math.round((28800 / est) * cavTeor);
+        s._est     = est;
+        s._cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
       }
     }
-    s.cantTotal += pNum(r._cant);
+  });
+  // Calcular undProg descontando el paro real del slot
+  // dispSeg = tiempo disponible = turno(8h) − tiempo_paro
+  // Si la máquina estuvo parada todo el turno → undProg = 0
+  Object.values(slotCap).forEach(s => {
+    if (s._est > 0) {
+      const dispSeg = Math.max(0, 28800 - s.paroSeg);
+      s.undProg = Math.round((dispSeg / s._est) * s._cavTeor);
+    }
   });
 
   // ── Paso 2: agrupar por Día + Máquina + Turno + Producto ─────────────────────
