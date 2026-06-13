@@ -2166,32 +2166,30 @@ function renderReporteDiario() {
   // ── Semáforo grande ────────────────────────────────────────────────
   const isGreen  = cumpl >= 90, isYellow = cumpl >= 70 && cumpl < 90, isRed = cumpl < 70;
   document.getElementById('rd-cumpl-box').innerHTML = `
-    <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
-      <div style="text-align:center;flex:1;min-width:180px">
-        <div style="font-size:.75rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">% Cumplimiento del Plan</div>
-        <div style="font-size:4.5rem;font-weight:900;color:${cumplColor};line-height:1;text-shadow:0 0 40px ${cumplColor}88">${cumpl.toFixed(1)}%</div>
-        <div style="margin-top:10px;font-size:.9rem;font-weight:700;color:${cumplColor};background:${cumplBg};border:1px solid ${cumplColor}44;border-radius:8px;padding:5px 14px;display:inline-block">${cumplLabel}</div>
-        <div style="font-size:.68rem;color:#6B7280;margin-top:8px">Verde ≥90% · Amarillo ≥70% · Rojo &lt;70%</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:10px;flex:1;min-width:200px">
-        <div style="background:#1F2937;border-radius:10px;padding:14px 20px;border-left:4px solid #60A5FA">
-          <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Und. Programadas</div>
-          <div style="font-size:1.7rem;font-weight:800;color:#60A5FA">${totalProg.toLocaleString()}</div>
-        </div>
-        <div style="background:#1F2937;border-radius:10px;padding:14px 20px;border-left:4px solid #10B981">
-          <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Und. Producidas</div>
-          <div style="font-size:1.7rem;font-weight:800;color:#10B981">${totalProd.toLocaleString()}</div>
-        </div>
-        <div style="background:#1F2937;border-radius:10px;padding:14px 20px;border-left:4px solid ${faltTotal>0?'#EF4444':'#10B981'}">
-          <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Und. Faltantes</div>
-          <div style="font-size:1.7rem;font-weight:800;color:${faltTotal>0?'#EF4444':'#10B981'}">${faltTotal.toLocaleString()}</div>
+    <div style="text-align:center">
+      <div style="font-size:.68rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">% Cumplimiento del Plan</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px">
+        <div style="font-size:3rem;font-weight:900;color:${cumplColor};line-height:1;text-shadow:0 0 30px ${cumplColor}88">${cumpl.toFixed(1)}%</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="width:18px;height:18px;border-radius:50%;background:${isGreen?'#10B981':'#1F2937'};box-shadow:${isGreen?'0 0 12px #10B981':'none'};border:2px solid ${isGreen?'#10B981':'#374151'}"></div>
+          <div style="width:18px;height:18px;border-radius:50%;background:${isYellow?'#F59E0B':'#1F2937'};box-shadow:${isYellow?'0 0 12px #F59E0B':'none'};border:2px solid ${isYellow?'#F59E0B':'#374151'}"></div>
+          <div style="width:18px;height:18px;border-radius:50%;background:${isRed?'#EF4444':'#1F2937'};box-shadow:${isRed?'0 0 12px #EF4444':'none'};border:2px solid ${isRed?'#EF4444':'#374151'}"></div>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;border-radius:50%;background:${isGreen?'#10B981':'#1F2937'};box-shadow:${isGreen?'0 0 20px #10B981':'none'};border:2px solid ${isGreen?'#10B981':'#374151'};transition:all .3s"></div>
-        <div style="width:32px;height:32px;border-radius:50%;background:${isYellow?'#F59E0B':'#1F2937'};box-shadow:${isYellow?'0 0 20px #F59E0B':'none'};border:2px solid ${isYellow?'#F59E0B':'#374151'};transition:all .3s"></div>
-        <div style="width:32px;height:32px;border-radius:50%;background:${isRed?'#EF4444':'#1F2937'};box-shadow:${isRed?'0 0 20px #EF4444':'none'};border:2px solid ${isRed?'#EF4444':'#374151'};transition:all .3s"></div>
-        <div style="font-size:.6rem;color:#6B7280;text-align:center">SEMÁFORO</div>
+      <div style="margin:6px 0;font-size:.78rem;font-weight:700;color:${cumplColor};background:${cumplBg};border:1px solid ${cumplColor}44;border-radius:6px;padding:3px 10px;display:inline-block">${cumplLabel}</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <div style="flex:1;background:#1F2937;border-radius:8px;padding:8px 6px;border-left:3px solid #60A5FA">
+          <div style="font-size:.58rem;color:#9CA3AF;text-transform:uppercase">Prog.</div>
+          <div style="font-size:1rem;font-weight:800;color:#60A5FA">${totalProg.toLocaleString()}</div>
+        </div>
+        <div style="flex:1;background:#1F2937;border-radius:8px;padding:8px 6px;border-left:3px solid #10B981">
+          <div style="font-size:.58rem;color:#9CA3AF;text-transform:uppercase">Prod.</div>
+          <div style="font-size:1rem;font-weight:800;color:#10B981">${totalProd.toLocaleString()}</div>
+        </div>
+        <div style="flex:1;background:#1F2937;border-radius:8px;padding:8px 6px;border-left:3px solid ${faltTotal>0?'#EF4444':'#10B981'}">
+          <div style="font-size:.58rem;color:#9CA3AF;text-transform:uppercase">Falt.</div>
+          <div style="font-size:1rem;font-weight:800;color:${faltTotal>0?'#EF4444':'#10B981'}">${faltTotal.toLocaleString()}</div>
+        </div>
       </div>
     </div>`;
 
