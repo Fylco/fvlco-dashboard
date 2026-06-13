@@ -852,8 +852,8 @@ function normalizeProd(r) {
   out._turno = out['TURNO'] ?? '';
   out._prod  = out['PRODUCTO'] ?? '';
   out._orden = out['ORDEN'] ?? '';
-  out._cant  = pNum(out['CANT REPORTADA']) || 0;
-  out._paro  = pNum(out['TIEMPO PARO MIN']) || 0;
+  out._cant  = pNum(out['CANT REPORTADA']) || _findColVal(out,'CANT REPORT','') || 0;
+  out._paro  = pNum(out['TIEMPO PARO MIN']) || _findColVal(out,'PARO MIN','') || _findColVal(out,'TIEMPO PARO','') || 0;
   out._rend  = out['% RENDIMIENTO'];
   out._disp  = out['% DISPONIBILIDAD'];
   out._oee   = out['OEE FINAL'];
