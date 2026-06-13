@@ -1447,9 +1447,7 @@ function renderAccid() {
   if(metaEl) metaEl.innerHTML =
     kpiCard('Meta Incidentes','0 / año','#8B5CF6',`Actuales: ${di} días`,      'fa-solid fa-bullseye')+
     kpiCard('Meta Accidentes','0 / año','#8B5CF6',`Actuales: ${da} días`,      'fa-solid fa-shield-halved')+
-    kpiCard('Días del Año',   Math.min(di,da)+' / 365','#06B6D4','Días seguros combinados','fa-solid fa-calendar-check')+
-    kpiCard('Estado General', da>30&&di>7?'✅ SEGURO':'⚠ ATENCIÓN',
-      da>30&&di>7?'#10B981':'#F59E0B', da>30&&di>7?'Sin eventos críticos':'Revisar indicadores','fa-solid fa-circle-check');
+    kpiCard('Días del Año',   Math.min(di,da)+' / 365','#06B6D4','Días seguros combinados','fa-solid fa-calendar-check');
 }
 
 // =======================================================
