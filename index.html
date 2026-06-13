@@ -1579,10 +1579,22 @@ function buildTarifasForm() {
     </div>`).join('');
 }
 
-// Horas reales de fabricación: cant × cicloReal(seg) / cavidades / 3600
+// Cavidades reales (col K) — prueba todos los nombres posibles
+function getCav(r) {
+  const v = pNum(r['CAVIDADES'])||pNum(r['No. CAVIDADES'])||pNum(r['CAV'])||
+            pNum(r['CAVI'])||pNum(r['CAVIDADES REALES'])||pNum(r['Cavidades']);
+  return Math.max(v||1, 1);
+}
+// Cavidades teóricas (col AO)
+function getCavTeor(r) {
+  const v = pNum(r['CAVIDADES TEORICAS'])||pNum(r['CAVIDADES TEÓRICAS'])||
+            pNum(r['CAV TEORICAS'])||pNum(r['CAV. TEORICAS']);
+  return Math.max(v||getCav(r), 1);
+}
+// Horas reales de fabricación: cant × cicloReal(seg) / cavidades_reales / 3600
 function rowFabHoras(r) {
   const real = pNum(r['T. CICLO REAL']||r['CICLO REAL']) || pNum(r['T. CICLO EST']) || 0;
-  const cav  = Math.max(pNum(r['CAVIDADES'])||pNum(r['No. CAVIDADES'])||pNum(r['CAVI'])||1, 1);
+  const cav  = getCav(r);
   const cant = r._cant||0;
   return (real>0 && cant>0) ? (cant * real / cav) / 3600 : 0;
 }
