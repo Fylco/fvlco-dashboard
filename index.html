@@ -2116,8 +2116,11 @@ function renderReporteDiario() {
     const sKey  = `${dia}|${maq}|${turno}`;
     if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0 };
     const s = slotCap[sKey];
-    // Intentar en cada fila hasta encontrar T.CICLO EST válido para el slot
-    if (!s.undProg) {
+    // Solo calcular undProg por ciclo cuando se conoce la máquina.
+    // Cuando maq='?' varios productos distintos comparten el slot y el ciclo
+    // de uno solo daría un teórico incorrecto para los demás → usar cantTotal
+    // como fallback (teórico = real → Rendimiento neutro, sin distorsión).
+    if (!s.undProg && maq !== '?') {
       const est = pNum(r['T. CICLO EST']);
       if (est > 0) {
         const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
