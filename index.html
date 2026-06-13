@@ -812,13 +812,24 @@ function normalizeProd(r) {
   out._rend  = out['% RENDIMIENTO'];
   out._disp  = out['% DISPONIBILIDAD'];
   out._oee   = out['OEE FINAL'];
-  // Día real según turno de trabajo (col AD) — extrae día del formato DD/MM/YYYY
-  const _ft  = String(out['FECHAS SEGUN TURNO DE TRABAJO'] || out['FECHAS SEGÚN TURNO DE TRABAJO'] || '').trim();
+  // Día real según turno de trabajo (col AD) — búsqueda difusa del nombre de columna
+  let _ft = '';
+  for (const _k of Object.keys(out)) {
+    const _ku = _k.toUpperCase();
+    if (_ku.includes('FECHA') && _ku.includes('TURNO')) { _ft = String(out[_k]||'').trim(); break; }
+  }
+  if (!_ft) {
+    // fallback: columna DIA original
+    for (const _k of Object.keys(out)) {
+      if (_k.trim().toUpperCase()==='DIA'||_k.trim().toUpperCase()==='DÍA') { _ft = String(out[_k]||'').trim(); break; }
+    }
+  }
   if (_ft) {
-    const _m = _ft.match(/^(\d{1,2})[\/\-]/);          // DD/MM/... o DD-MM-...
+    const _m  = _ft.match(/^(\d{1,2})[\/\-]/);                      // DD/MM/... o DD-MM-...
     const _m2 = !_m && _ft.match(/\d{4}[\/\-]\d{2}[\/\-](\d{2})/); // YYYY-MM-DD
-    const _day = _m ? parseInt(_m[1]) : (_m2 ? parseInt(_m2[1]) : null);
-    out._diaTurno = _day != null ? String(_day) : null;
+    const _m3 = !_m && !_m2 && _ft.match(/^(\d{1,2})$/);            // número puro 1-31
+    const _day = _m ? parseInt(_m[1]) : _m2 ? parseInt(_m2[1]) : _m3 ? parseInt(_m3[1]) : null;
+    out._diaTurno = (_day!=null && _day>=1 && _day<=31) ? String(_day) : null;
   } else {
     out._diaTurno = null;
   }
