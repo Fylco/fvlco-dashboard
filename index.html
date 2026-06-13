@@ -406,16 +406,15 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div style="width:230px;min-width:230px;flex-shrink:0">
           <div class="filter-panel">
             <div class="fp-title">Tarifas (COP/hora)</div>
-            <p style="font-size:.68rem;color:#6B7280;margin-bottom:10px">Define el costo por hora de cada centro productivo</p>
+            <p style="font-size:.68rem;color:#6B7280;margin-bottom:10px">Cargadas automáticamente desde <strong style="color:#4B5563">Plan de Referencias</strong></p>
             <div id="costos-tarifas-form"></div>
             <div class="fp-label" style="margin-top:14px">Moneda</div>
             <select id="costos-moneda" class="fp-select" onchange="renderCostos()">
               <option value="COP">COP $</option>
               <option value="USD">USD $</option>
             </select>
-            <button class="btn-filter" onclick="renderCostos()" style="width:100%;margin-top:14px">Recalcular</button>
-            <div style="margin-top:10px;padding:10px;background:#0B0F19;border-radius:8px;font-size:.65rem;color:#4B5563;line-height:1.6">
-              💡 Las tarifas se guardan en esta sesión. Para persistirlas, exporta el informe.
+            <div style="margin-top:12px;padding:9px;background:#0B0F19;border-radius:8px;font-size:.65rem;color:#4B5563;line-height:1.6">
+              📊 Para cambiar las tarifas, modifique la tabla <em>Costo de utilización de máquina</em> en Google Sheets y presione Actualizar.
             </div>
           </div>
         </div>
@@ -482,7 +481,32 @@ let SEL_DIAS_PARO = new Set();
 let SEL_CAUSAS    = new Set();
 let SEL_DIAS_NC   = new Set();
 // Tarifas por máquina (COP/hora) — editables por el usuario
-let TARIFAS_MAQ = { 1:25000, 2:25000, 3:25000, 4:35000, 5:35000, 6:20000 };
+// Tarifas base (COP/hora) — se sobreescriben automáticamente con los valores del sheet
+let TARIFAS_MAQ = { 1:67196, 2:67196, 3:68490, 4:68490, 5:62304, 6:100753 };
+
+function parseCOP(str) {
+  if (!str) return null;
+  const n = parseFloat(String(str).replace(/[$\s.]/g,'').replace(',','.'));
+  return isNaN(n) ? null : n;
+}
+
+function loadTarifasFromSheet() {
+  let inMaq = false, isHeader = false;
+  for (const row of DATA.planRef) {
+    const ref = (row['REFERENCIA / PRODUCTO']||'').trim();
+    if (ref === 'Costo de utilizacion de maquina') { inMaq=true; continue; }
+    if (!inMaq) continue;
+    if (!ref) break; // fin de sección
+    if (ref.toLowerCase().includes('nombre')) { isHeader=true; continue; } // fila cabecera
+    const m = ref.match(/(\d+)/);
+    if (m) {
+      const num = parseInt(m[1]);
+      // Febrero = costo hora, Enero = costo día (÷24 como fallback)
+      const hora = parseCOP(row['Febrero']) || (parseCOP(row['Enero']) ? Math.round(parseCOP(row['Enero'])/24) : null);
+      if (hora && hora > 1000) TARIFAS_MAQ[num] = hora;
+    }
+  }
+}
 
 // ── Multi-select días (global top bar)
 function toggleDiaDD(e) {
@@ -727,6 +751,7 @@ async function loadAll() {
       `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`;
 
     populateAllFilters();
+    loadTarifasFromSheet();
     renderAll();
     setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
   } catch(e) {
@@ -1355,12 +1380,12 @@ function buildTarifasForm() {
   const el = document.getElementById('costos-tarifas-form');
   if (!el) return;
   el.innerHTML = maqs.map(m=>`
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span style="font-size:.72rem;color:#9CA3AF;width:50px">Máq ${m}</span>
-      <input type="number" value="${TARIFAS_MAQ[m]||25000}"
-        onchange="TARIFAS_MAQ[${m}]=+this.value"
-        style="flex:1;background:#0B0F19;border:1px solid #374151;border-radius:6px;padding:4px 8px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Poppins,sans-serif">
-      <span style="font-size:.65rem;color:#4B5563">/h</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;
+      padding:5px 8px;background:#0B0F19;border-radius:6px;border:1px solid #1F2937">
+      <span style="font-size:.72rem;color:#9CA3AF">Máq ${m}</span>
+      <span style="font-size:.8rem;color:#10B981;font-weight:600">
+        $${(TARIFAS_MAQ[m]||0).toLocaleString('es-CO')}<span style="font-size:.6rem;color:#4B5563">/h</span>
+      </span>
     </div>`).join('');
 }
 
