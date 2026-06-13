@@ -1671,26 +1671,49 @@ function rowFabHoras(r) {
 // Horas paro: TIEMPO_PARO_MIN → horas
 function rowParoHoras(r) { return (r._paro||0) / 60; }
 
+// Calcula horas reales de turno a partir de un conjunto de turnos reportados en un mismo día,
+// usando unión de intervalos para evitar doble conteo cuando T4 solapa T1, etc.
+// Intervalos en minutos desde medianoche (día de 0-1440 + overflow al día siguiente 1440-1800)
+const TURNO_INTERVALS = {
+  '1': [[360, 840]],               // T1: 6AM-2PM
+  '2': [[840, 1320]],              // T2: 2PM-10PM
+  '3': [[1320, 1440],[0, 360]],    // T3: 10PM-6AM (cruza medianoche)
+  '4': [[360, 1080]],              // T4: 6AM-6PM
+  '5': [[1080, 1440],[0, 360]],    // T5: 6PM-6AM (cruza medianoche)
+};
+function calcShiftHours(turnosSet) {
+  const ivs = [];
+  turnosSet.forEach(t => { if (TURNO_INTERVALS[t]) ivs.push(...TURNO_INTERVALS[t]); });
+  if (!ivs.length) return 0;
+  ivs.sort((a,b) => a[0]-b[0]);
+  const merged = [[...ivs[0]]];
+  for (const [s,e] of ivs.slice(1)) {
+    const last = merged[merged.length-1];
+    if (s <= last[1]) last[1] = Math.max(last[1], e);
+    else merged.push([s, e]);
+  }
+  return merged.reduce((sum,[s,e]) => sum+(e-s), 0) / 60;
+}
+
 function renderCostos() {
   const d = filterCostos();
   buildTarifasForm();
 
   // ── Tabla 2: Costo por máquina (se calcula primero para distribuir H.FAB a productos)
   const maqList = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
-  // Duración real por turno: T1/T2/T3 = 8h, T4/T5 = 12h
-  const TURNO_HORAS = {'1':8,'2':8,'3':8,'4':12,'5':12};
   const maqRows = maqList.map(m=>{
     const rows   = d.filter(r=>r._maq==m);
-    // Acumular horas por turno único (día+turno), usando la duración correcta de cada turno
-    const shiftMap = {};
+    // Agrupar turnos únicos por día y calcular horas reales con unión de intervalos
+    const dayTurnosMap = {};
     rows.forEach(r => {
-      const t = String(r._turno||'');
-      if (TURNO_HORAS[t]) {
-        const key = `${r['DIA']||r._diaTurno||''}-${t}`;
-        shiftMap[key] = TURNO_HORAS[t];
+      const day = String(r['DIA']||r._diaTurno||'');
+      const t   = String(r._turno||'');
+      if (day && TURNO_INTERVALS[t]) {
+        if (!dayTurnosMap[day]) dayTurnosMap[day] = new Set();
+        dayTurnosMap[day].add(t);
       }
     });
-    const hTurno = Object.values(shiftMap).reduce((s,h)=>s+h, 0);
+    const hTurno = Object.values(dayTurnosMap).reduce((s, ts) => s + calcShiftHours(ts), 0);
     const hParo  = rows.reduce((s,r)=>s+rowParoHoras(r), 0);
     // H.FAB = tiempo disponible menos paros, sin negativo
     const hFab   = Math.max(0, hTurno - hParo);
