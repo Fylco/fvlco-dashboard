@@ -913,7 +913,7 @@ function populateAllFilters() {
   buildParoDiaDd(dias);
   // Costos panel
   fillSel('costos-f-mes', meses.map(cap), 'Mes');
-  fillSel('costos-f-maq', maqs.map(m=>'Máq '+m), 'Máquina');
+  fillSel('costos-f-maq', maqs, 'Máquina');
   buildCostosDiaDd(dias);
   // Razones de paro
   const razonMap = {};
@@ -963,14 +963,13 @@ function filterProd() {
   );
 }
 function filterCostos() {
-  const m    = getVal('costos-f-mes').toLowerCase();
-  const maqV = getVal('costos-f-maq'); // "Máq 1" or ""
-  const maqN = maqV ? maqV.replace('Máq ','').trim() : '';
+  const m   = getVal('costos-f-mes').toLowerCase();
+  const maq = getVal('costos-f-maq');   // raw r._maq value e.g. "1" or "Máq 1"
   const dias = SEL_DIAS_COSTOS;
   return DATA.prod.filter(r =>
     (!m    || r._mes === m) &&
     (!dias.size || dias.has(String(r['DIA']||''))) &&
-    (!maqN || String(r._maq) === maqN)
+    (!maq  || String(r._maq) === maq)
   );
 }
 function filterParo() {
