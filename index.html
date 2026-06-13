@@ -389,12 +389,56 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================= ACCIDENTALIDAD == -->
     <div class="section" id="sec-accid">
       <div id="accid-content">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:24px" id="accid-kpis"></div>
-        <div style="text-align:center;padding:40px;background:#1F2937;border-radius:16px;border:1px solid #374151">
-          <p style="color:#9CA3AF;font-size:.8rem;margin-bottom:12px;text-transform:uppercase;letter-spacing:.1em">Días sin Accidentes / Incidentes</p>
-          <div class="days-counter" id="accid-dias">—</div>
-          <p style="color:#10B981;font-size:.8rem;margin-top:10px">✓ Sin eventos reportados</p>
+        <!-- KPIs superiores -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px" id="accid-kpis"></div>
+        <!-- Tarjetas de días -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
+
+          <!-- DÍAS SIN INCIDENTES -->
+          <div id="accid-card-incidentes" style="background:linear-gradient(135deg,#1F2937 0%,#111827 100%);
+            border:1px solid #374151;border-radius:20px;overflow:hidden;position:relative;min-height:220px">
+            <div style="position:absolute;inset:0;opacity:.06;background:url('https://cdn-icons-png.flaticon.com/512/2972/2972531.png') center/60% no-repeat"></div>
+            <div style="position:relative;z-index:1;padding:28px 28px 24px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+                <div style="width:42px;height:42px;border-radius:12px;background:#F59E0B22;
+                  display:flex;align-items:center;justify-content:center;font-size:1.4rem">⚠️</div>
+                <div>
+                  <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.08em">Indicador</div>
+                  <div style="font-size:.85rem;font-weight:700;color:#EEEEEE">Días sin Incidentes</div>
+                </div>
+              </div>
+              <div style="font-size:4.5rem;font-weight:800;color:#F59E0B;line-height:1;margin-bottom:8px" id="accid-dias-incidentes">—</div>
+              <div style="font-size:.75rem;color:#9CA3AF" id="accid-lbl-incidentes">días consecutivos</div>
+              <div style="margin-top:16px;height:4px;background:#374151;border-radius:2px">
+                <div id="accid-bar-incidentes" style="height:4px;background:#F59E0B;border-radius:2px;width:0%;transition:width .8s ease"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DÍAS SIN ACCIDENTES -->
+          <div id="accid-card-accidentes" style="background:linear-gradient(135deg,#1F2937 0%,#111827 100%);
+            border:1px solid #374151;border-radius:20px;overflow:hidden;position:relative;min-height:220px">
+            <div style="position:absolute;inset:0;opacity:.06;background:url('https://cdn-icons-png.flaticon.com/512/1907/1907675.png') center/60% no-repeat"></div>
+            <div style="position:relative;z-index:1;padding:28px 28px 24px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+                <div style="width:42px;height:42px;border-radius:12px;background:#10B98122;
+                  display:flex;align-items:center;justify-content:center;font-size:1.4rem">🛡️</div>
+                <div>
+                  <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.08em">Indicador</div>
+                  <div style="font-size:.85rem;font-weight:700;color:#EEEEEE">Días sin Accidentes</div>
+                </div>
+              </div>
+              <div style="font-size:4.5rem;font-weight:800;color:#10B981;line-height:1;margin-bottom:8px" id="accid-dias-accidentes">—</div>
+              <div style="font-size:.75rem;color:#9CA3AF" id="accid-lbl-accidentes">días consecutivos</div>
+              <div style="margin-top:16px;height:4px;background:#374151;border-radius:2px">
+                <div id="accid-bar-accidentes" style="height:4px;background:#10B981;border-radius:2px;width:0%;transition:width .8s ease"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
+        <!-- Meta anual -->
+        <div id="accid-meta-row" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px"></div>
       </div>
     </div>
 
@@ -1340,25 +1384,71 @@ function getAccDias() {
   return null;
 }
 function renderAccid() {
-  let totalPersonal=null, incap=null, fuerzaLaboral=null, diasSin=null;
+  let totalPersonal=null, incap=null, fuerzaLaboral=null;
+  let diasIncidentes=null, diasAccidentes=null;
+
   DATA.accid.forEach(row=>{
     const vals=Object.values(row).map(v=>String(v||''));
     vals.forEach((v,i)=>{
-      const up=v.toUpperCase();
-      if(up.includes('TOTAL PERSONAL')) { const n=pNum(vals[i+1]); if(n) totalPersonal=n; }
-      if(up.includes('INCAPACITADO'))   { const n=pNum(vals[i+1]); if(n!==null) incap=n; }
-      if(up.includes('FUERZA LABORAL')) { const n=pNum(vals[i+1]); if(n) fuerzaLaboral=n; }
-      if(up.includes('DIAS SIN')||up.includes('DÍAS SIN')) { const n=pNum(vals[i+1]); if(n) diasSin=n; }
+      const up=v.toUpperCase().trim();
+      if(up.includes('TOTAL PERSONAL'))   { const n=pNum(vals[i+1]); if(n!=null) totalPersonal=n; }
+      if(up.includes('INCAPACITADO'))      { const n=pNum(vals[i+1]); if(n!=null) incap=n; }
+      if(up.includes('FUERZA LABORAL'))    { const n=pNum(vals[i+1]); if(n!=null) fuerzaLaboral=n; }
+      if(up==='DIAS SIN INCIDENTES'||up==='DÍAS SIN INCIDENTES')
+        { const n=pNum(vals[i+1]); if(n!=null) diasIncidentes=n; }
+      if(up==='DIAS SIN ACCIDENTES'||up==='DÍAS SIN ACCIDENTES'||up==='DIAS SIN ACCIDENTES ')
+        { const n=pNum(vals[i+1]); if(n!=null) diasAccidentes=n; }
     });
   });
-  if(!diasSin) diasSin=getAccDias();
 
-  document.getElementById('accid-dias').textContent = diasSin!==null?diasSin:'—';
+  // KPIs superiores
   document.getElementById('accid-kpis').innerHTML=
-    kpiCard('Total Personal',totalPersonal??'—','#06B6D4','Fuerza laboral activa','fa-solid fa-users')+
-    kpiCard('Incapacitados',incap??'—','#F59E0B','Con incapacidad','fa-solid fa-user-injured')+
-    kpiCard('Índice Fuerza Laboral',fuerzaLaboral?fuerzaLaboral+'%':'—','#10B981','','fa-solid fa-chart-line')+
-    kpiCard('Días sin Accidente',diasSin??'—','#8B5CF6','Sin eventos reportados','fa-solid fa-shield-halved');
+    kpiCard('Total Personal',  totalPersonal??'—','#06B6D4','Fuerza laboral activa',    'fa-solid fa-users')+
+    kpiCard('Incapacitados',   incap??'—',         '#F59E0B','Con incapacidad médica',   'fa-solid fa-user-injured')+
+    kpiCard('Índice F. Laboral',fuerzaLaboral!=null?fuerzaLaboral+'%':'—','#10B981','Meta ≥ 95%','fa-solid fa-chart-line')+
+    kpiCard('Accidentalidad',  (incap!=null&&totalPersonal>0)?((incap/totalPersonal)*100).toFixed(1)+'%':'0%','#EF4444','% personal afectado','fa-solid fa-triangle-exclamation');
+
+  // Tarjeta DÍAS SIN INCIDENTES
+  const di = diasIncidentes ?? 0;
+  const da = diasAccidentes ?? 0;
+  const maxDias = 365;
+
+  const elDI = document.getElementById('accid-dias-incidentes');
+  const elDA = document.getElementById('accid-dias-accidentes');
+  if(elDI) elDI.textContent = di;
+  if(elDA) elDA.textContent = da;
+
+  const lblDI = document.getElementById('accid-lbl-incidentes');
+  const lblDA = document.getElementById('accid-lbl-accidentes');
+  if(lblDI) lblDI.innerHTML = di===1
+    ? '<span style="color:#F59E0B">⚠ Incidente reciente — mantener alerta</span>'
+    : `<span style="color:#10B981">✓ días consecutivos sin incidentes</span>`;
+  if(lblDA) lblDA.innerHTML = da===0
+    ? '<span style="color:#EF4444">⚠ Accidente registrado — revisar</span>'
+    : `<span style="color:#10B981">✓ días consecutivos sin accidentes</span>`;
+
+  // Barra de progreso (meta 365 días)
+  setTimeout(()=>{
+    const barDI = document.getElementById('accid-bar-incidentes');
+    const barDA = document.getElementById('accid-bar-accidentes');
+    if(barDI) barDI.style.width = Math.min(di/maxDias*100,100)+'%';
+    if(barDA) barDA.style.width = Math.min(da/maxDias*100,100)+'%';
+    // color dinámico según días
+    if(barDI) barDI.style.background = di<7?'#EF4444':di<30?'#F59E0B':'#10B981';
+    const cardDI = document.getElementById('accid-card-incidentes');
+    const cardDA = document.getElementById('accid-card-accidentes');
+    if(cardDI) cardDI.style.borderColor = di<7?'#EF444466':di<30?'#F59E0B66':'#10B98166';
+    if(cardDA) cardDA.style.borderColor = da===0?'#EF444466':da<30?'#F59E0B66':'#10B98166';
+  }, 100);
+
+  // Fila de metas
+  const metaEl = document.getElementById('accid-meta-row');
+  if(metaEl) metaEl.innerHTML =
+    kpiCard('Meta Incidentes','0 / año','#8B5CF6',`Actuales: ${di} días`,      'fa-solid fa-bullseye')+
+    kpiCard('Meta Accidentes','0 / año','#8B5CF6',`Actuales: ${da} días`,      'fa-solid fa-shield-halved')+
+    kpiCard('Días del Año',   Math.min(di,da)+' / 365','#06B6D4','Días seguros combinados','fa-solid fa-calendar-check')+
+    kpiCard('Estado General', da>30&&di>7?'✅ SEGURO':'⚠ ATENCIÓN',
+      da>30&&di>7?'#10B981':'#F59E0B', da>30&&di>7?'Sin eventos críticos':'Revisar indicadores','fa-solid fa-circle-check');
 }
 
 // =======================================================
