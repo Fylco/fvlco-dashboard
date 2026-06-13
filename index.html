@@ -1696,7 +1696,7 @@ function renderCostos() {
     // Agrupar turnos únicos por día y calcular horas reales con unión de intervalos
     const dayTurnosMap = {};
     rows.forEach(r => {
-      const day = String(r['DIA']||r._diaTurno||'');
+      const day = String(r._diaTurno||'');
       const t   = String(r._turno||'');
       if (day && TURNO_INTERVALS[t]) {
         if (!dayTurnosMap[day]) dayTurnosMap[day] = new Set();
