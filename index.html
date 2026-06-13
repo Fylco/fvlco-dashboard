@@ -647,6 +647,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </div>
         <button onclick="fvRunForecast()" style="background:#38BDF8;border:none;color:#0b1120;border-radius:8px;padding:5px 14px;font-weight:700;font-size:.78rem;cursor:pointer;height:30px">Calcular</button>
         <button onclick="fvResetFilters()" style="background:#1F2937;border:1px solid #374151;color:#F3F4F6;border-radius:8px;padding:5px 14px;font-weight:700;font-size:.78rem;cursor:pointer;height:30px">Limpiar</button>
+        <button onclick="fvLoadData()" style="background:#1F2937;border:1px solid #10B981;color:#10B981;border-radius:8px;padding:5px 14px;font-weight:700;font-size:.78rem;cursor:pointer;height:30px">↺ Actualizar datos</button>
       </div>
 
       <!-- Contenido dinámico Forecast Ventas -->
@@ -3061,19 +3062,18 @@ let fvCharts = {};
 async function fvLoadData() {
   const statusEl = document.getElementById('fv-status');
   const loadEl   = document.getElementById('fv-loading');
+  const contentEl = document.getElementById('fv-content');
   if (!statusEl) return;
-  if (DATA.forecastVentas && DATA.forecastVentas.length > 0) {
-    if (statusEl) statusEl.textContent = `${DATA.forecastVentas.length} pedidos cargados`;
-    fvPopulateClients();
-    fvRunForecast();
-    return;
-  }
-  statusEl.textContent = 'Cargando datos…';
+  // Siempre descarga fresh — nunca usa caché en memoria
+  statusEl.textContent = '🔄 Actualizando datos…';
+  if (loadEl)   { loadEl.style.display = 'flex'; }
+  if (contentEl){ contentEl.style.display = 'none'; }
+  DATA.forecastVentas = [];
   try {
-    // usa fetchCSV → mismo cache-busting (&_t=timestamp + no-store) que las demás hojas
     const parsed = await fetchCSV(FV_CSV);
     DATA.forecastVentas = parsed.data;
-    statusEl.textContent = `${DATA.forecastVentas.length} pedidos cargados`;
+    const now = new Date().toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
+    statusEl.textContent = `${DATA.forecastVentas.length} pedidos · actualizado ${now}`;
     fvPopulateClients();
     fvRunForecast();
   } catch(e) {
