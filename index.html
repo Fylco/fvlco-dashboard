@@ -1579,17 +1579,27 @@ function buildTarifasForm() {
     </div>`).join('');
 }
 
-// Cavidades reales (col K) — prueba todos los nombres posibles
+// Cavidades reales (col K) — busca cualquier columna que contenga CAVIDAD pero NO TEOR
 function getCav(r) {
-  const v = pNum(r['CAVIDADES'])||pNum(r['No. CAVIDADES'])||pNum(r['CAV'])||
-            pNum(r['CAVI'])||pNum(r['CAVIDADES REALES'])||pNum(r['Cavidades']);
-  return Math.max(v||1, 1);
+  for (const key of Object.keys(r)) {
+    const up = key.trim().toUpperCase();
+    if (up.includes('CAVIDAD') && !up.includes('TEOR')) {
+      const v = pNum(r[key]);
+      if (v > 0) return v;
+    }
+  }
+  return 1;
 }
-// Cavidades teóricas (col AO)
+// Cavidades teóricas (col AO) — busca columna que contenga CAVIDAD y TEOR
 function getCavTeor(r) {
-  const v = pNum(r['CAVIDADES TEORICAS'])||pNum(r['CAVIDADES TEÓRICAS'])||
-            pNum(r['CAV TEORICAS'])||pNum(r['CAV. TEORICAS']);
-  return Math.max(v||getCav(r), 1);
+  for (const key of Object.keys(r)) {
+    const up = key.trim().toUpperCase();
+    if (up.includes('CAVIDAD') && up.includes('TEOR')) {
+      const v = pNum(r[key]);
+      if (v > 0) return v;
+    }
+  }
+  return getCav(r);
 }
 // Horas reales de fabricación: cant × cicloReal(seg) / cavidades_reales / 3600
 function rowFabHoras(r) {
