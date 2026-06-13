@@ -467,9 +467,26 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="section" id="sec-costos">
       <div style="display:flex;gap:18px;align-items:flex-start">
 
-        <!-- PANEL IZQUIERDO: Tarifas configurables -->
+        <!-- PANEL IZQUIERDO: Filtros + Tarifas -->
         <div style="width:230px;min-width:230px;flex-shrink:0">
           <div class="filter-panel">
+            <div class="fp-title">Filtros</div>
+            <div class="fp-label">Mes</div>
+            <select id="costos-f-mes" class="fp-select" onchange="renderCostos()">
+              <option value="">Todos los meses</option>
+            </select>
+            <div class="fp-label" style="margin-top:10px">Máquina</div>
+            <select id="costos-f-maq" class="fp-select" onchange="renderCostos()">
+              <option value="">Todas</option>
+            </select>
+            <div class="fp-label" style="margin-top:10px">Días</div>
+            <div class="multi-sel-wrap">
+              <button class="multi-sel-btn" id="costos-dia-btn" onclick="toggleCostosDiaDD(event)">Todos los días ▾</button>
+              <div class="multi-sel-dropdown" id="costos-dia-dd"></div>
+            </div>
+            <button onclick="clearCostosDias()" style="margin-top:6px;background:none;border:1px solid #374151;color:#9CA3AF;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.68rem;width:100%">✕ Limpiar días</button>
+          </div>
+          <div class="filter-panel" style="margin-top:12px">
             <div class="fp-title">Tarifas (COP/hora)</div>
             <p style="font-size:.68rem;color:#6B7280;margin-bottom:10px">Cargadas automáticamente desde <strong style="color:#4B5563">Plan de Referencias</strong></p>
             <div id="costos-tarifas-form"></div>
@@ -542,7 +559,8 @@ let DATA = { prod: [], nc: [], planRef: [], ventas: [], accid: [], ncByOrden: {}
 let CHARTS = {};
 let SEL_DIAS      = new Set();
 let SEL_RAZONES   = new Set();
-let SEL_DIAS_PARO = new Set();
+let SEL_DIAS_PARO   = new Set();
+let SEL_DIAS_COSTOS = new Set();
 let SEL_CAUSAS    = new Set();
 let SEL_DIAS_NC   = new Set();
 // Tarifas por máquina (COP/hora) — editables por el usuario
@@ -638,6 +656,41 @@ function buildParoDiaDd(dias) {
       <input type="checkbox" onchange="toggleParoDia('${d}')">
       Día ${d}
     </label>`).join('');
+}
+
+// ── Panel costos: días independientes
+function buildCostosDiaDd(dias) {
+  const dd = document.getElementById('costos-dia-dd');
+  if (!dd) return;
+  dd.innerHTML = dias.map(d=>`
+    <label class="ms-item">
+      <input type="checkbox" onchange="toggleCostosDia('${d}')">
+      Día ${d}
+    </label>`).join('');
+}
+function toggleCostosDiaDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('costos-dia-dd');
+  if (!dd) return;
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
+}
+function toggleCostosDia(dia) {
+  if (SEL_DIAS_COSTOS.has(dia)) SEL_DIAS_COSTOS.delete(dia); else SEL_DIAS_COSTOS.add(dia);
+  updateCostosDiaBtn();
+  renderCostos();
+}
+function clearCostosDias() {
+  SEL_DIAS_COSTOS.clear();
+  document.querySelectorAll('#costos-dia-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
+  updateCostosDiaBtn();
+  renderCostos();
+}
+function updateCostosDiaBtn() {
+  const btn = document.getElementById('costos-dia-btn');
+  if (!btn) return;
+  if (SEL_DIAS_COSTOS.size===0) { btn.textContent='Todos los días ▾'; btn.classList.remove('active'); }
+  else { btn.textContent=`${SEL_DIAS_COSTOS.size} día(s) ▾`; btn.classList.add('active'); }
 }
 
 // ── Panel paros: razones
@@ -858,6 +911,10 @@ function populateAllFilters() {
   fillSel('paro-fp-mes', meses.map(cap), 'Mes');
   fillSel('paro-f-maq', maqs, 'Máquina');
   buildParoDiaDd(dias);
+  // Costos panel
+  fillSel('costos-f-mes', meses.map(cap), 'Mes');
+  fillSel('costos-f-maq', maqs.map(m=>'Máq '+m), 'Máquina');
+  buildCostosDiaDd(dias);
   // Razones de paro
   const razonMap = {};
   DATA.prod.filter(r=>r._paro>0).forEach(r=>{ const k=(r['RAZON PARO']||'').trim(); if(k) razonMap[k]=(razonMap[k]||0)+1; });
@@ -903,6 +960,17 @@ function filterProd() {
     (!dias.size || dias.has(String(r['DIA']||''))) &&
     (!maq      || String(r._maq) === maq) &&
     (!t        || String(r._turno) === t)
+  );
+}
+function filterCostos() {
+  const m    = getVal('costos-f-mes').toLowerCase();
+  const maqV = getVal('costos-f-maq'); // "Máq 1" or ""
+  const maqN = maqV ? maqV.replace('Máq ','').trim() : '';
+  const dias = SEL_DIAS_COSTOS;
+  return DATA.prod.filter(r =>
+    (!m    || r._mes === m) &&
+    (!dias.size || dias.has(String(r['DIA']||''))) &&
+    (!maqN || String(r._maq) === maqN)
   );
 }
 function filterParo() {
@@ -1513,7 +1581,7 @@ function buildTarifasForm() {
 }
 
 function renderCostos() {
-  const d = filterProd();
+  const d = filterCostos();
   buildTarifasForm();
 
   // ── Tabla 1: Costo fabricación por producto
