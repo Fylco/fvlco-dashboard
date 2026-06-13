@@ -2098,15 +2098,12 @@ function renderReporteDiario() {
   // Componentes:
   //   Disp_t = H.FAB / H.TURNO
   // ── OEE Ponderado por Tiempo ─────────────────────────────────────────
-  // Rend_t = Und.Prod / Und.Teo en H.FAB  (capacidad al ciclo estándar en tiempo disponible)
-  // Cal_t  = Und.Buenas / Und.Prod  (penaliza NC)
-  // Diferencia con OEE_u: denominador de Rend usa H.FAB (Disp ya absorbida)
-  // → Rend_t > Rend_u porque H.FAB < H.TURNO → dividimos por un número menor
-  const disp_t   = totHT > 0 ? totHF / totHT : 0;
-  const undTeoFAB = totUndTeo > 0 ? totUndTeo * disp_t : 0; // capacidad en H.FAB
-  const rend_t   = undTeoFAB > 0 ? Math.min(totCantO / undTeoFAB, 1) : 0;
-  const cal_t    = totCantO > 0 ? undBuenas / totCantO : 0;
-  const oee_t    = disp_t * rend_t * cal_t;
+  // Usa las columnas del sheet (OEE FINAL, % RENDIMIENTO, % DISPONIBILIDAD)
+  // para coincidir con los valores reportados en la pestaña OEE del sistema
+  const disp_t = (avg(rows, '_disp') || 0) / 100;
+  const rend_t = (avg(rows, '_rend') || 0) / 100;
+  const cal_t  = (calcCalidad(rows) || 0) / 100;
+  const oee_t  = (avg(rows, '_oee')  || 0) / 100;
 
   // ── OEE Ponderado por Unidades = Und.Buenas / Und.Teóricas ──────────
   // Rend_u = Und.Prod / Und.Teo en H.TURNO  (capacidad plena del turno)
