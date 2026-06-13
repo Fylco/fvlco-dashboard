@@ -256,13 +256,13 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-clear" onclick="clearFilters('rd');renderReporteDiario()">Limpiar</button>
       </div>
       <!-- OEE ensayo -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr;gap:16px;margin-bottom:18px;align-items:start">
         <div class="chart-card" id="rd-oee-tiempo"></div>
         <div class="chart-card" id="rd-oee-unid"></div>
-      </div>
-      <div class="chart-card" style="margin-bottom:18px">
-        <div id="rd-cumpl-box"></div>
-        <div id="rd-progress-bar"></div>
+        <div class="chart-card" style="padding:16px 14px">
+          <div id="rd-cumpl-box"></div>
+          <div id="rd-progress-bar"></div>
+        </div>
       </div>
       <div class="chart-card" style="overflow-x:auto;margin-top:18px">
         <div class="section-title">Resumen por Referencia</div>
