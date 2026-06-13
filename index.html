@@ -36,9 +36,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .sidebar.collapsed { transform: translateX(-240px); }
 .main { margin-left: 240px; min-height: 100vh; transition: margin .3s; }
 .main.expanded { margin-left: 0; }
-.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; cursor: pointer; transition: all .2s; color: #9CA3AF; font-size: .82rem; font-weight: 500; margin: 2px 8px; }
-.nav-item:hover, .nav-item.active { background: rgba(139,92,246,.15); color: #8B5CF6; }
-.nav-item.active { border-left: 3px solid #8B5CF6; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 8px; cursor: pointer; transition: all .2s; color: #6B7280; font-size: .82rem; font-weight: 500; margin: 2px 8px; }
+.nav-item:hover { background: rgba(255,255,255,.05); color: #D1D5DB; }
+.nav-item .nav-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: .85rem; flex-shrink: 0; transition: all .2s; background: rgba(255,255,255,.06); color: #6B7280; }
+.nav-item.active .nav-icon { color: #fff; }
+.nav-item.active { font-weight: 600; border-left: 3px solid; padding-left: 11px; }
 .section { display: none; }
 .section.active { display: block; }
 .kpi-card { background: #1F2937; border: 1px solid #374151; border-radius: 12px; padding: 18px 20px; position: relative; overflow: hidden; }
@@ -126,35 +128,35 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
   </div>
   <!-- Nav -->
   <div style="flex:1;overflow-y:auto;padding:8px 0">
-    <div class="nav-item active" onclick="showSection('resumen')" data-section="resumen">
-      <i class="fa-solid fa-gauge-high w-4"></i> Resumen General
+    <div class="nav-item active" onclick="showSection('resumen')" data-section="resumen" data-color="#6366F1">
+      <span class="nav-icon"><i class="fa-solid fa-gauge-high"></i></span> Resumen General
     </div>
-    <div class="nav-item" onclick="showSection('oee')" data-section="oee">
-      <i class="fa-solid fa-circle-nodes w-4"></i> OEE
+    <div class="nav-item" onclick="showSection('oee')" data-section="oee" data-color="#10B981">
+      <span class="nav-icon"><i class="fa-solid fa-circle-nodes"></i></span> OEE
     </div>
-    <div class="nav-item" onclick="showSection('reporte-diario')" data-section="reporte-diario">
-      <i class="fa-solid fa-calendar-day w-4"></i> Reporte Diario
+    <div class="nav-item" onclick="showSection('reporte-diario')" data-section="reporte-diario" data-color="#3B82F6">
+      <span class="nav-icon"><i class="fa-solid fa-calendar-day"></i></span> Reporte Diario
     </div>
-    <div class="nav-item" onclick="showSection('plan-mensual')" data-section="plan-mensual">
-      <i class="fa-solid fa-calendar-check w-4"></i> Plan vs Real Mensual
+    <div class="nav-item" onclick="showSection('plan-mensual')" data-section="plan-mensual" data-color="#F59E0B">
+      <span class="nav-icon"><i class="fa-solid fa-calendar-check"></i></span> Plan vs Real Mensual
     </div>
-    <div class="nav-item" onclick="showSection('plan-ref')" data-section="plan-ref">
-      <i class="fa-solid fa-boxes-stacked w-4"></i> Plan vs Real Referencias
+    <div class="nav-item" onclick="showSection('plan-ref')" data-section="plan-ref" data-color="#8B5CF6">
+      <span class="nav-icon"><i class="fa-solid fa-boxes-stacked"></i></span> Plan vs Real Referencias
     </div>
-    <div class="nav-item" onclick="showSection('noconf')" data-section="noconf">
-      <i class="fa-solid fa-triangle-exclamation w-4"></i> No Conformes
+    <div class="nav-item" onclick="showSection('noconf')" data-section="noconf" data-color="#EF4444">
+      <span class="nav-icon"><i class="fa-solid fa-triangle-exclamation"></i></span> No Conformes
     </div>
-    <div class="nav-item" onclick="showSection('otif')" data-section="otif">
-      <i class="fa-solid fa-truck-fast w-4"></i> OTIF
+    <div class="nav-item" onclick="showSection('otif')" data-section="otif" data-color="#06B6D4">
+      <span class="nav-icon"><i class="fa-solid fa-truck-fast"></i></span> OTIF
     </div>
-    <div class="nav-item" onclick="showSection('paros')" data-section="paros">
-      <i class="fa-solid fa-clock w-4"></i> Tiempos de Paro
+    <div class="nav-item" onclick="showSection('paros')" data-section="paros" data-color="#F97316">
+      <span class="nav-icon"><i class="fa-solid fa-clock"></i></span> Tiempos de Paro
     </div>
-    <div class="nav-item" onclick="showSection('accid')" data-section="accid">
-      <i class="fa-solid fa-helmet-safety w-4"></i> Status Personal
+    <div class="nav-item" onclick="showSection('accid')" data-section="accid" data-color="#EC4899">
+      <span class="nav-icon"><i class="fa-solid fa-helmet-safety"></i></span> Status Personal
     </div>
-    <div class="nav-item" onclick="showSection('costos')" data-section="costos">
-      <i class="fa-solid fa-dollar-sign w-4"></i> Costos
+    <div class="nav-item" onclick="showSection('costos')" data-section="costos" data-color="#84CC16">
+      <span class="nav-icon"><i class="fa-solid fa-dollar-sign"></i></span> Costos
     </div>
   </div>
   <!-- Tagline -->
@@ -2395,9 +2397,23 @@ function showSection(id) {
     showPinModal(id); return;
   }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    n.classList.remove('active');
+    n.style.color=''; n.style.borderLeftColor=''; n.style.background='';
+    const ic = n.querySelector('.nav-icon');
+    if(ic){ ic.style.background=''; ic.style.color=''; }
+  });
   document.getElementById('sec-'+id)?.classList.add('active');
-  document.querySelector(`[data-section="${id}"]`)?.classList.add('active');
+  const activeNav = document.querySelector(`[data-section="${id}"]`);
+  if(activeNav){
+    activeNav.classList.add('active');
+    const color = activeNav.dataset.color || '#8B5CF6';
+    activeNav.style.color = color;
+    activeNav.style.borderLeftColor = color;
+    activeNav.style.background = color+'18';
+    const ic = activeNav.querySelector('.nav-icon');
+    if(ic){ ic.style.background = color+'33'; ic.style.color = color; }
+  }
   document.getElementById('page-title').textContent = TITLES[id]||id;
   if(SECTION_RENDERS[id] && DATA.prod.length) SECTION_RENDERS[id]();
   if(window.innerWidth<=768) closeSidebar();
@@ -2754,6 +2770,18 @@ function exportPDF() {
 // INIT
 // =======================================================
 loadAll();
+// Aplicar color inicial al nav-item activo por defecto
+(function(){
+  const activeNav = document.querySelector('.nav-item.active');
+  if(activeNav){
+    const color = activeNav.dataset.color || '#8B5CF6';
+    activeNav.style.color = color;
+    activeNav.style.borderLeftColor = color;
+    activeNav.style.background = color+'18';
+    const ic = activeNav.querySelector('.nav-icon');
+    if(ic){ ic.style.background = color+'33'; ic.style.color = color; }
+  }
+})();
 </script>
 </body>
 </html>
