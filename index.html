@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>FVLco · Dashboard Industrial 2026</title>
+<title>FVLco · Dashboard Operaciones</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
@@ -204,7 +204,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
     <!-- ======================================= RESUMEN == -->
     <div class="section active" id="sec-resumen">
-      <div class="section-title">Indicadores Clave <span style="color:#8B5CF6;font-size:.7rem">2026</span></div>
+      <div class="section-title">Indicadores Clave</div>
       <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px"></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:18px">
         <div class="chart-card"><div class="section-title">OEE por Máquina</div><div style="height:220px"><canvas id="r-oee-maq"></canvas></div></div>
@@ -2676,7 +2676,7 @@ function exportPDF() {
     pdf.setFont('helvetica','bold'); pdf.setFontSize(32); pdf.setTextColor(238,238,238);
     pdf.text('FVLco', pageW/2, 80, {align:'center'});
     pdf.setFontSize(13); pdf.setTextColor(156,163,175);
-    pdf.text('Dashboard Industrial 2026', pageW/2, 92, {align:'center'});
+    pdf.text('Dashboard Operaciones', pageW/2, 92, {align:'center'});
     pdf.setFontSize(10); pdf.setTextColor(96,165,250);
     pdf.text(`Período: ${mesLabel}`, pageW/2, 108, {align:'center'});
     pdf.text(`Días: ${diasLabel}`, pageW/2, 116, {align:'center'});
