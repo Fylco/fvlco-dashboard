@@ -264,15 +264,12 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-clear" onclick="clearFilters('rd');renderReporteDiario()">Limpiar</button>
       </div>
       <!-- OEE ensayo -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr 0.7fr;gap:16px;margin-bottom:18px;align-items:start">
+      <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr;gap:16px;margin-bottom:18px;align-items:start">
         <div class="chart-card" id="rd-oee-tiempo"></div>
         <div class="chart-card" id="rd-oee-unid"></div>
         <div class="chart-card" style="padding:16px 14px">
           <div id="rd-cumpl-box"></div>
           <div id="rd-progress-bar"></div>
-        </div>
-        <div class="chart-card" style="padding:16px 14px">
-          <div id="rd-takt-box"></div>
         </div>
       </div>
       <div class="chart-card" style="overflow-x:auto;margin-top:18px">
@@ -2307,40 +2304,6 @@ function renderReporteDiario() {
       <td style="text-align:right;color:${faltColor}">${faltTxt}</td>
     </tr>`;
   });
-
-  // ── Takt Time ─────────────────────────────────────────────────────────
-  // Tiempo disponible total = suma de dispSeg de cada slot con undProg calculado
-  let totDispSeg = 0;
-  Object.values(slotCap).forEach(s => {
-    if (s.dispSeg != null) totDispSeg += s.dispSeg;       // slot con ciclo estimado
-    else if (s.cantTotal > 0) totDispSeg += 28800;         // slot sin ciclo (fallback 8h)
-  });
-  const taktTime  = totalProg > 0 ? totDispSeg / totalProg : 0;  // seg/und requerida
-  const cicloReal = totalProd > 0 ? totDispSeg / totalProd : 0;  // seg/und producida
-  const taktRatio = taktTime > 0 ? cicloReal / taktTime : 0;     // <1 ok, >1 lento
-  const taktColor = taktRatio <= 1 ? '#10B981' : taktRatio <= 1.2 ? '#F59E0B' : '#EF4444';
-  const taktLabel = taktRatio <= 1 ? '✅ RITMO OK' : taktRatio <= 1.2 ? '⚠️ EN LÍMITE' : '🔴 POR DEBAJO';
-  const taktBg    = taktRatio <= 1 ? 'rgba(16,185,129,.12)' : taktRatio <= 1.2 ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
-  const fmtSeg = s => s >= 60 ? `${(s/60).toFixed(1)} min` : `${s.toFixed(1)} seg`;
-  document.getElementById('rd-takt-box').innerHTML = `
-    <div style="font-size:.68rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">⏱ Takt Time vs Ciclo Real</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-      <div style="background:#1F2937;border-radius:8px;padding:10px 8px;border-left:3px solid #60A5FA;text-align:center">
-        <div style="font-size:.58rem;color:#9CA3AF;text-transform:uppercase;margin-bottom:2px">Takt Time</div>
-        <div style="font-size:1.1rem;font-weight:800;color:#60A5FA">${taktTime > 0 ? fmtSeg(taktTime) : '—'}</div>
-        <div style="font-size:.58rem;color:#6B7280;margin-top:2px">seg/und requerida</div>
-      </div>
-      <div style="background:#1F2937;border-radius:8px;padding:10px 8px;border-left:3px solid ${taktColor};text-align:center">
-        <div style="font-size:.58rem;color:#9CA3AF;text-transform:uppercase;margin-bottom:2px">Ciclo Real</div>
-        <div style="font-size:1.1rem;font-weight:800;color:${taktColor}">${cicloReal > 0 ? fmtSeg(cicloReal) : '—'}</div>
-        <div style="font-size:.58rem;color:#6B7280;margin-top:2px">seg/und producida</div>
-      </div>
-    </div>
-    <div style="text-align:center;font-size:.78rem;font-weight:700;color:${taktColor};background:${taktBg};border:1px solid ${taktColor}44;border-radius:6px;padding:4px 10px">${taktLabel}</div>
-    <div style="margin-top:8px;background:#374151;border-radius:99px;height:10px;overflow:hidden">
-      <div style="width:${Math.min(taktRatio*100,100).toFixed(1)}%;height:100%;background:linear-gradient(90deg,${taktColor}cc,${taktColor});border-radius:99px;transition:width .6s ease"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:.6rem;color:#6B7280;margin-top:3px"><span>0</span><span>Takt Time</span></div>`;
 
   const cumpl = totalProg > 0 ? (totalProd / totalProg * 100) : 0;
   // Semáforo: Verde ≥90%, Amarillo ≥70%, Rojo <70%
