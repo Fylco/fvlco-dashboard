@@ -1011,12 +1011,7 @@ function normalizeProd(r) {
     if (_m >= 1 && _m <= 12) _mesTurno = _MESES_ES[_m];
   }
 
-  // Guardar valores raw de campos de porcentaje ANTES de la conversión masiva.
-  // pNum() elimina todos los puntos (separador miles CO), lo que destruye decimales
-  // como "0.42447" → 42447. Los campos de % deben parsearse sin eliminar puntos.
   const PCT_FIELDS = ['% RENDIMIENTO','% DISPONIBILIDAD','OEE FINAL','% CALIDAD'];
-  const pctRaw = {};
-  PCT_FIELDS.forEach(f => { pctRaw[f] = out[f]; });
 
   for (const k in out) {
     const v = out[k];
@@ -1025,24 +1020,15 @@ function normalizeProd(r) {
       if (n !== null) out[k] = n;
     }
   }
-
-  // Re-parsear campos de % con parseFloat directo (sin eliminar puntos decimales).
-  // Soporta: "0.8533" → 0.8533, "0,8533" → 0.8533, "85.33" → 85.33, "85,33" → 85.33
-  const pNumPct = v => {
-    if (v === null || v === undefined || v === '') return null;
-    if (typeof v === 'number') return isNaN(v) ? null : v;
-    const s = String(v).replace('%','').replace(',','.').trim();
-    const n = parseFloat(s);
-    return isNaN(n) ? null : n;
-  };
-  PCT_FIELDS.forEach(f => {
-    const v = pNumPct(pctRaw[f]);
-    if (v !== null) out[f] = v;
-  });
-
   // normalize pct fields 0-1 → 0-100
   PCT_FIELDS.forEach(f => {
     if (out[f] !== null && out[f] !== undefined && Math.abs(out[f]) <= 1.5) out[f] = out[f]*100;
+  });
+  // Excluir valores de % imposibles (errores de fórmula del sheet, ej OEE FINAL="254364,64%").
+  // Rendimiento/OEE pueden superar 100% levemente; >200% es un dato corrupto → null
+  // para que avg()/charts/tablas lo ignoren en vez de inflar el promedio.
+  PCT_FIELDS.forEach(f => {
+    if (out[f] !== null && out[f] !== undefined && out[f] > 200) out[f] = null;
   });
   out._mes   = typeof out['MES'] === 'string' ? out['MES'].toLowerCase() : out['MES'];
   out._maq   = out['MÁQUINA'] ?? out['MAQUINA'] ?? '';
