@@ -1937,7 +1937,7 @@ function renderCostos() {
       <td style="text-align:right;color:#9CA3AF">${(r.hFab+r.hParo).toFixed(2)}</td>
       <td style="text-align:right;color:#10B981;font-weight:600">${fmtCOP(r.costoFab)}</td>
       <td style="text-align:right;color:#EF4444">${fmtCOP(r.costoParo)}</td>
-      <td style="text-align:right">${(r.hFab+r.hParo)>0?badge(r.hParo/(r.hFab+r.hParo)*100,5,15,true):badge(null)}</td>
+      <td style="text-align:right">${(r.hFab+r.hParo)>0?badge(r.hParo/(r.hFab+r.hParo)*100,5,15):badge(null)}</td>
     </tr>`).join('')}</tbody>`;
 
   const totalCosto = maqRows.reduce((s,r)=>s+r.costoTotal,0);
@@ -2212,7 +2212,7 @@ function renderReporteDiario() {
     if (!rawMaq || !maqKey) return;
     const mes = (r['MES '] || r['MES'] || '').trim().toLowerCase();
     if (fMes && mes !== ncMesLow) return;
-    if (fDia && String(r._diaTurno) !== fDia) return;
+    if (fDia && (!r._diaTurno || String(r._diaTurno) !== fDia)) return;
     if (fTurno && r['TURNO'] && String(r['TURNO']).trim() !== fTurno) return;
     const nc = pNum(r['CANTIDAD NC']);
     if (nc > 0) oeeByMaq[maqKey]._nc += nc;
@@ -3250,7 +3250,8 @@ function fvCalcErrors(actual, fitted) {
   const mae=pairs.reduce((s,[a,f])=>s+Math.abs(a-f),0)/pairs.length;
   const mse=pairs.reduce((s,[a,f])=>s+(a-f)**2,0)/pairs.length;
   const rmse=Math.sqrt(mse);
-  const mape=pairs.filter(([a])=>a!==0).reduce((s,[a,f])=>s+Math.abs((a-f)/a),0)/pairs.filter(([a])=>a!==0).length*100;
+  const nonZero=pairs.filter(([a])=>a!==0);
+  const mape=nonZero.length ? nonZero.reduce((s,[a,f])=>s+Math.abs((a-f)/a),0)/nonZero.length*100 : 0;
   return {mae,mse,rmse,mape};
 }
 
