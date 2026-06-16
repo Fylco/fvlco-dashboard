@@ -1205,7 +1205,7 @@ function filterParo() {
   const maq = getVal('paro-f-maq');
   const dias = SEL_DIAS_PARO.size ? SEL_DIAS_PARO : SEL_DIAS;
   return DATA.prod.filter(r =>
-    (!m        || r._mes === m) &&
+    (!m        || (r._mesTurno || r._mes) === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq      || String(r._maq) === maq) &&
     (!SEL_RAZONES.size || SEL_RAZONES.has((r['RAZON PARO']||'').trim()))
@@ -1488,7 +1488,7 @@ function groupNC(col) {
 function renderNC() {
   const d = filterNC();
   const totalNC  = d.reduce((s,r)=>s+(pNum(r['CANTIDAD NC'])||0),0);
-  const totalProd = sum(DATA.prod,'_cant');
+  const totalProd = sum(filterProd(),'_cant');
   const pctNC = totalProd>0?(totalNC/totalProd*100):0;
   // Pitorro ratio
   const pitRows = d.filter(r=>(r['CAUSA']||'').toUpperCase().includes('PITORRO'));
@@ -2887,7 +2887,7 @@ function exportPDF() {
 
     // ── COSTOS
     newPage('Costos de Producción');
-    const dC = filterProd();
+    const dC = filterCostos();
     let totFab=0,totParo2=0,totTeor=0,totReal2=0,totPerd=0,totLucro=0;
     const maqCostos={};
     dC.forEach(r=>{
