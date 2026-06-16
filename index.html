@@ -1024,12 +1024,21 @@ function normalizeProd(r) {
   PCT_FIELDS.forEach(f => {
     if (out[f] !== null && out[f] !== undefined && Math.abs(out[f]) <= 1.5) out[f] = out[f]*100;
   });
-  // Excluir valores de % imposibles (errores de fórmula del sheet, ej OEE FINAL="254364,64%").
-  // Rendimiento/OEE pueden superar 100% levemente; >200% es un dato corrupto → null
+  // Excluir valores de % imposibles (errores de fórmula del sheet, ej "254364,64%").
+  // Rendimiento puede superar 100% levemente; >200% es un dato corrupto → null
   // para que avg()/charts/tablas lo ignoren en vez de inflar el promedio.
   PCT_FIELDS.forEach(f => {
     if (out[f] !== null && out[f] !== undefined && out[f] > 200) out[f] = null;
   });
+  // OEE FINAL: NO usar la columna del sheet (presenta errores de fórmula).
+  // Se recalcula siempre = Disponibilidad × Rendimiento × Calidad.
+  // Si falta algún componente, no se puede calcular → null (se excluye de promedios).
+  {
+    const _d = out['% DISPONIBILIDAD'], _r = out['% RENDIMIENTO'], _c = out['% CALIDAD'];
+    out['OEE FINAL'] = (_d != null && _r != null && _c != null)
+      ? (_d * _r * _c) / 10000
+      : null;
+  }
   out._mes   = typeof out['MES'] === 'string' ? out['MES'].toLowerCase() : out['MES'];
   out._maq   = out['MÁQUINA'] ?? out['MAQUINA'] ?? '';
   out._turno = out['TURNO'] ?? '';
