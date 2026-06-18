@@ -164,6 +164,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="nav-item" onclick="showSection('forecast')" data-section="forecast" data-color="#38BDF8">
       <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Forecast
     </div>
+    <div class="nav-item" onclick="showSection('maquilas')" data-section="maquilas" data-color="#A78BFA">
+      <span class="nav-icon"><i class="fa-solid fa-handshake"></i></span> Maquilas
+    </div>
     <div class="nav-item" onclick="showSection('descripcion')" data-section="descripcion" data-color="#A78BFA">
       <span class="nav-icon"><i class="fa-solid fa-book-open"></i></span> Descripción de Indicadores
     </div>
@@ -709,6 +712,18 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
     </div>
 
+    <!-- ======================================= MAQUILAS == -->
+    <div class="section" id="sec-maquilas" style="padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:18px">
+        <div class="section-title" style="margin:0">
+          <i class="fa-solid fa-handshake" style="color:#A78BFA;margin-right:8px"></i>Maquilas por Cliente
+        </div>
+        <button onclick="loadMaquilas().then(renderMaquilas)" style="background:#1F2937;border:1px solid #A78BFA;color:#A78BFA;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600">↺ Actualizar maquilas</button>
+      </div>
+      <div id="maquilas-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px"></div>
+      <div id="maquilas-content"></div>
+    </div>
+
     <!-- ======================================= DESCRIPCION == -->
     <div class="section" id="sec-descripcion" style="padding:24px">
       <div class="section-title" style="margin-bottom:16px">
@@ -732,6 +747,8 @@ const SHEETS = {
   accid:        'https://docs.google.com/spreadsheets/d/e/2PACX-1vSN27DTnvERSvXgjF5QwKZdvUupeMN7U5yQGuFTy6HrA6pK5D5y0755mPs-2jWEDGnYb6URjgC5yVp5/pub?gid=904371036&single=true&output=csv',
   ventas:       'https://docs.google.com/spreadsheets/d/e/2PACX-1vSN27DTnvERSvXgjF5QwKZdvUupeMN7U5yQGuFTy6HrA6pK5D5y0755mPs-2jWEDGnYb6URjgC5yVp5/pub?gid=2006233736&single=true&output=csv',
 };
+// Maquilas: hoja distinta. Endpoint gviz → CSV directo con CORS (sin redirección)
+const MAQUILAS_CSV = 'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=1924737619';
 const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + encodeURIComponent(u) : u;
 
 // =======================================================
@@ -993,6 +1010,42 @@ async function fetchCSV(url) {
   return Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
 }
 
+// Maquilas: layout de dos clientes lado a lado (VELCOPLAST cols 0-2, PRACTIDENT cols 4-6).
+// Cada bloque: Fecha / Referencia / Cantidad. Se parsea sin header.
+async function loadMaquilas() {
+  try {
+    const res = await fetch(proxy(MAQUILAS_CSV + `&_t=${Date.now()}`), { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = Papa.parse(await res.text(), { header: false, skipEmptyLines: false }).data;
+    DATA.maquilas = parseMaquilas(rows);
+  } catch (e) {
+    console.warn('Maquilas no cargó (se omite):', e.message);
+    DATA.maquilas = [];
+  }
+}
+function parseMaquilas(rows) {
+  if (!rows || !rows.length) return [];
+  const header = rows[0] || [];
+  // Nombre de cada cliente: lo que va antes de "FECHA" en su columna de inicio
+  const blocks = [
+    { name: String(header[0]||'').replace(/fecha.*/i,'').trim() || 'Cliente A', c:[0,1,2] },
+    { name: String(header[4]||'').replace(/fecha.*/i,'').trim() || 'Cliente B', c:[4,5,6] }
+  ];
+  const recs = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    blocks.forEach(b => {
+      const fecha = String(r[b.c[0]]||'').trim();
+      const ref   = String(r[b.c[1]]||'').trim();
+      const cant  = String(r[b.c[2]]||'').trim();
+      // saltar filas de subencabezado o vacías
+      if (/^fecha$/i.test(fecha) || /^referencia/i.test(ref)) return;
+      if (ref || cant) recs.push({ cliente:b.name, fecha, referencia:ref, cantidad:cant });
+    });
+  }
+  return recs;
+}
+
 const _MESES_ES = ['','enero','febrero','marzo','abril','mayo','junio',
                    'julio','agosto','septiembre','octubre','noviembre','diciembre'];
 function normalizeProd(r) {
@@ -1133,6 +1186,9 @@ async function loadAll() {
     setProgress(82, 'Cargando Accidentalidad...');
     const accidParsed = await fetchCSV(SHEETS.accid);
     DATA.accid = accidParsed.data;
+
+    setProgress(92, 'Cargando Maquilas...');
+    await loadMaquilas();   // hoja distinta; no debe bloquear el resto si falla
 
     setProgress(100, 'Listo');
     document.getElementById('last-update').textContent =
@@ -2580,6 +2636,59 @@ async function exportCompactPDF() {
   }
   if (btn) { btn.disabled = false; btn.innerHTML = prev; }
 }
+
+// =======================================================
+// MAQUILAS (pestaña dedicada)
+// =======================================================
+function renderMaquilas() {
+  const cont = document.getElementById('maquilas-content');
+  const kpis = document.getElementById('maquilas-kpis');
+  if (!cont) return;
+  const pN = v => { const n=parseFloat(String(v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; };
+  const ri = n => Math.round(n||0).toString();
+  const data = DATA.maquilas || [];
+
+  if (!data.length) {
+    if (kpis) kpis.innerHTML = '';
+    cont.innerHTML = `<div style="background:#1F2937;border:1px solid #374151;border-radius:10px;padding:30px;text-align:center;color:#6B7280">
+      <i class="fa-solid fa-handshake" style="font-size:1.5rem;color:#4B5563;margin-bottom:8px"></i><br>
+      Sin maquilas registradas todavía. Cuando se agreguen filas en la hoja, aparecerán aquí.
+    </div>`;
+    return;
+  }
+
+  // Agrupar por cliente
+  const byCli = {};
+  data.forEach(m => { (byCli[m.cliente] ||= []).push(m); });
+  const clientes = Object.keys(byCli).sort();
+  const totalCant = data.reduce((s,m)=>s+pN(m.cantidad),0);
+
+  if (kpis) kpis.innerHTML =
+    kpiCard('Clientes con Maquila', clientes.length, '#A78BFA', '', 'fa-solid fa-users') +
+    kpiCard('Referencias', data.length, '#38BDF8', 'Registros activos', 'fa-solid fa-boxes-stacked') +
+    kpiCard('Cantidad Total', ri(totalCant), '#10B981', 'Unidades en maquila', 'fa-solid fa-cubes');
+
+  cont.innerHTML = clientes.map(cli => {
+    const rows = byCli[cli];
+    const subtotal = rows.reduce((s,m)=>s+pN(m.cantidad),0);
+    const body = rows.map(m=>`<tr>
+      <td>${m.fecha||'—'}</td>
+      <td>${m.referencia||'—'}</td>
+      <td style="text-align:right;color:#10B981;font-weight:600">${m.cantidad?ri(pN(m.cantidad)):'—'}</td>
+    </tr>`).join('');
+    return `<div class="chart-card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:.95rem;font-weight:700;color:#F3F4F6"><i class="fa-solid fa-building" style="color:#A78BFA;margin-right:6px"></i>${cli}</div>
+        <div style="font-size:.8rem;background:#374151;border-radius:6px;padding:4px 12px;color:#10B981;font-weight:600">Total: ${ri(subtotal)} und</div>
+      </div>
+      <table class="tbl" style="width:100%">
+        <thead><tr><th>Fecha</th><th>Referencia / Producto</th><th style="text-align:right">Cantidad</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
 function renderReporteCompacto() {
   const contentEl = document.getElementById('rc-content');
   if (!contentEl) return;
@@ -2761,8 +2870,8 @@ function renderReporteCompacto() {
   }).join('');
 
   const maquilaRows = maquilas.length
-    ? maquilas.map(m=>`<tr><td>${m.cliente||m['CLIENTE']||'—'}</td><td>${m.referencia||m['REFERENCIA']||'—'}</td><td style="text-align:right">${m.cantidad||m['CANTIDAD']||'—'}</td><td>${m.estado||m['ESTADO']||'—'}</td></tr>`).join('')
-    : `<tr><td colspan="4" style="text-align:center;color:#6B7280;padding:14px">Pendiente conectar la pestaña Maquilas del Sheet</td></tr>`;
+    ? maquilas.map(m=>`<tr><td style="font-weight:600;color:#A78BFA">${m.cliente||'—'}</td><td>${m.fecha||'—'}</td><td>${m.referencia||'—'}</td><td style="text-align:right">${m.cantidad?ri(pN(m.cantidad)):'—'}</td></tr>`).join('')
+    : `<tr><td colspan="4" style="text-align:center;color:#6B7280;padding:14px">Sin maquilas registradas para mostrar</td></tr>`;
 
   contentEl.innerHTML = `
     <div class="chart-card" style="padding:0;overflow:hidden">
@@ -2855,7 +2964,7 @@ function renderReporteCompacto() {
       <div style="padding:14px 20px;border-top:1px solid #374151">
         <div class="section-title" style="margin-bottom:10px"><i class="fa-solid fa-handshake" style="color:#A78BFA;margin-right:6px"></i>Maquilas</div>
         <table class="tbl" style="width:100%">
-          <thead><tr><th>Cliente</th><th>Referencia</th><th style="text-align:right">Cantidad</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Fecha</th><th>Referencia</th><th style="text-align:right">Cantidad</th></tr></thead>
           <tbody>${maquilaRows}</tbody>
         </table>
       </div>
@@ -2870,6 +2979,7 @@ function renderAll() {
   renderOEE();
   renderReporteDiario();
   renderReporteCompacto();
+  renderMaquilas();
   renderPlanMensual();
   renderPlanRef();
   renderNC();
@@ -2888,14 +2998,14 @@ const TITLES = {
   'reporte-compacto':'Reporte Diario Compacto',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
-  accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', descripcion:'Descripción de Indicadores'
+  accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', maquilas:'Maquilas', descripcion:'Descripción de Indicadores'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
   'reporte-compacto':renderReporteCompacto,
   'plan-mensual':renderPlanMensual,
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
-  paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, descripcion:renderDescripcion
+  paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, maquilas:renderMaquilas, descripcion:renderDescripcion
 };
 // Secciones protegidas con clave
 const PROTECTED = { costos: 'fvlco2026', forecast: 'fvlco2026' };
