@@ -137,6 +137,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="nav-item" onclick="showSection('reporte-diario')" data-section="reporte-diario" data-color="#3B82F6">
       <span class="nav-icon"><i class="fa-solid fa-calendar-day"></i></span> Reporte Diario
     </div>
+    <div class="nav-item" onclick="showSection('reporte-compacto')" data-section="reporte-compacto" data-color="#22D3EE">
+      <span class="nav-icon"><i class="fa-solid fa-file-lines"></i></span> Reporte Compacto
+    </div>
     <div class="nav-item" onclick="showSection('plan-mensual')" data-section="plan-mensual" data-color="#F59E0B">
       <span class="nav-icon"><i class="fa-solid fa-calendar-check"></i></span> Plan vs Real Mensual
     </div>
@@ -286,6 +289,30 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </div>
         <div id="rd-paro-container"></div>
       </div>
+    </div>
+
+    <!-- ======================================= REPORTE COMPACTO == -->
+    <div class="section" id="sec-reporte-compacto">
+      <div class="filter-bar">
+        <select id="rc-f-mes">
+          <option value="">Todos los meses</option>
+          <option>Enero</option><option>Febrero</option><option>Marzo</option><option>Abril</option>
+          <option>Mayo</option><option>Junio</option><option>Julio</option><option>Agosto</option>
+          <option>Septiembre</option><option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
+        </select>
+        <select id="rc-f-dia"><option value="">Todos los días</option></select>
+        <select id="rc-f-turno">
+          <option value="">Todos los turnos</option>
+          <option value="1">T1 — 6:00 AM a 2:00 PM</option>
+          <option value="2">T2 — 2:00 PM a 10:00 PM</option>
+          <option value="3">T3 — 10:00 PM a 6:00 AM</option>
+          <option value="4">T4 — 6:00 AM a 6:00 PM</option>
+          <option value="5">T5 — 6:00 PM a 6:00 AM</option>
+        </select>
+        <button class="btn-filter" onclick="renderReporteCompacto()">Filtrar</button>
+        <button class="btn-clear" onclick="clearFilters('rc');renderReporteCompacto()">Limpiar</button>
+      </div>
+      <div id="rc-content"></div>
     </div>
 
     <!-- ======================================= PLAN MENSUAL == -->
@@ -2503,12 +2530,266 @@ function renderReporteDiario() {
 }
 
 // =======================================================
+// REPORTE DIARIO COMPACTO (una sola página, estilo reporte enviado)
+// =======================================================
+function renderReporteCompacto() {
+  const contentEl = document.getElementById('rc-content');
+  if (!contentEl) return;
+  const pN = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+  const ri = n => Math.round(n||0).toString();          // entero sin separador
+  const pc = v => (v===null||isNaN(v)) ? '—' : v.toFixed(2)+'%';
+
+  // ── Poblar selectores (una vez) y default al último día con datos ──────
+  const diaEl = document.getElementById('rc-f-dia');
+  if (diaEl && diaEl.options.length <= 1) {
+    const dias = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+    dias.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
+    if (dias.length) diaEl.value = dias[dias.length-1];   // default: último día
+  }
+  const fMes   = (document.getElementById('rc-f-mes')?.value   || '').trim();
+  const fDia   = (document.getElementById('rc-f-dia')?.value   || '').trim();
+  const fTurno = (document.getElementById('rc-f-turno')?.value || '').trim();
+
+  const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, '');
+
+  // ── Capacidad programada por slot (igual que el reporte detallado) ─────
+  const esProgramado = razon => /programado/i.test(String(razon || ''));
+  const slotCap = {};
+  rows.forEach(r => {
+    const sKey = `${r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
+    if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0, paroProgSeg:0 };
+    slotCap[sKey].cantTotal += pN(r._cant);
+    if (esProgramado(r['RAZON PARO'] || r['RAZÓN PARO'])) slotCap[sKey].paroProgSeg += pN(r._paro) * 60;
+  });
+  rows.forEach(r => {
+    const maq = String(r._maq||'?');
+    const sKey = `${r._diaTurno||'?'}|${maq}|${String(r._turno||'?')}`;
+    const s = slotCap[sKey];
+    if (!s.undProg && maq !== '?') {
+      const est = pN(r['T. CICLO EST']);
+      if (est > 0) {
+        const cavTeor = Math.max(pN(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
+        const dispSeg = Math.max(28800 - (s.paroProgSeg||0), 0);
+        s.undProg = Math.round((dispSeg / est) * cavTeor);
+      }
+    }
+  });
+
+  // ── Agrupar por máquina ────────────────────────────────────────────────
+  const maqMap = {};
+  rows.forEach(r => {
+    const maq = String(r._maq || '—');
+    if (!maqMap[maq]) maqMap[maq] = {
+      maq, prod:r._prod||'—', rows:[], turnos:new Set(), dtSet:{},
+      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, undProd:0
+    };
+    const g = maqMap[maq];
+    g.rows.push(r);
+    if (r._turno) g.turnos.add(String(r._turno));
+    const dia = String(r._diaTurno||''), t = String(r._turno||'');
+    if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia] ||= new Set()).add(t); }
+    if (!g.cavTeor)   g.cavTeor   = Math.max(pN(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 0, 0);
+    if (!g.cicloEst)  g.cicloEst  = pN(r['T. CICLO EST']);
+    if (!g.cavReal)   g.cavReal   = _findColVal(r,'CAVIDAD','TEOR') || 0;
+    if (!g.cicloReal) g.cicloReal = pN(r['T. CICLO REAL']) || pN(r['T.CICLO REAL']) || 0;
+    g.paro    += pN(r._paro);
+    g.undProd += pN(r._cant);
+  });
+
+  // undProg por máquina = suma de capacidades de sus slots
+  Object.keys(slotCap).forEach(k => {
+    const maq = k.split('|')[1];
+    if (maqMap[maq]) maqMap[maq]._undProgSum = (maqMap[maq]._undProgSum||0) + slotCap[k].undProg;
+  });
+
+  const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
+
+  // Métricas por máquina: D/R/C = promedio de columnas del sheet; OEE = D×R×C
+  maqList.forEach(g => {
+    g.disp = avg(g.rows,'_disp');
+    g.rend = avg(g.rows,'_rend');
+    g.cal  = avg(g.rows,'% CALIDAD');
+    g.oee  = (g.disp!=null && g.rend!=null && g.cal!=null) ? (g.disp*g.rend*g.cal)/10000 : null;
+    g.undProg = g._undProgSum || g.undProd;
+    g.falt    = g.undProg - g.undProd;
+    g.horas   = Object.values(g.dtSet).reduce((s,ts)=>s+calcShiftHours(ts),0);
+  });
+
+  // ── Totales ─────────────────────────────────────────────────────────────
+  const totProg = maqList.reduce((s,g)=>s+g.undProg,0);
+  const totProd = maqList.reduce((s,g)=>s+g.undProd,0);
+  const totFalt = totProg - totProd;
+  const cumpl   = totProg>0 ? totProd/totProg*100 : 0;
+
+  const withOee = maqList.filter(g=>g.oee!=null);
+  const promDisp = withOee.length ? withOee.reduce((s,g)=>s+g.disp,0)/withOee.length : null;
+  const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
+  const promCal  = withOee.length ? withOee.reduce((s,g)=>s+g.cal,0)/withOee.length : null;
+
+  // OEE ponderado por unidades y por tiempo
+  const sumUnd = withOee.reduce((s,g)=>s+g.undProd,0);
+  const oeePondUnid = sumUnd>0 ? withOee.reduce((s,g)=>s+g.oee*g.undProd,0)/sumUnd : null;
+  const sumHoras = withOee.reduce((s,g)=>s+g.horas,0);
+  const oeePondTiempo = sumHoras>0 ? withOee.reduce((s,g)=>s+g.oee*g.horas,0)/sumHoras : null;
+
+  // ── Personal (de la hoja de accidentalidad) ─────────────────────────────
+  let totalPersonal=null, incap=null, fuerzaLaboral=null;
+  (DATA.accid||[]).forEach(row=>{
+    const vals=Object.values(row).map(v=>String(v||''));
+    vals.forEach((v,i)=>{
+      const up=v.toUpperCase().trim();
+      if(up.includes('TOTAL PERSONAL')) { const n=pNum(vals[i+1]); if(n!=null) totalPersonal=n; }
+      if(up.includes('INCAPACITADO'))   { const n=pNum(vals[i+1]); if(n!=null) incap=n; }
+      if(up.includes('FUERZA LABORAL')) { const n=pNum(vals[i+1]); if(n!=null) fuerzaLaboral=n; }
+    });
+  });
+
+  // ── Maquilas (se conecta en tarea 2 cuando llegue el CSV) ───────────────
+  const maquilas = DATA.maquilas || [];
+
+  // ── Encabezado / fecha ──────────────────────────────────────────────────
+  const fechaTxt = (fDia && fMes) ? `${fDia} de ${fMes}` : (fDia ? `Día ${fDia}` : (fMes||'Todos los períodos'));
+  const cumplColor = cumpl>=90?'#10B981':cumpl>=70?'#F59E0B':'#EF4444';
+
+  // ── Tabla superior: producción por máquina ─────────────────────────────
+  const prodRows = maqList.map(g=>`<tr>
+    <td style="font-weight:700;color:#E5E7EB">${g.maq}</td>
+    <td>${g.prod}</td>
+    <td style="text-align:right">${g.cavTeor||'—'}</td>
+    <td style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
+    <td style="text-align:center">${[...g.turnos].sort().join(', ')||'—'}</td>
+    <td style="text-align:right">${g.cavReal||'—'}</td>
+    <td style="text-align:right">${g.cicloReal?g.cicloReal.toFixed(1):'—'}</td>
+    <td style="text-align:right;color:#60A5FA;font-weight:600">${ri(g.undProg)}</td>
+    <td style="text-align:right;color:#10B981;font-weight:600">${ri(g.undProd)}</td>
+    <td style="text-align:right;color:${g.falt>0?'#EF4444':'#10B981'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
+  </tr>`).join('');
+
+  // ── Tabla OEE por máquina ───────────────────────────────────────────────
+  const oeeRows = maqList.map(g=>{
+    const oc = g.oee==null?'#6B7280':g.oee>=90?'#10B981':g.oee>=70?'#F59E0B':'#EF4444';
+    return `<tr>
+      <td style="font-weight:700;color:#E5E7EB">Máquina ${g.maq}</td>
+      <td>${g.prod}</td>
+      <td style="text-align:center">${[...g.turnos].sort().join(', ')||'—'}</td>
+      <td style="text-align:right;color:#EF4444">${ri(g.paro)} min</td>
+      <td style="text-align:right">${pc(g.disp)}</td>
+      <td style="text-align:right">${pc(g.rend)}</td>
+      <td style="text-align:right">${pc(g.cal)}</td>
+      <td style="text-align:right;font-weight:800;color:${oc}">${pc(g.oee)}</td>
+    </tr>`;
+  }).join('');
+
+  const maquilaRows = maquilas.length
+    ? maquilas.map(m=>`<tr><td>${m.cliente||m['CLIENTE']||'—'}</td><td>${m.referencia||m['REFERENCIA']||'—'}</td><td style="text-align:right">${m.cantidad||m['CANTIDAD']||'—'}</td><td>${m.estado||m['ESTADO']||'—'}</td></tr>`).join('')
+    : `<tr><td colspan="4" style="text-align:center;color:#6B7280;padding:14px">Pendiente conectar la pestaña Maquilas del Sheet</td></tr>`;
+
+  contentEl.innerHTML = `
+    <div class="chart-card" style="padding:0;overflow:hidden">
+      <div style="background:#111827;padding:14px 20px;border-bottom:2px solid #22D3EE;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:1.1rem;font-weight:800;color:#F3F4F6">PRODUCCIÓN FYLCO</div>
+          <div style="font-size:.78rem;color:#9CA3AF">${fechaTxt}</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="background:#1F2937;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #06B6D4">
+            <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Personal operativo</div>
+            <div style="font-size:1.1rem;font-weight:800;color:#06B6D4">${totalPersonal??'—'}</div>
+          </div>
+          <div style="background:#1F2937;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #F59E0B">
+            <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Incap./ausente</div>
+            <div style="font-size:1.1rem;font-weight:800;color:#F59E0B">${incap??'—'}</div>
+          </div>
+          <div style="background:#1F2937;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #10B981">
+            <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Fuerza laboral</div>
+            <div style="font-size:1.1rem;font-weight:800;color:#10B981">${fuerzaLaboral!=null?fuerzaLaboral+'%':'—'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table class="tbl" style="width:100%;min-width:760px">
+          <thead><tr>
+            <th>Máq</th><th>Producto</th>
+            <th style="text-align:right">Cav. Teór.</th><th style="text-align:right">Ciclo STD</th>
+            <th style="text-align:center">Turnos</th>
+            <th style="text-align:right">Cav. Real</th><th style="text-align:right">Ciclo Real</th>
+            <th style="text-align:right">Und. Programadas</th><th style="text-align:right">Und. Producidas</th>
+            <th style="text-align:right">Und. Faltantes</th>
+          </tr></thead>
+          <tbody>${prodRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#0B0F19;border-top:1px solid #374151;border-bottom:1px solid #374151">
+        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid #60A5FA">
+          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Total Und. Planeadas</div>
+          <div style="font-size:1.3rem;font-weight:800;color:#60A5FA">${ri(totProg)}</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid #10B981">
+          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Total Und. Producidas</div>
+          <div style="font-size:1.3rem;font-weight:800;color:#10B981">${ri(totProd)}</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid #EF4444">
+          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Total Und. Faltantes</div>
+          <div style="font-size:1.3rem;font-weight:800;color:#EF4444">${ri(Math.max(0,totFalt))}</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid ${cumplColor}">
+          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">% Cumplimiento Plan</div>
+          <div style="font-size:1.3rem;font-weight:800;color:${cumplColor}">${cumpl.toFixed(2)}%</div>
+        </div>
+      </div>
+
+      <div style="padding:14px 20px">
+        <div class="section-title" style="margin-bottom:10px">OEE por Máquina</div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="width:100%;min-width:700px">
+            <thead><tr>
+              <th>Máquina</th><th>Producto</th><th style="text-align:center">Turnos</th>
+              <th style="text-align:right">Tiempo Perdido</th>
+              <th style="text-align:right">Disponibilidad</th><th style="text-align:right">Rendimiento</th>
+              <th style="text-align:right">Calidad</th><th style="text-align:right">OEE</th>
+            </tr></thead>
+            <tbody>${oeeRows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
+            <tfoot><tr style="border-top:2px solid #374151;font-weight:700">
+              <td colspan="4" style="text-align:right;color:#9CA3AF">Promedios →</td>
+              <td style="text-align:right;color:#06B6D4">${pc(promDisp)}</td>
+              <td style="text-align:right;color:#8B5CF6">${pc(promRend)}</td>
+              <td style="text-align:right;color:#10B981">${pc(promCal)}</td>
+              <td></td>
+            </tr></tfoot>
+          </table>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
+          <div style="flex:1;min-width:200px;background:#1F2937;border-radius:10px;padding:14px;text-align:center;border:1px solid #374151">
+            <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Unidades</div>
+            <div style="font-size:2rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#10B981':oeePondUnid>=50?'#F59E0B':'#EF4444'};margin-top:4px">${pc(oeePondUnid)}</div>
+          </div>
+          <div style="flex:1;min-width:200px;background:#1F2937;border-radius:10px;padding:14px;text-align:center;border:1px solid #374151">
+            <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Tiempo</div>
+            <div style="font-size:2rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#10B981':oeePondTiempo>=50?'#F59E0B':'#EF4444'};margin-top:4px">${pc(oeePondTiempo)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:14px 20px;border-top:1px solid #374151">
+        <div class="section-title" style="margin-bottom:10px"><i class="fa-solid fa-handshake" style="color:#A78BFA;margin-right:6px"></i>Maquilas</div>
+        <table class="tbl" style="width:100%">
+          <thead><tr><th>Cliente</th><th>Referencia</th><th style="text-align:right">Cantidad</th><th>Estado</th></tr></thead>
+          <tbody>${maquilaRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// =======================================================
 // RENDER ALL
 // =======================================================
 function renderAll() {
   renderResumen();
   renderOEE();
   renderReporteDiario();
+  renderReporteCompacto();
   renderPlanMensual();
   renderPlanRef();
   renderNC();
@@ -2524,12 +2805,14 @@ function renderAll() {
 const TITLES = {
   resumen:'Resumen General', oee:'OEE — Eficiencia Global',
   'reporte-diario':'Reporte Diario de Producción',
+  'reporte-compacto':'Reporte Diario Compacto',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
   accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', descripcion:'Descripción de Indicadores'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
+  'reporte-compacto':renderReporteCompacto,
   'plan-mensual':renderPlanMensual,
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
   paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, descripcion:renderDescripcion
