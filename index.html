@@ -309,8 +309,8 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="5">T5 — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-clear" onclick="rcGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
-        <button id="rc-pdf-btn" onclick="exportCompactPDF()" style="background:#DC2626;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
-          <i class="fa-solid fa-file-pdf"></i> PDF 1 página
+        <button id="rc-pdf-btn" onclick="exportCompactImage()" style="background:#0891B2;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
+          <i class="fa-solid fa-camera"></i> Descargar imagen
         </button>
       </div>
       <div id="rc-content"></div>
@@ -2609,29 +2609,25 @@ function rcGoLatest() {
   sel.selectedIndex = sel.options.length - 1;  // último día = más reciente
   renderReporteCompacto();
 }
-// Exporta el reporte compacto a UNA sola página A4 (para enviar)
-async function exportCompactPDF() {
+// Descarga un PANTALLAZO PNG del reporte compacto en alta resolución.
+// Captura solo #rc-content (la barra lateral NO se incluye).
+async function exportCompactImage() {
   const el = document.getElementById('rc-content');
   const btn = document.getElementById('rc-pdf-btn');
   if (!el) return;
   const prev = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
   try {
-    const canvas = await html2canvas(el, { backgroundColor:'#0B0F19', scale:2, useCORS:true });
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    const pageW=210, pageH=297, margin=6;
-    const usableW=pageW-2*margin, usableH=pageH-2*margin;
-    // Escalar para que TODO quepa en una sola página (ancho o alto, lo que limite)
-    let w=usableW, h=canvas.height*w/canvas.width;
-    if (h>usableH) { h=usableH; w=canvas.width*h/canvas.height; }
-    const x=(pageW-w)/2, y=margin;
-    const sel=document.getElementById('rc-f-dia');
-    const fecha=(sel&&sel.value)?sel.value:'reporte';
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, w, h);
-    pdf.save(`Reporte_Compacto_${fecha}.pdf`);
+    // scale alto = mejor resolución (≈3x densidad de píxeles)
+    const canvas = await html2canvas(el, { backgroundColor:'#FFFFFF', scale:3, useCORS:true });
+    const sel = document.getElementById('rc-f-dia');
+    const fecha = (sel && sel.value) ? sel.value : 'reporte';
+    const link = document.createElement('a');
+    link.download = `Reporte_Compacto_${fecha}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   } catch(err) {
-    alert('Error generando PDF: '+err.message);
+    alert('Error generando la imagen: '+err.message);
     console.error(err);
   }
   if (btn) { btn.disabled = false; btn.innerHTML = prev; }
@@ -2836,32 +2832,32 @@ function renderReporteCompacto() {
 
   // ── Encabezado / fecha ──────────────────────────────────────────────────
   const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
-  const cumplColor = cumpl>=90?'#10B981':cumpl>=70?'#F59E0B':'#EF4444';
+  const cumplColor = cumpl>=90?'#059669':cumpl>=70?'#D97706':'#DC2626';
 
   // ── Tabla superior: producción por máquina ─────────────────────────────
   const prodRows = maqList.map(g=>`<tr>
-    <td style="font-weight:700;color:#E5E7EB">${g.maq}</td>
+    <td style="font-weight:700;color:#111827">${g.maq}</td>
     <td>${g.prod}</td>
     <td style="text-align:right">${g.cavTeor||'—'}</td>
     <td style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
     <td style="text-align:center">${[...g.turnos].sort().join(', ')||'—'}</td>
     <td style="text-align:right">${g.cavReal||'—'}</td>
     <td style="text-align:right">${g.cicloReal?g.cicloReal.toFixed(1):'—'}</td>
-    <td style="text-align:right;color:#60A5FA;font-weight:600">${ri(g.undProg)}</td>
-    <td style="text-align:right;color:#10B981;font-weight:600">${ri(g.undProd)}</td>
-    <td style="text-align:right;color:${g.falt>0?'#EF4444':'#10B981'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
+    <td style="text-align:right;color:#2563EB;font-weight:700">${ri(g.undProg)}</td>
+    <td style="text-align:right;color:#059669;font-weight:700">${ri(g.undProd)}</td>
+    <td style="text-align:right;color:${g.falt>0?'#DC2626':'#059669'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
   </tr>`).join('');
 
   // ── Tabla OEE por máquina (con desglose por turno) ─────────────────────
   const oeeRows = maqList.map(g=>{
-    const oc = g.oee==null?'#6B7280':g.oee>=90?'#10B981':g.oee>=70?'#F59E0B':'#EF4444';
+    const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
     const turnoDet = Object.keys(g.porTurno).sort()
-      .map(t=>`<span style="white-space:nowrap">T${t}: <strong style="color:#9CA3AF">${ri(g.porTurno[t].prod)}</strong>${g.porTurno[t].paro>0?` <span style="color:#EF4444">(paro ${ri(g.porTurno[t].paro)}m)</span>`:''}</span>`)
+      .map(t=>`<span style="white-space:nowrap">T${t}: <strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong>${g.porTurno[t].paro>0?` <span style="color:#DC2626">(paro ${ri(g.porTurno[t].paro)}m)</span>`:''}</span>`)
       .join(' · ');
     return `<tr>
-      <td style="font-weight:700;color:#E5E7EB">Máquina ${g.maq}</td>
+      <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
       <td>${g.prod}<div style="font-size:.62rem;color:#6B7280;margin-top:3px">${turnoDet}</div></td>
-      <td style="text-align:right;color:#EF4444">${ri(g.paro)} min</td>
+      <td style="text-align:right;color:#DC2626">${ri(g.paro)} min</td>
       <td style="text-align:right">${pc(g.disp)}</td>
       <td style="text-align:right">${pc(g.rend)}</td>
       <td style="text-align:right">${pc(g.cal)}</td>
@@ -2870,28 +2866,36 @@ function renderReporteCompacto() {
   }).join('');
 
   const maquilaRows = maquilas.length
-    ? maquilas.map(m=>`<tr><td style="font-weight:600;color:#A78BFA">${m.cliente||'—'}</td><td>${m.fecha||'—'}</td><td>${m.referencia||'—'}</td><td style="text-align:right">${m.cantidad?ri(pN(m.cantidad)):'—'}</td></tr>`).join('')
+    ? maquilas.map(m=>`<tr><td style="font-weight:700;color:#7C3AED">${m.cliente||'—'}</td><td>${m.fecha||'—'}</td><td>${m.referencia||'—'}</td><td style="text-align:right">${m.cantidad?ri(pN(m.cantidad)):'—'}</td></tr>`).join('')
     : `<tr><td colspan="4" style="text-align:center;color:#6B7280;padding:14px">Sin maquilas registradas para mostrar</td></tr>`;
 
   contentEl.innerHTML = `
-    <div class="chart-card" style="padding:0;overflow:hidden">
-      <div style="background:#111827;padding:14px 20px;border-bottom:2px solid #22D3EE;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <style>
+      #rc-paper { color:#1F2937; }
+      #rc-paper .tbl th { color:#4B5563; border-bottom:1px solid #D1D5DB; }
+      #rc-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#1F2937; }
+      #rc-paper .tbl tr:hover td { background:#F3F4F6; }
+      #rc-paper .section-title { color:#6B7280; }
+      #rc-paper .section-title::after { background:#D1D5DB; }
+    </style>
+    <div id="rc-paper" style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:12px;padding:0;overflow:hidden">
+      <div style="background:#F3F4F6;padding:14px 20px;border-bottom:3px solid #0891B2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-size:1.1rem;font-weight:800;color:#F3F4F6">PRODUCCIÓN FYLCO</div>
-          <div style="font-size:.78rem;color:#9CA3AF">${fechaTxt}</div>
+          <div style="font-size:1.1rem;font-weight:800;color:#111827">PRODUCCIÓN FYLCO</div>
+          <div style="font-size:.78rem;color:#6B7280">${fechaTxt}</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <div style="background:#1F2937;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #06B6D4">
-            <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Personal operativo</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#06B6D4">${totalPersonal??'—'}</div>
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #0891B2">
+            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Personal operativo</div>
+            <div style="font-size:1.1rem;font-weight:800;color:#0891B2">${totalPersonal??'—'}</div>
           </div>
-          <div style="background:#1F2937;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #F59E0B">
-            <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Incap./ausente</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#F59E0B">${incap??'—'}</div>
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #D97706">
+            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Incap./ausente</div>
+            <div style="font-size:1.1rem;font-weight:800;color:#D97706">${incap??'—'}</div>
           </div>
-          <div style="background:#1F2937;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #10B981">
-            <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Fuerza laboral</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#10B981">${fuerzaLaboral!=null?fuerzaLaboral+'%':'—'}</div>
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #059669">
+            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Fuerza laboral</div>
+            <div style="font-size:1.1rem;font-weight:800;color:#059669">${fuerzaLaboral!=null?fuerzaLaboral+'%':'—'}</div>
           </div>
         </div>
       </div>
@@ -2910,21 +2914,21 @@ function renderReporteCompacto() {
         </table>
       </div>
 
-      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#0B0F19;border-top:1px solid #374151;border-bottom:1px solid #374151">
-        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid #60A5FA">
-          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Total Und. Planeadas</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#60A5FA">${ri(totProg)}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#F3F4F6;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB">
+        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #2563EB">
+          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Planeadas</div>
+          <div style="font-size:1.3rem;font-weight:800;color:#2563EB">${ri(totProg)}</div>
         </div>
-        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid #10B981">
-          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Total Und. Producidas</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#10B981">${ri(totProd)}</div>
+        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #059669">
+          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Producidas</div>
+          <div style="font-size:1.3rem;font-weight:800;color:#059669">${ri(totProd)}</div>
         </div>
-        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid #EF4444">
-          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">Total Und. Faltantes</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#EF4444">${ri(Math.max(0,totFalt))}</div>
+        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #DC2626">
+          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Faltantes</div>
+          <div style="font-size:1.3rem;font-weight:800;color:#DC2626">${ri(Math.max(0,totFalt))}</div>
         </div>
-        <div style="flex:1;min-width:140px;background:#1F2937;border-radius:8px;padding:10px;border-left:3px solid ${cumplColor}">
-          <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase">% Cumplimiento Plan</div>
+        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid ${cumplColor}">
+          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">% Cumplimiento Plan</div>
           <div style="font-size:1.3rem;font-weight:800;color:${cumplColor}">${cumpl.toFixed(2)}%</div>
         </div>
       </div>
@@ -2940,29 +2944,29 @@ function renderReporteCompacto() {
               <th style="text-align:right">Calidad</th><th style="text-align:right">OEE</th>
             </tr></thead>
             <tbody>${oeeRows||'<tr><td colspan="7" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
-            <tfoot><tr style="border-top:2px solid #374151;font-weight:700">
-              <td colspan="3" style="text-align:right;color:#9CA3AF">Promedios →</td>
-              <td style="text-align:right;color:#06B6D4">${pc(promDisp)}</td>
-              <td style="text-align:right;color:#8B5CF6">${pc(promRend)}</td>
-              <td style="text-align:right;color:#10B981">${pc(promCal)}</td>
+            <tfoot><tr style="border-top:2px solid #D1D5DB;font-weight:700">
+              <td colspan="3" style="text-align:right;color:#6B7280">Promedios →</td>
+              <td style="text-align:right;color:#0891B2">${pc(promDisp)}</td>
+              <td style="text-align:right;color:#7C3AED">${pc(promRend)}</td>
+              <td style="text-align:right;color:#059669">${pc(promCal)}</td>
               <td></td>
             </tr></tfoot>
           </table>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
-          <div style="flex:1;min-width:200px;background:#1F2937;border-radius:10px;padding:14px;text-align:center;border:1px solid #374151">
-            <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Unidades</div>
-            <div style="font-size:2rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#10B981':oeePondUnid>=50?'#F59E0B':'#EF4444'};margin-top:4px">${pc(oeePondUnid)}</div>
+          <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
+            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Unidades</div>
+            <div style="font-size:2rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
           </div>
-          <div style="flex:1;min-width:200px;background:#1F2937;border-radius:10px;padding:14px;text-align:center;border:1px solid #374151">
-            <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Tiempo</div>
-            <div style="font-size:2rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#10B981':oeePondTiempo>=50?'#F59E0B':'#EF4444'};margin-top:4px">${pc(oeePondTiempo)}</div>
+          <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
+            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Tiempo</div>
+            <div style="font-size:2rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondTiempo)}</div>
           </div>
         </div>
       </div>
 
-      <div style="padding:14px 20px;border-top:1px solid #374151">
-        <div class="section-title" style="margin-bottom:10px"><i class="fa-solid fa-handshake" style="color:#A78BFA;margin-right:6px"></i>Maquilas</div>
+      <div style="padding:14px 20px;border-top:1px solid #E5E7EB">
+        <div class="section-title" style="margin-bottom:10px"><i class="fa-solid fa-handshake" style="color:#7C3AED;margin-right:6px"></i>Maquilas</div>
         <table class="tbl" style="width:100%">
           <thead><tr><th>Cliente</th><th>Fecha</th><th>Referencia</th><th style="text-align:right">Cantidad</th></tr></thead>
           <tbody>${maquilaRows}</tbody>
