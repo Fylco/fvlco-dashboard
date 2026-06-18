@@ -306,6 +306,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="5">T5 — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-clear" onclick="rcGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
+        <button id="rc-pdf-btn" onclick="exportCompactPDF()" style="background:#DC2626;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
+          <i class="fa-solid fa-file-pdf"></i> PDF 1 página
+        </button>
       </div>
       <div id="rc-content"></div>
     </div>
@@ -2550,6 +2553,33 @@ function rcGoLatest() {
   sel.selectedIndex = sel.options.length - 1;  // último día = más reciente
   renderReporteCompacto();
 }
+// Exporta el reporte compacto a UNA sola página A4 (para enviar)
+async function exportCompactPDF() {
+  const el = document.getElementById('rc-content');
+  const btn = document.getElementById('rc-pdf-btn');
+  if (!el) return;
+  const prev = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
+  try {
+    const canvas = await html2canvas(el, { backgroundColor:'#0B0F19', scale:2, useCORS:true });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const pageW=210, pageH=297, margin=6;
+    const usableW=pageW-2*margin, usableH=pageH-2*margin;
+    // Escalar para que TODO quepa en una sola página (ancho o alto, lo que limite)
+    let w=usableW, h=canvas.height*w/canvas.width;
+    if (h>usableH) { h=usableH; w=canvas.width*h/canvas.height; }
+    const x=(pageW-w)/2, y=margin;
+    const sel=document.getElementById('rc-f-dia');
+    const fecha=(sel&&sel.value)?sel.value:'reporte';
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, w, h);
+    pdf.save(`Reporte_Compacto_${fecha}.pdf`);
+  } catch(err) {
+    alert('Error generando PDF: '+err.message);
+    console.error(err);
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+}
 function renderReporteCompacto() {
   const contentEl = document.getElementById('rc-content');
   if (!contentEl) return;
@@ -2578,16 +2608,33 @@ function renderReporteCompacto() {
     r._fechaKey === fKey && (!fTurno || String(r._turno) === fTurno)
   );
 
-  // ── Capacidad programada por slot (igual que el reporte detallado) ─────
+  // ── Regla anti-doble-conteo de turnos ──────────────────────────────────
+  // T4 (6am-6pm) y T5 (6pm-6am) son turnos "padre" de 12h: cubren el día
+  // completo. Si una máquina reporta T4/T5, los T1/T2/T3 quedan DENTRO de
+  // ellos → contarlos sumaría dos veces. Regla: si hay T4/T5, usar solo
+  // T4/T5; si no, usar T1/T2/T3. (Misma lógica que calcShiftHours.)
+  const allByMaq = {};
+  rows.forEach(r => { (allByMaq[String(r._maq||'—')] ||= []).push(r); });
+  const effRows = [];
+  Object.values(allByMaq).forEach(rs => {
+    const ts = new Set(rs.map(r=>String(r._turno||'')));
+    const useParent = ts.has('4') || ts.has('5');
+    rs.forEach(r => {
+      const t = String(r._turno||'');
+      if (useParent ? (t==='4'||t==='5') : true) effRows.push(r);
+    });
+  });
+
+  // ── Capacidad programada por slot (sobre filas efectivas) ──────────────
   const esProgramado = razon => /programado/i.test(String(razon || ''));
   const slotCap = {};
-  rows.forEach(r => {
+  effRows.forEach(r => {
     const sKey = `${r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
     if (!slotCap[sKey]) slotCap[sKey] = { undProg:0, cantTotal:0, paroProgSeg:0 };
     slotCap[sKey].cantTotal += pN(r._cant);
     if (esProgramado(r['RAZON PARO'] || r['RAZÓN PARO'])) slotCap[sKey].paroProgSeg += pN(r._paro) * 60;
   });
-  rows.forEach(r => {
+  effRows.forEach(r => {
     const maq = String(r._maq||'?');
     const sKey = `${r._diaTurno||'?'}|${maq}|${String(r._turno||'?')}`;
     const s = slotCap[sKey];
@@ -2601,19 +2648,23 @@ function renderReporteCompacto() {
     }
   });
 
-  // ── Agrupar por máquina ────────────────────────────────────────────────
+  // ── Agrupar por máquina (filas efectivas) ──────────────────────────────
   const maqMap = {};
-  rows.forEach(r => {
+  effRows.forEach(r => {
     const maq = String(r._maq || '—');
     if (!maqMap[maq]) maqMap[maq] = {
-      maq, prod:r._prod||'—', rows:[], turnos:new Set(), dtSet:{},
+      maq, prod:r._prod||'—', rows:[], turnos:new Set(), dtSet:{}, porTurno:{},
       cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, undProd:0
     };
     const g = maqMap[maq];
     g.rows.push(r);
-    if (r._turno) g.turnos.add(String(r._turno));
-    const dia = String(r._diaTurno||''), t = String(r._turno||'');
+    const t = String(r._turno||'');
+    if (t) g.turnos.add(t);
+    const dia = String(r._diaTurno||'');
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia] ||= new Set()).add(t); }
+    if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0 };
+    g.porTurno[t].prod += pN(r._cant);
+    g.porTurno[t].paro += pN(r._paro);
     if (!g.cavTeor)   g.cavTeor   = Math.max(pN(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 0, 0);
     if (!g.cicloEst)  g.cicloEst  = pN(r['T. CICLO EST']);
     if (!g.cavReal)   g.cavReal   = _findColVal(r,'CAVIDAD','TEOR') || 0;
@@ -2630,11 +2681,12 @@ function renderReporteCompacto() {
 
   const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
 
-  // Métricas por máquina: D/R/C = promedio de columnas del sheet; OEE = D×R×C
+  // Métricas por máquina: Disp/Rend de columnas del sheet, Calidad por NC
+  // (consistente con la pestaña OEE); OEE = D×R×C.
   maqList.forEach(g => {
     g.disp = avg(g.rows,'_disp');
     g.rend = avg(g.rows,'_rend');
-    g.cal  = avg(g.rows,'% CALIDAD');
+    g.cal  = calcCalidad(g.rows);
     g.oee  = (g.disp!=null && g.rend!=null && g.cal!=null) ? (g.disp*g.rend*g.cal)/10000 : null;
     g.undProg = g._undProgSum || g.undProd;
     g.falt    = g.undProg - g.undProd;
@@ -2691,13 +2743,15 @@ function renderReporteCompacto() {
     <td style="text-align:right;color:${g.falt>0?'#EF4444':'#10B981'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
   </tr>`).join('');
 
-  // ── Tabla OEE por máquina ───────────────────────────────────────────────
+  // ── Tabla OEE por máquina (con desglose por turno) ─────────────────────
   const oeeRows = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#10B981':g.oee>=70?'#F59E0B':'#EF4444';
+    const turnoDet = Object.keys(g.porTurno).sort()
+      .map(t=>`<span style="white-space:nowrap">T${t}: <strong style="color:#9CA3AF">${ri(g.porTurno[t].prod)}</strong>${g.porTurno[t].paro>0?` <span style="color:#EF4444">(paro ${ri(g.porTurno[t].paro)}m)</span>`:''}</span>`)
+      .join(' · ');
     return `<tr>
       <td style="font-weight:700;color:#E5E7EB">Máquina ${g.maq}</td>
-      <td>${g.prod}</td>
-      <td style="text-align:center">${[...g.turnos].sort().join(', ')||'—'}</td>
+      <td>${g.prod}<div style="font-size:.62rem;color:#6B7280;margin-top:3px">${turnoDet}</div></td>
       <td style="text-align:right;color:#EF4444">${ri(g.paro)} min</td>
       <td style="text-align:right">${pc(g.disp)}</td>
       <td style="text-align:right">${pc(g.rend)}</td>
@@ -2771,14 +2825,14 @@ function renderReporteCompacto() {
         <div style="overflow-x:auto">
           <table class="tbl" style="width:100%;min-width:700px">
             <thead><tr>
-              <th>Máquina</th><th>Producto</th><th style="text-align:center">Turnos</th>
+              <th>Máquina</th><th>Producto / Turnos</th>
               <th style="text-align:right">Tiempo Perdido</th>
               <th style="text-align:right">Disponibilidad</th><th style="text-align:right">Rendimiento</th>
               <th style="text-align:right">Calidad</th><th style="text-align:right">OEE</th>
             </tr></thead>
-            <tbody>${oeeRows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
+            <tbody>${oeeRows||'<tr><td colspan="7" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
             <tfoot><tr style="border-top:2px solid #374151;font-weight:700">
-              <td colspan="4" style="text-align:right;color:#9CA3AF">Promedios →</td>
+              <td colspan="3" style="text-align:right;color:#9CA3AF">Promedios →</td>
               <td style="text-align:right;color:#06B6D4">${pc(promDisp)}</td>
               <td style="text-align:right;color:#8B5CF6">${pc(promRend)}</td>
               <td style="text-align:right;color:#10B981">${pc(promCal)}</td>
