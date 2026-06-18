@@ -293,15 +293,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
     <!-- ======================================= REPORTE COMPACTO == -->
     <div class="section" id="sec-reporte-compacto">
-      <div class="filter-bar">
-        <select id="rc-f-mes">
-          <option value="">Todos los meses</option>
-          <option>Enero</option><option>Febrero</option><option>Marzo</option><option>Abril</option>
-          <option>Mayo</option><option>Junio</option><option>Julio</option><option>Agosto</option>
-          <option>Septiembre</option><option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
-        </select>
-        <select id="rc-f-dia"><option value="">Todos los días</option></select>
-        <select id="rc-f-turno">
+      <div class="filter-bar" style="align-items:center">
+        <button class="btn-clear" onclick="rcStepDay(-1)" title="Día anterior" style="font-weight:700;padding:6px 14px">◀ Día anterior</button>
+        <select id="rc-f-dia" onchange="renderReporteCompacto()" style="min-width:220px;text-align:center;font-weight:600"></select>
+        <button class="btn-clear" onclick="rcStepDay(1)" title="Día siguiente" style="font-weight:700;padding:6px 14px">Día siguiente ▶</button>
+        <select id="rc-f-turno" onchange="renderReporteCompacto()">
           <option value="">Todos los turnos</option>
           <option value="1">T1 — 6:00 AM a 2:00 PM</option>
           <option value="2">T2 — 2:00 PM a 10:00 PM</option>
@@ -309,8 +305,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="4">T4 — 6:00 AM a 6:00 PM</option>
           <option value="5">T5 — 6:00 PM a 6:00 AM</option>
         </select>
-        <button class="btn-filter" onclick="renderReporteCompacto()">Filtrar</button>
-        <button class="btn-clear" onclick="clearFilters('rc');renderReporteCompacto()">Limpiar</button>
+        <button class="btn-clear" onclick="rcGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
       </div>
       <div id="rc-content"></div>
     </div>
@@ -1027,11 +1022,17 @@ function normalizeProd(r) {
   }
   // Parsear DD/MM/YYYY o DD-MM-YYYY
   const _dtParts = _ftRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-  let _diaTurno = null, _mesTurno = null;
+  let _diaTurno = null, _mesTurno = null, _fechaKey = null, _fechaLabel = null;
   if (_dtParts) {
     const _d = parseInt(_dtParts[1]), _m = parseInt(_dtParts[2]);
+    let _y = parseInt(_dtParts[3]); if (_y < 100) _y += 2000;
     if (_d >= 1 && _d <= 31) _diaTurno = String(_d);
     if (_m >= 1 && _m <= 12) _mesTurno = _MESES_ES[_m];
+    if (_diaTurno && _mesTurno && !isNaN(_y)) {
+      // Clave ordenable YYYY-MM-DD y etiqueta legible "18 de junio de 2026"
+      _fechaKey   = `${_y}-${String(_m).padStart(2,'0')}-${String(_d).padStart(2,'0')}`;
+      _fechaLabel = `${_d} de ${_MESES_ES[_m]} de ${_y}`;
+    }
   }
 
   const PCT_FIELDS = ['% RENDIMIENTO','% DISPONIBILIDAD','OEE FINAL','% CALIDAD'];
@@ -1075,6 +1076,8 @@ function normalizeProd(r) {
   // Usar valores parseados antes de la conversión numérica
   out._diaTurno = _diaTurno;
   out._mesTurno = _mesTurno;
+  out._fechaKey = _fechaKey;     // YYYY-MM-DD ordenable (día de trabajo único)
+  out._fechaLabel = _fechaLabel; // "18 de junio de 2026"
   return out;
 }
 
@@ -2532,6 +2535,21 @@ function renderReporteDiario() {
 // =======================================================
 // REPORTE DIARIO COMPACTO (una sola página, estilo reporte enviado)
 // =======================================================
+// Navegación día a día
+function rcStepDay(delta) {
+  const sel = document.getElementById('rc-f-dia');
+  if (!sel || !sel.options.length) return;
+  let i = sel.selectedIndex;
+  i = Math.max(0, Math.min(sel.options.length - 1, i + delta));
+  sel.selectedIndex = i;
+  renderReporteCompacto();
+}
+function rcGoLatest() {
+  const sel = document.getElementById('rc-f-dia');
+  if (!sel || !sel.options.length) return;
+  sel.selectedIndex = sel.options.length - 1;  // último día = más reciente
+  renderReporteCompacto();
+}
 function renderReporteCompacto() {
   const contentEl = document.getElementById('rc-content');
   if (!contentEl) return;
@@ -2539,18 +2557,26 @@ function renderReporteCompacto() {
   const ri = n => Math.round(n||0).toString();          // entero sin separador
   const pc = v => (v===null||isNaN(v)) ? '—' : v.toFixed(2)+'%';
 
-  // ── Poblar selectores (una vez) y default al último día con datos ──────
+  // ── Navegador de día: poblar fechas reales (YYYY-MM-DD) y default al último ──
   const diaEl = document.getElementById('rc-f-dia');
-  if (diaEl && diaEl.options.length <= 1) {
-    const dias = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
-    dias.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
-    if (dias.length) diaEl.value = dias[dias.length-1];   // default: último día
+  const fechas = [...new Set((DATA.prod||[]).map(r=>r._fechaKey).filter(Boolean))].sort();
+  if (diaEl && diaEl.options.length === 0) {
+    fechas.forEach(k=>{
+      const o=document.createElement('option');
+      o.value=k;
+      const row=(DATA.prod||[]).find(r=>r._fechaKey===k);
+      o.textContent = row && row._fechaLabel ? row._fechaLabel : k;
+      diaEl.appendChild(o);
+    });
+    if (fechas.length) diaEl.value = fechas[fechas.length-1];  // default: último día
   }
-  const fMes   = (document.getElementById('rc-f-mes')?.value   || '').trim();
-  const fDia   = (document.getElementById('rc-f-dia')?.value   || '').trim();
+  const fKey   = (diaEl?.value || (fechas.length?fechas[fechas.length-1]:'')).trim();
   const fTurno = (document.getElementById('rc-f-turno')?.value || '').trim();
 
-  const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, '');
+  // Filtrar a UN día específico (fecha completa) + turno opcional
+  const rows = (DATA.prod||[]).filter(r =>
+    r._fechaKey === fKey && (!fTurno || String(r._turno) === fTurno)
+  );
 
   // ── Capacidad programada por slot (igual que el reporte detallado) ─────
   const esProgramado = razon => /programado/i.test(String(razon || ''));
@@ -2648,7 +2674,7 @@ function renderReporteCompacto() {
   const maquilas = DATA.maquilas || [];
 
   // ── Encabezado / fecha ──────────────────────────────────────────────────
-  const fechaTxt = (fDia && fMes) ? `${fDia} de ${fMes}` : (fDia ? `Día ${fDia}` : (fMes||'Todos los períodos'));
+  const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
   const cumplColor = cumpl>=90?'#10B981':cumpl>=70?'#F59E0B':'#EF4444';
 
   // ── Tabla superior: producción por máquina ─────────────────────────────
