@@ -4,7 +4,6 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>FVLco · Dashboard Operaciones</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -21,13 +20,14 @@ tailwind.config = {
         purple: '#8B5CF6', blue: '#3B82F6', cyan: '#06B6D4',
         green: '#10B981', yellow: '#F59E0B', red: '#EF4444', orange: '#F97316'
       },
-      fontFamily: { poppins: ['Poppins', 'sans-serif'] }
+      fontFamily: { poppins: ['Tahoma', 'Arial', 'sans-serif'] }
     }
   }
 }
 </script>
 <style>
-* { font-family: 'Poppins', sans-serif; box-sizing: border-box; }
+* { font-family: Tahoma, Arial, sans-serif; box-sizing: border-box; }
+html { font-size: 125%; }
 body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #1F2937; }
@@ -55,10 +55,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .tbl tr:hover td { background: rgba(255,255,255,.02); }
 .gauge-wrap { position: relative; width: 130px; height: 75px; margin: 0 auto; }
 .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
-.filter-bar select { background: #1F2937; border: 1px solid #374151; border-radius: 8px; padding: 6px 12px; color: #EEEEEE; font-size: .78rem; outline: none; font-family: Poppins, sans-serif; }
+.filter-bar select { background: #1F2937; border: 1px solid #374151; border-radius: 8px; padding: 6px 12px; color: #EEEEEE; font-size: .78rem; outline: none; font-family: Tahoma, Arial, sans-serif; }
 .filter-bar select:focus { border-color: #8B5CF6; }
-.btn-filter { background: #8B5CF6; color: #fff; border: none; border-radius: 8px; padding: 6px 16px; font-size: .78rem; font-weight: 600; cursor: pointer; font-family: Poppins, sans-serif; }
-.btn-clear { background: #1F2937; color: #9CA3AF; border: 1px solid #374151; border-radius: 8px; padding: 6px 14px; font-size: .78rem; cursor: pointer; font-family: Poppins, sans-serif; }
+.btn-filter { background: #8B5CF6; color: #fff; border: none; border-radius: 8px; padding: 6px 16px; font-size: .78rem; font-weight: 600; cursor: pointer; font-family: Tahoma, Arial, sans-serif; }
+.btn-clear { background: #1F2937; color: #9CA3AF; border: 1px solid #374151; border-radius: 8px; padding: 6px 14px; font-size: .78rem; cursor: pointer; font-family: Tahoma, Arial, sans-serif; }
 .section-title { font-size: .65rem; font-weight: 700; color: #4B5563; text-transform: uppercase; letter-spacing: .12em; display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
 .section-title::after { content: ''; flex: 1; height: 1px; background: #374151; }
 .spinner { width: 36px; height: 36px; border: 3px solid #374151; border-top-color: #8B5CF6; border-radius: 50%; animation: spin .8s linear infinite; }
@@ -68,20 +68,20 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .progress-bar-fill { height: 100%; border-radius: 20px; background: linear-gradient(90deg, #8B5CF6, #06B6D4); transition: width .4s; }
 .days-counter { font-size: 5rem; font-weight: 800; line-height: 1; background: linear-gradient(135deg, #10B981, #06B6D4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .multi-sel-wrap { position:relative; }
-.multi-sel-btn { background:#1F2937; border:1px solid #374151; border-radius:6px; padding:4px 10px; color:#EEEEEE; font-size:.73rem; cursor:pointer; font-family:Poppins,sans-serif; white-space:nowrap; transition:border-color .2s; }
+.multi-sel-btn { background:#1F2937; border:1px solid #374151; border-radius:6px; padding:4px 10px; color:#EEEEEE; font-size:.73rem; cursor:pointer; font-family:Tahoma,Arial,sans-serif; white-space:nowrap; transition:border-color .2s; }
 .multi-sel-btn.active { border-color:#8B5CF6; color:#8B5CF6; }
 .multi-sel-dropdown { display:none; position:absolute; top:calc(100% + 4px); left:0; background:#111827; border:1px solid #374151; border-radius:8px; padding:8px 4px; z-index:200; min-width:150px; max-height:260px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.5); }
 .multi-sel-dropdown.show { display:block; }
 .ms-item { display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:.74rem; color:#9CA3AF; user-select:none; }
 .ms-item:hover { background:rgba(139,92,246,.12); color:#EEEEEE; }
 .ms-item input[type=checkbox] { accent-color:#8B5CF6; width:13px; height:13px; cursor:pointer; flex-shrink:0; }
-.btn-x { background:#1F2937; border:1px solid #374151; border-radius:6px; padding:4px 8px; color:#6B7280; font-size:.72rem; cursor:pointer; font-family:Poppins,sans-serif; line-height:1; }
+.btn-x { background:#1F2937; border:1px solid #374151; border-radius:6px; padding:4px 8px; color:#6B7280; font-size:.72rem; cursor:pointer; font-family:Tahoma,Arial,sans-serif; line-height:1; }
 .btn-x:hover { border-color:#EF4444; color:#EF4444; }
 .filter-panel { background:#111827; border:1px solid #374151; border-radius:12px; padding:16px; position:sticky; top:68px; max-height:calc(100vh - 90px); overflow-y:auto; }
 .fp-title { font-size:.6rem; font-weight:700; color:#4B5563; text-transform:uppercase; letter-spacing:.1em; margin-bottom:14px; display:flex; align-items:center; gap:6px; }
 .fp-title::after { content:''; flex:1; height:1px; background:#374151; }
 .fp-label { font-size:.68rem; color:#9CA3AF; margin:12px 0 5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
-.fp-select { width:100%; background:#1F2937; border:1px solid #374151; border-radius:6px; padding:5px 8px; color:#EEEEEE; font-size:.74rem; outline:none; font-family:Poppins,sans-serif; margin-bottom:2px; }
+.fp-select { width:100%; background:#1F2937; border:1px solid #374151; border-radius:6px; padding:5px 8px; color:#EEEEEE; font-size:.74rem; outline:none; font-family:Tahoma,Arial,sans-serif; margin-bottom:2px; }
 .fp-select:focus { border-color:#8B5CF6; }
 .razon-item { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:4px; cursor:pointer; font-size:.7rem; color:#9CA3AF; user-select:none; }
 .razon-item:hover { background:rgba(239,68,68,.1); color:#EEEEEE; }
@@ -181,7 +181,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
-      <select id="g-mes" onchange="applyGlobalFilter()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:4px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Poppins,sans-serif">
+      <select id="g-mes" onchange="applyGlobalFilter()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:4px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Tahoma,Arial,sans-serif">
         <option value="">Todos los meses</option>
       </select>
       <div class="multi-sel-wrap">
@@ -190,10 +190,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
       <button class="btn-x" onclick="clearDias()" title="Quitar filtro de días">✕ días</button>
       <span id="last-update" style="font-size:.7rem;color:#4B5563"></span>
-      <button onclick="reloadAll()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.75rem;font-family:Poppins,sans-serif">
+      <button onclick="reloadAll()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">
         <i class="fa-solid fa-rotate-right"></i> Actualizar
       </button>
-      <button onclick="exportPDF()" id="btn-pdf" style="background:#DC2626;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.75rem;font-family:Poppins,sans-serif;font-weight:600;display:flex;align-items:center;gap:6px">
+      <button onclick="exportPDF()" id="btn-pdf" style="background:#DC2626;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif;font-weight:600;display:flex;align-items:center;gap:6px">
         <i class="fa-solid fa-file-pdf"></i> Descargar PDF
       </button>
     </div>
@@ -939,9 +939,8 @@ function pNum(v) {
 }
 function fmt(n, decimals=0) {
   if (n === null || n === undefined || isNaN(n)) return '—';
-  if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(1)+'M';
-  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1)+'K';
-  return n.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  // Números completos sin separador de miles (ej. 406500), sin abreviar a K/M
+  return n.toFixed(decimals);
 }
 function pct(n) { return n !== null && !isNaN(n) ? n.toFixed(1)+'%' : '—'; }
 function avg(arr, key) {
@@ -1261,7 +1260,7 @@ function makeChart(id, type, labels, datasets, opts={}) {
     type, data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{labels:{color:'#9CA3AF',boxWidth:11,font:{size:10,family:'Poppins'}}}, tooltip:{mode:'index',intersect:false} },
+      plugins:{ legend:{labels:{color:'#9CA3AF',boxWidth:11,font:{size:10,family:'Tahoma'}}}, tooltip:{mode:'index',intersect:false} },
       scales: type==='doughnut'||type==='pie' ? {} : {
         x:{ticks:{color:'#6B7280',font:{size:10}},grid:{color:'#1F2937'},...(opts.xScale||{})},
         y:{ticks:{color:'#6B7280',font:{size:10}},grid:{color:'#374151'},...(opts.yScale||{})}
@@ -2580,19 +2579,19 @@ function showPinModal(targetId) {
       <div style="font-size:.8rem;color:#6B7280;margin-bottom:24px">Ingrese la clave para acceder a Costos de Producción</div>
       <input id="pin-input" type="password" placeholder="Contraseña"
         style="width:100%;background:#111827;border:1px solid #374151;border-radius:8px;
-          padding:12px 16px;color:#EEEEEE;font-size:.95rem;font-family:Poppins,sans-serif;
+          padding:12px 16px;color:#EEEEEE;font-size:.95rem;font-family:Tahoma,Arial,sans-serif;
           outline:none;box-sizing:border-box;text-align:center;letter-spacing:.15em"
         onkeydown="if(event.key==='Enter')verifyPin('${targetId}')" />
       <div id="pin-error" style="color:#EF4444;font-size:.75rem;margin-top:8px;min-height:18px"></div>
       <div style="display:flex;gap:10px;margin-top:16px">
         <button onclick="document.getElementById('pin-modal').remove()"
           style="flex:1;background:#374151;border:none;color:#9CA3AF;border-radius:8px;
-            padding:10px;cursor:pointer;font-family:Poppins,sans-serif;font-size:.85rem">
+            padding:10px;cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:.85rem">
           Cancelar
         </button>
         <button onclick="verifyPin('${targetId}')"
           style="flex:1;background:#2563EB;border:none;color:#fff;border-radius:8px;
-            padding:10px;cursor:pointer;font-family:Poppins,sans-serif;font-size:.85rem;font-weight:600">
+            padding:10px;cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:.85rem;font-weight:600">
           Ingresar
         </button>
       </div>
