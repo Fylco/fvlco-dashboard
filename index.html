@@ -981,8 +981,8 @@ function pNum(v) {
 }
 function fmt(n, decimals=0) {
   if (n === null || n === undefined || isNaN(n)) return '—';
-  // Números completos sin separador de miles (ej. 406500), sin abreviar a K/M
-  return n.toFixed(decimals);
+  // Números completos con separador de miles colombiano (ej. 406.500), sin abreviar
+  return n.toLocaleString('es-CO', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 function pct(n) { return n !== null && !isNaN(n) ? n.toFixed(1)+'%' : '—'; }
 function avg(arr, key) {
@@ -2700,7 +2700,7 @@ function renderMaquilas() {
   const kpis = document.getElementById('maquilas-kpis');
   if (!cont) return;
   const pN = v => { const n=parseFloat(String(v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; };
-  const ri = n => Math.round(n||0).toString();
+  const ri = n => Math.round(n||0).toLocaleString('es-CO');
   const data = DATA.maquilas || [];
 
   if (!data.length) {
@@ -2748,7 +2748,7 @@ function renderReporteCompacto() {
   const contentEl = document.getElementById('rc-content');
   if (!contentEl) return;
   const pN = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
-  const ri = n => Math.round(n||0).toString();          // entero sin separador
+  const ri = n => Math.round(n||0).toLocaleString('es-CO'); // entero con separador de miles
   const pc = v => (v===null||isNaN(v)) ? '—' : v.toFixed(2)+'%';
 
   // ── Navegador de día: poblar fechas reales (YYYY-MM-DD) y default al último ──
