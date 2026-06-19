@@ -1093,6 +1093,15 @@ function normalizeProd(r) {
 
   const PCT_FIELDS = ['% RENDIMIENTO','% DISPONIBILIDAD','OEE FINAL','% CALIDAD'];
 
+  // Campos de CICLO (decimales): guardar raw antes de la conversión masiva.
+  // pNum() quita los puntos (separador de miles CO) y rompe los decimales:
+  // "17.1" → 171, "14,5" → ok pero "14.5" → 145. El ciclo SÍ usa decimales,
+  // así que se re-parsean sin eliminar puntos.
+  const _decRaw = {};
+  for (const k of Object.keys(out)) {
+    if (k.toUpperCase().includes('CICLO')) _decRaw[k] = out[k];
+  }
+
   for (const k in out) {
     const v = out[k];
     if (typeof v === 'string' && v !== '') {
@@ -1100,6 +1109,15 @@ function normalizeProd(r) {
       if (n !== null) out[k] = n;
     }
   }
+  // Re-parsear campos de ciclo preservando el decimal (sin quitar puntos)
+  const pDec = v => {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    const s = String(v).replace(',', '.').replace('%','').trim();
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+  };
+  for (const k in _decRaw) { const v = pDec(_decRaw[k]); if (v !== null) out[k] = v; }
   // normalize pct fields 0-1 → 0-100
   PCT_FIELDS.forEach(f => {
     if (out[f] !== null && out[f] !== undefined && Math.abs(out[f]) <= 1.5) out[f] = out[f]*100;
@@ -2241,9 +2259,10 @@ function renderReporteDiario() {
       const est = pNum(r['T. CICLO EST']);
       if (est > 0) {
         const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
-        // Turno disponible = 8h − paro programado del slot
-        const dispSeg = Math.max(28800 - (s.paroProgSeg || 0), 0);
-        s.dispSeg = dispSeg; // guardamos para Takt Time
+        // Turno disponible = duración del turno (T4/T5=12h) − paro programado
+        const turnoSeg = TURNO_SEG[turno] || 28800;
+        const dispSeg = Math.max(turnoSeg - (s.paroProgSeg || 0), 0);
+        s.dispSeg = dispSeg;
         s.undProg = Math.round((dispSeg / est) * cavTeor);
       }
     }
@@ -2731,6 +2750,8 @@ function renderReporteCompacto() {
   });
 
   // ── Capacidad programada por slot (sobre filas efectivas) ──────────────
+  // Segundos por turno: T1/T2/T3 = 8h (28800); T4/T5 = 12h (43200).
+  const TURNO_SEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   const esProgramado = razon => /programado/i.test(String(razon || ''));
   const slotCap = {};
   effRows.forEach(r => {
@@ -2741,13 +2762,15 @@ function renderReporteCompacto() {
   });
   effRows.forEach(r => {
     const maq = String(r._maq||'?');
-    const sKey = `${r._diaTurno||'?'}|${maq}|${String(r._turno||'?')}`;
+    const turno = String(r._turno||'?');
+    const sKey = `${r._diaTurno||'?'}|${maq}|${turno}`;
     const s = slotCap[sKey];
     if (!s.undProg && maq !== '?') {
       const est = pN(r['T. CICLO EST']);
       if (est > 0) {
         const cavTeor = Math.max(pN(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
-        const dispSeg = Math.max(28800 - (s.paroProgSeg||0), 0);
+        const turnoSeg = TURNO_SEG[turno] || 28800;
+        const dispSeg = Math.max(turnoSeg - (s.paroProgSeg||0), 0);
         s.undProg = Math.round((dispSeg / est) * cavTeor);
       }
     }
@@ -2834,143 +2857,101 @@ function renderReporteCompacto() {
   const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
   const cumplColor = cumpl>=90?'#059669':cumpl>=70?'#D97706':'#DC2626';
 
-  // ── Tabla superior: producción por máquina ─────────────────────────────
-  const prodRows = maqList.map(g=>`<tr>
-    <td style="font-weight:700;color:#111827">${g.maq}</td>
-    <td>${g.prod}</td>
-    <td style="text-align:right">${g.cavTeor||'—'}</td>
-    <td style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
-    <td style="text-align:center">${[...g.turnos].sort().join(', ')||'—'}</td>
-    <td style="text-align:right">${g.cavReal||'—'}</td>
-    <td style="text-align:right">${g.cicloReal?g.cicloReal.toFixed(1):'—'}</td>
-    <td style="text-align:right;color:#2563EB;font-weight:700">${ri(g.undProg)}</td>
-    <td style="text-align:right;color:#059669;font-weight:700">${ri(g.undProd)}</td>
-    <td style="text-align:right;color:${g.falt>0?'#DC2626':'#059669'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
-  </tr>`).join('');
-
-  // ── Tabla OEE por máquina (con desglose por turno) ─────────────────────
-  const oeeRows = maqList.map(g=>{
+  // ── Tarjetas verticales por máquina (layout para celular) ──────────────
+  const mrow = (label,val,color) => `<div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:#6B7280">${label}</span><span style="font-weight:700;color:${color||'#1F2937'}">${val}</span></div>`;
+  const maqCards = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
     const turnoDet = Object.keys(g.porTurno).sort()
-      .map(t=>`<span style="white-space:nowrap">T${t}: <strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong>${g.porTurno[t].paro>0?` <span style="color:#DC2626">(paro ${ri(g.porTurno[t].paro)}m)</span>`:''}</span>`)
-      .join(' · ');
-    return `<tr>
-      <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
-      <td>${g.prod}<div style="font-size:.62rem;color:#6B7280;margin-top:3px">${turnoDet}</div></td>
-      <td style="text-align:right;color:#DC2626">${ri(g.paro)} min</td>
-      <td style="text-align:right">${pc(g.disp)}</td>
-      <td style="text-align:right">${pc(g.rend)}</td>
-      <td style="text-align:right">${pc(g.cal)}</td>
-      <td style="text-align:right;font-weight:800;color:${oc}">${pc(g.oee)}</td>
-    </tr>`;
+      .map(t=>`T${t}: ${ri(g.porTurno[t].prod)}${g.porTurno[t].paro>0?` (paro ${ri(g.porTurno[t].paro)}m)`:''}`).join(' · ');
+    return `<div style="border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#FFFFFF">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+        <div>
+          <div style="font-weight:800;color:#111827;font-size:.95rem">Máquina ${g.maq}</div>
+          <div style="font-size:.72rem;color:#6B7280">${g.prod}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:.55rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">OEE</div>
+          <div style="font-size:1.4rem;font-weight:900;color:${oc};line-height:1">${pc(g.oee)}</div>
+        </div>
+      </div>
+      <div style="font-size:.7rem;color:#374151;background:#F3F4F6;border-radius:6px;padding:5px 8px;margin-bottom:8px"><i class="fa-solid fa-clock" style="color:#6B7280;margin-right:4px"></i>${turnoDet||'—'}</div>
+      <div style="font-size:.76rem;line-height:1.5">
+        ${mrow('Und. Programadas', ri(g.undProg), '#2563EB')}
+        ${mrow('Und. Producidas', ri(g.undProd), '#059669')}
+        ${mrow('Und. Faltantes', (g.falt>0?'+':'')+ri(g.falt), g.falt>0?'#DC2626':'#059669')}
+        <div style="border-top:1px dashed #E5E7EB;margin:6px 0"></div>
+        ${mrow('Disponibilidad', pc(g.disp), '#0891B2')}
+        ${mrow('Rendimiento', pc(g.rend), '#7C3AED')}
+        ${mrow('Calidad', pc(g.cal), '#059669')}
+        <div style="border-top:1px dashed #E5E7EB;margin:6px 0"></div>
+        ${mrow('Cav. teór / real', `${g.cavTeor||'—'} / ${g.cavReal||'—'}`)}
+        ${mrow('Ciclo STD / real (s)', `${g.cicloEst?g.cicloEst.toFixed(1):'—'} / ${g.cicloReal?g.cicloReal.toFixed(1):'—'}`)}
+        ${mrow('Tiempo perdido', ri(g.paro)+' min', g.paro>0?'#DC2626':'#1F2937')}
+      </div>
+    </div>`;
   }).join('');
 
-  const maquilaRows = maquilas.length
-    ? maquilas.map(m=>`<tr><td style="font-weight:700;color:#7C3AED">${m.cliente||'—'}</td><td>${m.fecha||'—'}</td><td>${m.referencia||'—'}</td><td style="text-align:right">${m.cantidad?ri(pN(m.cantidad)):'—'}</td></tr>`).join('')
-    : `<tr><td colspan="4" style="text-align:center;color:#6B7280;padding:14px">Sin maquilas registradas para mostrar</td></tr>`;
+  const maquilaCards = maquilas.length
+    ? maquilas.map(m=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #E5E7EB;font-size:.75rem">
+        <div><span style="font-weight:700;color:#7C3AED">${m.cliente||'—'}</span> · ${m.referencia||'—'} <span style="color:#6B7280">(${m.fecha||'—'})</span></div>
+        <div style="font-weight:700;flex-shrink:0">${m.cantidad?ri(pN(m.cantidad)):'—'}</div>
+      </div>`).join('')
+    : `<div style="text-align:center;color:#6B7280;padding:12px;font-size:.75rem">Sin maquilas registradas</div>`;
+
+  const cell = (label,val,color) => `<div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;border-left:3px solid ${color}">
+    <div style="font-size:.55rem;color:#6B7280;text-transform:uppercase;letter-spacing:.04em">${label}</div>
+    <div style="font-size:1.1rem;font-weight:800;color:${color}">${val}</div></div>`;
 
   contentEl.innerHTML = `
     <style>
       #rc-paper { color:#1F2937; }
-      #rc-paper .tbl th { color:#4B5563; border-bottom:1px solid #D1D5DB; }
-      #rc-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#1F2937; }
-      #rc-paper .tbl tr:hover td { background:#F3F4F6; }
-      #rc-paper .section-title { color:#6B7280; }
+      #rc-paper .section-title { color:#6B7280; font-size:.62rem; }
       #rc-paper .section-title::after { background:#D1D5DB; }
     </style>
-    <div id="rc-paper" style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:12px;padding:0;overflow:hidden">
-      <div style="background:#F3F4F6;padding:14px 20px;border-bottom:3px solid #0891B2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <div>
-          <div style="font-size:1.1rem;font-weight:800;color:#111827">PRODUCCIÓN FYLCO</div>
-          <div style="font-size:.78rem;color:#6B7280">${fechaTxt}</div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #0891B2">
-            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Personal operativo</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#0891B2">${totalPersonal??'—'}</div>
-          </div>
-          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #D97706">
-            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Incap./ausente</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#D97706">${incap??'—'}</div>
-          </div>
-          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #059669">
-            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Fuerza laboral</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#059669">${fuerzaLaboral!=null?fuerzaLaboral+'%':'—'}</div>
-          </div>
+    <div id="rc-paper" style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:12px;max-width:460px;margin:0 auto;overflow:hidden">
+
+      <div style="background:#F3F4F6;padding:14px 16px;border-bottom:3px solid #0891B2;text-align:center">
+        <div style="font-size:1.15rem;font-weight:800;color:#111827">PRODUCCIÓN FYLCO</div>
+        <div style="font-size:.78rem;color:#6B7280">${fechaTxt}</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px 16px">
+        ${cell('Personal Oper.', totalPersonal??'—', '#0891B2')}
+        ${cell('Incap./Aus.', incap??'—', '#D97706')}
+        ${cell('Fuerza Lab.', fuerzaLaboral!=null?fuerzaLaboral+'%':'—', '#059669')}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 16px 12px">
+        ${cell('Total Planeadas', ri(totProg), '#2563EB')}
+        ${cell('Total Producidas', ri(totProd), '#059669')}
+        ${cell('Total Faltantes', ri(Math.max(0,totFalt)), '#DC2626')}
+        ${cell('% Cumplimiento', cumpl.toFixed(2)+'%', cumplColor)}
+      </div>
+
+      <div style="padding:4px 16px 12px">
+        <div class="section-title" style="margin-bottom:10px">Detalle por Máquina</div>
+        ${maqCards||'<div style="text-align:center;color:#6B7280;padding:20px">Sin datos para este día</div>'}
+        <div style="display:flex;justify-content:space-around;background:#F3F4F6;border-radius:8px;padding:8px;font-size:.7rem;margin-top:2px">
+          <span>Disp. prom: <strong style="color:#0891B2">${pc(promDisp)}</strong></span>
+          <span>Rend. prom: <strong style="color:#7C3AED">${pc(promRend)}</strong></span>
+          <span>Cal. prom: <strong style="color:#059669">${pc(promCal)}</strong></span>
         </div>
       </div>
 
-      <div style="overflow-x:auto">
-        <table class="tbl" style="width:100%;min-width:760px">
-          <thead><tr>
-            <th>Máq</th><th>Producto</th>
-            <th style="text-align:right">Cav. Teór.</th><th style="text-align:right">Ciclo STD</th>
-            <th style="text-align:center">Turnos</th>
-            <th style="text-align:right">Cav. Real</th><th style="text-align:right">Ciclo Real</th>
-            <th style="text-align:right">Und. Programadas</th><th style="text-align:right">Und. Producidas</th>
-            <th style="text-align:right">Und. Faltantes</th>
-          </tr></thead>
-          <tbody>${prodRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
-        </table>
-      </div>
-
-      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#F3F4F6;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB">
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #2563EB">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Planeadas</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#2563EB">${ri(totProg)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 16px 14px">
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">OEE Pond. Unidades</div>
+          <div style="font-size:1.7rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'}">${pc(oeePondUnid)}</div>
         </div>
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #059669">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Producidas</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#059669">${ri(totProd)}</div>
-        </div>
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #DC2626">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Faltantes</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#DC2626">${ri(Math.max(0,totFalt))}</div>
-        </div>
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid ${cumplColor}">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">% Cumplimiento Plan</div>
-          <div style="font-size:1.3rem;font-weight:800;color:${cumplColor}">${cumpl.toFixed(2)}%</div>
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">OEE Pond. Tiempo</div>
+          <div style="font-size:1.7rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'}">${pc(oeePondTiempo)}</div>
         </div>
       </div>
 
-      <div style="padding:14px 20px">
-        <div class="section-title" style="margin-bottom:10px">OEE por Máquina</div>
-        <div style="overflow-x:auto">
-          <table class="tbl" style="width:100%;min-width:700px">
-            <thead><tr>
-              <th>Máquina</th><th>Producto / Turnos</th>
-              <th style="text-align:right">Tiempo Perdido</th>
-              <th style="text-align:right">Disponibilidad</th><th style="text-align:right">Rendimiento</th>
-              <th style="text-align:right">Calidad</th><th style="text-align:right">OEE</th>
-            </tr></thead>
-            <tbody>${oeeRows||'<tr><td colspan="7" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
-            <tfoot><tr style="border-top:2px solid #D1D5DB;font-weight:700">
-              <td colspan="3" style="text-align:right;color:#6B7280">Promedios →</td>
-              <td style="text-align:right;color:#0891B2">${pc(promDisp)}</td>
-              <td style="text-align:right;color:#7C3AED">${pc(promRend)}</td>
-              <td style="text-align:right;color:#059669">${pc(promCal)}</td>
-              <td></td>
-            </tr></tfoot>
-          </table>
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
-          <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Unidades</div>
-            <div style="font-size:2rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
-          </div>
-          <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Tiempo</div>
-            <div style="font-size:2rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondTiempo)}</div>
-          </div>
-        </div>
-      </div>
-
-      <div style="padding:14px 20px;border-top:1px solid #E5E7EB">
-        <div class="section-title" style="margin-bottom:10px"><i class="fa-solid fa-handshake" style="color:#7C3AED;margin-right:6px"></i>Maquilas</div>
-        <table class="tbl" style="width:100%">
-          <thead><tr><th>Cliente</th><th>Fecha</th><th>Referencia</th><th style="text-align:right">Cantidad</th></tr></thead>
-          <tbody>${maquilaRows}</tbody>
-        </table>
+      <div style="padding:12px 16px 16px;border-top:1px solid #E5E7EB">
+        <div class="section-title" style="margin-bottom:8px"><i class="fa-solid fa-handshake" style="color:#7C3AED;margin-right:6px"></i>Maquilas</div>
+        ${maquilaCards}
       </div>
     </div>`;
 }
