@@ -1295,7 +1295,7 @@ function populateAllFilters() {
       <span class="razon-count">${cnt}</span>
     </label>`).join('');
   // NC & OTIF
-  const ncMeses = [...new Set(DATA.nc.map(r=>(r['MES ']||r['MES']||'').trim()).filter(Boolean))];
+  const ncMeses = [...new Set(DATA.nc.map(r=>String(r['MES ']||r['MES']||'').trim()).filter(Boolean))];
   const ncMaq   = [...new Set(DATA.nc.map(r=>((r['MÁQUINA']??r['MAQUINA'])||'')).filter(Boolean))].sort();
   fillSel('nc-fp-mes', ncMeses.map(cap), 'Mes');
   fillSel('nc-f-maq', ncMaq, 'Máquina');
@@ -1358,7 +1358,7 @@ function filterNC() {
   // NC sheet has no DIA column — only use panel's own day filter (SEL_DIAS_NC)
   const dias = SEL_DIAS_NC;
   return DATA.nc.filter(r =>
-    (!m    || (r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
+    (!m    || String(r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq  || String(((r['MÁQUINA']??r['MAQUINA'])||'')) === maq) &&
     (!SEL_CAUSAS.size || SEL_CAUSAS.has((r['CAUSA']||'').trim()))
@@ -1367,7 +1367,7 @@ function filterNC() {
 function filterVentas() {
   const m = gMes(); const c = getVal('otif-f-cliente');
   return DATA.ventas.filter(r =>
-    (!m || (r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
+    (!m || String(r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
     (!c || (r['Nombre tercero']||'').trim() === c)
   );
 }
@@ -1688,7 +1688,7 @@ function calcOTIF(rows) {
 function calcOTIFMensual(rows) {
   const meses={};
   rows.forEach(r=>{
-    const m=(r['MES ']||'').trim(); if(!m) return;
+    const m=String(r['MES ']||'').trim(); if(!m) return;
     if(!meses[m]) meses[m]={total:0,onTime:0};
     if(r['FECHA SOLICITADA']&&r['FECHA SOLICITADA'].trim()) {
       meses[m].total++;
@@ -1742,7 +1742,7 @@ function renderOTIF() {
     return `<tr>
       <td>${r['Nombre tercero']||'—'}</td>
       <td>${r['Nombre']||'—'}</td>
-      <td>${(r['MES ']||'').trim()}</td>
+      <td>${String(r['MES ']||'').trim()}</td>
       <td>${r['FECHA SOLICITADA']||'—'}</td>
       <td>${r['FECHA REAL DESPACHO ']||'—'}</td>
       <td>${lt!==null?lt+'d':'—'}</td>
@@ -2363,7 +2363,7 @@ function renderReporteDiario() {
     const rawMaq = String(r['MÁQUINA'] ?? r['MAQUINA'] ?? '').trim();
     const maqKey = maqNorm[rawMaq.toLowerCase()];
     if (!rawMaq || !maqKey) return;
-    const mes = (r['MES '] || r['MES'] || '').trim().toLowerCase();
+    const mes = String(r['MES '] || r['MES'] || '').trim().toLowerCase();
     if (fMes && mes !== ncMesLow) return;
     if (fDia && (!r._diaTurno || String(r._diaTurno) !== fDia)) return;
     if (fTurno && r['TURNO'] && String(r['TURNO']).trim() !== fTurno) return;
@@ -3453,7 +3453,7 @@ function renderForecast() {
   // ── Construir mesMap ventas (unidades por mes, total) ────────────────
   const ventaMesMap={}, ventaMesesSet=new Set();
   DATA.ventas.forEach(r=>{
-    const mes=(r['MES ']||r['MES']||'').trim().toLowerCase(); if(!mes) return;
+    const mes=String(r['MES ']||r['MES']||'').trim().toLowerCase(); if(!mes) return;
     const cant=pN(r['Cantidad']); if(cant<=0) return;
     ventaMesMap[mes]=(ventaMesMap[mes]||0)+cant;
     ventaMesesSet.add(mes);
