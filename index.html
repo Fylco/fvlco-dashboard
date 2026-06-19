@@ -1313,7 +1313,7 @@ function populateAllFilters() {
   fillSel('otif-f-cliente', vCli, 'Cliente');
 }
 
-function cap(s) { return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
+function cap(s) { s = (s==null ? '' : String(s)); return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 
 function gMes() { return getVal('g-mes').toLowerCase(); }
 function gDia() { return SEL_DIAS; } // Set
@@ -1957,6 +1957,17 @@ function _findColVal(r, keyword, exclude) {
     }
   }
   return null;
+}
+// Cavidades TEÓRICAS con respaldos: CAV.TEORICAS → mapa por producto →
+// cavidades reales (col CAVIDADES) → col 'cav' → 1. Evita undProg absurdo
+// cuando CAV.TEORICAS viene vacía en el sheet.
+function _cavTeorOf(r) {
+  const map = (typeof CAV_TEOR_MAP !== 'undefined') ? (CAV_TEOR_MAP[r._prod] || 0) : 0;
+  return Math.max(
+    (pNum(r['CAV.TEORICAS']) || 0) || map ||
+    _findColVal(r, 'CAVIDAD', '') || (pNum(r['cav']) || 0) || 1,
+    1
+  );
 }
 // Cavidades reales (col K "CAVIDADES"), fallback a teóricas, fallback a 1
 function getCav(r) {
@@ -2787,7 +2798,7 @@ function renderReporteCompacto() {
     if (!s.undProg && maq !== '?') {
       const est = pN(r['T. CICLO EST']);
       if (est > 0) {
-        const cavTeor = Math.max(pN(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
+        const cavTeor = _cavTeorOf(r);
         const turnoSeg = TURNO_SEG[turno] || 28800;
         const dispSeg = Math.max(turnoSeg - (s.paroProgSeg||0), 0);
         s.undProg = Math.round((dispSeg / est) * cavTeor);
@@ -2812,7 +2823,7 @@ function renderReporteCompacto() {
     if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0 };
     g.porTurno[t].prod += pN(r._cant);
     g.porTurno[t].paro += pN(r._paro);
-    if (!g.cavTeor)   g.cavTeor   = Math.max(pN(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 0, 0);
+    if (!g.cavTeor)   g.cavTeor   = _cavTeorOf(r);
     if (!g.cicloEst)  g.cicloEst  = pN(r['T. CICLO EST']);
     if (!g.cavReal)   g.cavReal   = _findColVal(r,'CAVIDAD','TEOR') || 0;
     if (!g.cicloReal) g.cicloReal = pN(r['T. CICLO REAL']) || pN(r['T.CICLO REAL']) || 0;
