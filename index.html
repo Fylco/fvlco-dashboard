@@ -2903,9 +2903,8 @@ function renderReporteCompacto() {
   const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
   const cumplColor = cumpl>=90?'#059669':cumpl>=70?'#D97706':'#DC2626';
 
-  // Etiquetas de turno: usan los helpers GLOBALES (iguales en todos los reportes)
-  const tDisp = turnoNum, tNote = turnoTag;
-  const turnosLabel = set => [...set].sort().map(turnoLabel).join(', ') || '—';
+  // Cantidad de turnos = horas trabajadas / 8 (8h→1, 16h→2, 24h→3). Máx 3.
+  const nTurnos = g => g.horas>0 ? Math.max(1, Math.min(3, Math.round(g.horas/8))) : '—';
 
   // ── Filas de tablas (layout horizontal) ────────────────────────────────
   const prodRows = maqList.map(g=>`<tr>
@@ -2913,7 +2912,7 @@ function renderReporteCompacto() {
     <td>${g.prod}</td>
     <td style="text-align:right">${g.cavTeor||'—'}</td>
     <td style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
-    <td style="text-align:center">${turnosLabel(g.turnos)}</td>
+    <td style="text-align:center">${nTurnos(g)}</td>
     <td style="text-align:right">${g.cavReal||'—'}</td>
     <td style="text-align:right">${g.cicloReal?g.cicloReal.toFixed(1):'—'}</td>
     <td style="text-align:right;color:#2563EB;font-weight:700">${ri(g.undProg)}</td>
