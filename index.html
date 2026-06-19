@@ -1147,10 +1147,12 @@ function normalizeProd(r) {
       ? (_d * _r * _c) / 10000
       : null;
   }
-  out._mes   = typeof out['MES'] === 'string' ? out['MES'].toLowerCase() : out['MES'];
-  out._maq   = out['MÁQUINA'] ?? out['MAQUINA'] ?? '';
-  out._turno = out['TURNO'] ?? '';
-  out._prod  = out['PRODUCTO'] ?? '';
+  // _mes SIEMPRE string (vacío si MES no es texto, ej. filas con fecha mal
+  // puesta en esa columna → pNum la volvió número). Evita .toLowerCase crash.
+  out._mes   = typeof out['MES'] === 'string' ? out['MES'].toLowerCase() : '';
+  out._maq   = String(out['MÁQUINA'] ?? out['MAQUINA'] ?? '');
+  out._turno = String(out['TURNO'] ?? '');
+  out._prod  = String(out['PRODUCTO'] ?? '');
   out._orden = out['ORDEN'] ?? '';
   out._cant  = pNum(out['CANT REPORTADA']) || _findColVal(out,'CANT REPORT','') || 0;
   out._paro  = pNum(out['TIEMPO PARO MIN']) || _findColVal(out,'PARO MIN','') || _findColVal(out,'TIEMPO PARO','') || 0;
