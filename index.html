@@ -2895,13 +2895,20 @@ function renderReporteCompacto() {
   const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
   const cumplColor = cumpl>=90?'#059669':cumpl>=70?'#D97706':'#DC2626';
 
+  // ── Etiquetas de turno coherentes ──────────────────────────────────────
+  // Códigos del sheet: 1/2/3 = turnos de 8h; 4 = 12h diurno, 5 = 12h nocturno.
+  // Se muestran como Turno 1/2/3 (8h) o Turno 1 Diurno / 2 Nocturno (12h).
+  const tDisp = t => ({'1':'1','2':'2','3':'3','4':'1','5':'2'})[String(t)] || String(t);
+  const tNote = t => ({'4':'Diurno','5':'Nocturno'})[String(t)] || '';
+  const turnosLabel = set => [...set].sort().map(t => tDisp(t) + (tNote(t)?` (${tNote(t)})`:'')).join(', ') || '—';
+
   // ── Filas de tablas (layout horizontal) ────────────────────────────────
   const prodRows = maqList.map(g=>`<tr>
     <td style="font-weight:700;color:#111827">${g.maq}</td>
     <td>${g.prod}</td>
     <td style="text-align:right">${g.cavTeor||'—'}</td>
     <td style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
-    <td style="text-align:center">${[...g.turnos].sort().join(', ')||'—'}</td>
+    <td style="text-align:center">${turnosLabel(g.turnos)}</td>
     <td style="text-align:right">${g.cavReal||'—'}</td>
     <td style="text-align:right">${g.cicloReal?g.cicloReal.toFixed(1):'—'}</td>
     <td style="text-align:right;color:#2563EB;font-weight:700">${ri(g.undProg)}</td>
@@ -2912,7 +2919,7 @@ function renderReporteCompacto() {
   const oeeRows = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
     const turnoDet = Object.keys(g.porTurno).sort()
-      .map(t=>`<span style="white-space:nowrap">T${t}: <strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong>${g.porTurno[t].paro>0?` <span style="color:#DC2626">(paro ${ri(g.porTurno[t].paro)}m)</span>`:''}</span>`)
+      .map(t=>`<span style="white-space:nowrap">Turno ${tDisp(t)}${tNote(t)?' '+tNote(t):''}: <strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong>${g.porTurno[t].paro>0?` <span style="color:#DC2626">(paro ${ri(g.porTurno[t].paro)}m)</span>`:''}</span>`)
       .join(' · ');
     return `<tr>
       <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
