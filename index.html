@@ -2872,9 +2872,12 @@ function renderReporteCompacto() {
   const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
   const promCal  = withOee.length ? withOee.reduce((s,g)=>s+g.cal,0)/withOee.length : null;
 
-  // OEE ponderado por unidades y por tiempo
-  const sumUnd = withOee.reduce((s,g)=>s+g.undProd,0);
-  const oeePondUnid = sumUnd>0 ? withOee.reduce((s,g)=>s+g.oee*g.undProd,0)/sumUnd : null;
+  // OEE ponderado por unidades (capacidad) y por tiempo.
+  // "Por unidades": se pondera por las UNIDADES PROGRAMADAS (capacidad teórica),
+  // NO por lo producido — así una máquina de alta capacidad con bajo OEE pesa lo
+  // que debe y no se esconde al producir poco (que era el sesgo anterior).
+  const sumProg = withOee.reduce((s,g)=>s+(g.undProg||0),0);
+  const oeePondUnid = sumProg>0 ? withOee.reduce((s,g)=>s+g.oee*(g.undProg||0),0)/sumProg : null;
   const sumHoras = withOee.reduce((s,g)=>s+g.horas,0);
   const oeePondTiempo = sumHoras>0 ? withOee.reduce((s,g)=>s+g.oee*g.horas,0)/sumHoras : null;
 
@@ -3029,7 +3032,7 @@ function renderReporteCompacto() {
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
           <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Unidades</div>
+            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Total Ponderado por Unidades (capacidad)</div>
             <div style="font-size:2rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
           </div>
           <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
