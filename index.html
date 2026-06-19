@@ -2868,23 +2868,27 @@ function renderReporteCompacto() {
     const cReal= g.cicloReal || g.cicloEst || 0;// ciclo real
     const horasSeg = g.horas*3600;              // tiempo programado real (seg)
 
-    // UND PROGRAMADAS = (horas × 3600 ÷ ciclo estándar) × cavidades teóricas
+    // #3 UNIDADES TEÓRICAS = (tiempo nominal del turno ÷ ciclo estándar) × cav teóricas
+    //    tiempo nominal = horas del turno × 3600 seg
     g.undProg = (cEst>0 && g.horas>0) ? Math.round((horasSeg/cEst)*cavT) : g.undProd;
     g.falt    = g.undProg - g.undProd;
 
-    // Rendimiento = (cav reales ÷ ciclo real) ÷ (cav teóricas ÷ ciclo estándar)
-    g.rend = (cavT>0 && cReal>0 && cEst>0) ? (cavR/cReal)/(cavT/cEst)*100 : null;
+    // #2 TIEMPO REAL TRABAJADO (min) = (producción ÷ cav reales × ciclo real) ÷ 60
+    g.tReal = (cavR>0 && cReal>0) ? (g.undProd/cavR*cReal)/60 : 0;
+    // #1 TIEMPO PROGRAMADO (min) = tiempo real trabajado + paros
+    g.tProg = g.tReal + (g.paro||0);
 
-    // Disponibilidad = tiempo real trabajado ÷ tiempo programado (tope 100%)
-    g.tReal = (cavR>0 && cReal>0) ? (g.undProd/cavR*cReal)/60 : 0;  // min
-    g.tProg = g.horas*60;                                          // min
-    g.disp  = g.tProg>0 ? Math.min(100, g.tReal/g.tProg*100) : null;
+    // #4 DISPONIBILIDAD = tiempo real trabajado ÷ tiempo programado (TRT + paros)
+    g.disp = g.tProg>0 ? g.tReal/g.tProg*100 : null;
 
-    // Calidad = producción ÷ (producción + NC)
+    // #5 RENDIMIENTO = unidades producidas ÷ unidades teóricas
+    g.rend = g.undProg>0 ? g.undProd/g.undProg*100 : null;
+
+    // #6 CALIDAD = unidades buenas (producidas) ÷ (producidas + NC)
     const nc = ncByMaq[g.maq] || 0;
     g.cal = (g.undProd+nc)>0 ? g.undProd/(g.undProd+nc)*100 : null;
 
-    // OEE = Disponibilidad × Rendimiento × Calidad
+    // #7 OEE = Disponibilidad × Rendimiento × Calidad
     g.oee = (g.disp!=null && g.rend!=null && g.cal!=null) ? (g.disp*g.rend*g.cal)/10000 : null;
   });
 
@@ -2900,11 +2904,10 @@ function renderReporteCompacto() {
   const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
   const promCal  = withOee.length ? withOee.reduce((s,g)=>s+g.cal,0)/withOee.length : null;
 
-  // OEE Ponderado por UNIDADES = Σ(OEE × und. programadas) / Σ und. programadas
-  const sumProgW = withOee.reduce((s,g)=>s+(g.undProg||0),0);
-  const oeePondUnid = sumProgW>0 ? withOee.reduce((s,g)=>s+g.oee*(g.undProg||0),0)/sumProgW : null;
+  // #8 OEE TOTAL POR UNIDADES = promedio SIMPLE de los OEE de todas las máquinas
+  const oeePondUnid = withOee.length ? withOee.reduce((s,g)=>s+g.oee,0)/withOee.length : null;
 
-  // OEE Ponderado por TIEMPO = Σ(OEE × tiempo real trabajado) / Σ tiempo real
+  // #9 OEE TOTAL POR TIEMPO = Σ(tiempo real trabajado × OEE) ÷ Σ tiempo real trabajado
   const sumTReal = withOee.reduce((s,g)=>s+(g.tReal||0),0);
   const oeePondTiempo = sumTReal>0 ? withOee.reduce((s,g)=>s+g.oee*(g.tReal||0),0)/sumTReal : null;
 
