@@ -2849,16 +2849,43 @@ function renderReporteCompacto() {
 
   const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
 
-  // Métricas por máquina: Disp/Rend de columnas del sheet, Calidad por NC
-  // (consistente con la pestaña OEE); OEE = D×R×C.
+  // ── NC por máquina del día consultado (para Calidad) ───────────────────
+  const ncByMaq = {};
+  (DATA.nc||[]).forEach(r => {
+    if (r._fechaKey && r._fechaKey !== fKey) return;
+    const maq = String(r['MÁQUINA'] ?? r['MAQUINA'] ?? '').trim();
+    const nc  = pNum(r['CANTIDAD NC']) || 0;
+    if (maq && nc>0) ncByMaq[maq] = (ncByMaq[maq]||0) + nc;
+  });
+
+  // ── Métricas por máquina — metodología del reporte de planta (Excel) ───
   maqList.forEach(g => {
-    g.disp = avg(g.rows,'_disp');
-    g.rend = avg(g.rows,'_rend');
-    g.cal  = calcCalidad(g.rows);
-    g.oee  = (g.disp!=null && g.rend!=null && g.cal!=null) ? (g.disp*g.rend*g.cal)/10000 : null;
-    g.undProg = g._undProgSum || g.undProd;
-    g.falt    = g.undProg - g.undProd;
     g.horas   = Object.values(g.dtSet).reduce((s,ts)=>s+calcShiftHours(ts),0);
+    g.turnosN = g.horas>0 ? Math.max(1, Math.min(3, Math.round(g.horas/8))) : 0;
+    const cavR = g.cavReal || g.cavTeor || 0;   // cavidades reales (func)
+    const cavT = g.cavTeor || cavR || 0;        // cavidades teóricas
+    const cEst = g.cicloEst || g.cicloReal || 0;// ciclo estándar
+    const cReal= g.cicloReal || g.cicloEst || 0;// ciclo real
+    const horasSeg = g.horas*3600;              // tiempo programado real (seg)
+
+    // UND PROGRAMADAS = (horas × 3600 ÷ ciclo estándar) × cavidades teóricas
+    g.undProg = (cEst>0 && g.horas>0) ? Math.round((horasSeg/cEst)*cavT) : g.undProd;
+    g.falt    = g.undProg - g.undProd;
+
+    // Rendimiento = (cav reales ÷ ciclo real) ÷ (cav teóricas ÷ ciclo estándar)
+    g.rend = (cavT>0 && cReal>0 && cEst>0) ? (cavR/cReal)/(cavT/cEst)*100 : null;
+
+    // Disponibilidad = tiempo real trabajado ÷ tiempo programado (tope 100%)
+    g.tReal = (cavR>0 && cReal>0) ? (g.undProd/cavR*cReal)/60 : 0;  // min
+    g.tProg = g.horas*60;                                          // min
+    g.disp  = g.tProg>0 ? Math.min(100, g.tReal/g.tProg*100) : null;
+
+    // Calidad = producción ÷ (producción + NC)
+    const nc = ncByMaq[g.maq] || 0;
+    g.cal = (g.undProd+nc)>0 ? g.undProd/(g.undProd+nc)*100 : null;
+
+    // OEE = Disponibilidad × Rendimiento × Calidad
+    g.oee = (g.disp!=null && g.rend!=null && g.cal!=null) ? (g.disp*g.rend*g.cal)/10000 : null;
   });
 
   // ── Totales ─────────────────────────────────────────────────────────────
@@ -2868,23 +2895,18 @@ function renderReporteCompacto() {
   const cumpl   = totProg>0 ? totProd/totProg*100 : 0;
 
   const withOee = maqList.filter(g=>g.oee!=null);
+  // Promedios simples — incluyen TODAS las máquinas (corrige el error del Excel)
   const promDisp = withOee.length ? withOee.reduce((s,g)=>s+g.disp,0)/withOee.length : null;
   const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
   const promCal  = withOee.length ? withOee.reduce((s,g)=>s+g.cal,0)/withOee.length : null;
 
-  // ── OEE por TIEMPO = tiempo real trabajado / tiempo programado ─────────
-  // tiempo programado = horas de turno; tiempo real = programado − paros.
-  const sumHoras     = maqList.reduce((s,g)=>s+(g.horas||0),0);
-  const sumHorasReal = maqList.reduce((s,g)=>s+Math.max(0,(g.horas||0)-(g.paro||0)/60),0);
-  const oeePondTiempo = sumHoras>0 ? sumHorasReal/sumHoras*100 : null;
+  // OEE Ponderado por UNIDADES = Σ(OEE × und. programadas) / Σ und. programadas
+  const sumProgW = withOee.reduce((s,g)=>s+(g.undProg||0),0);
+  const oeePondUnid = sumProgW>0 ? withOee.reduce((s,g)=>s+g.oee*(g.undProg||0),0)/sumProgW : null;
 
-  // ── OEE por UNIDADES = unidades reales / unidades teóricas ─────────────
-  // Solo máquinas con teórico calculado (con T.CICLO EST); evita inflar con
-  // fallbacks. Captura la pérdida de producción por ritmo/cavidades.
-  const conTeor  = maqList.filter(g=>(g._undProgSum||0)>0);
-  const sumProgU = conTeor.reduce((s,g)=>s+g._undProgSum,0);
-  const sumProdU = conTeor.reduce((s,g)=>s+(g.undProd||0),0);
-  const oeePondUnid = sumProgU>0 ? sumProdU/sumProgU*100 : null;
+  // OEE Ponderado por TIEMPO = Σ(OEE × tiempo real trabajado) / Σ tiempo real
+  const sumTReal = withOee.reduce((s,g)=>s+(g.tReal||0),0);
+  const oeePondTiempo = sumTReal>0 ? withOee.reduce((s,g)=>s+g.oee*(g.tReal||0),0)/sumTReal : null;
 
   // ── Personal (de la hoja de accidentalidad) ─────────────────────────────
   let totalPersonal=null, incap=null, fuerzaLaboral=null;
@@ -3037,11 +3059,11 @@ function renderReporteCompacto() {
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
           <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE por Unidades (Reales ÷ Teóricas)</div>
+            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Unidades</div>
             <div style="font-size:2rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
           </div>
           <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE por Tiempo (Trabajado ÷ Programado)</div>
+            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Tiempo</div>
             <div style="font-size:2rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondTiempo)}</div>
           </div>
         </div>
