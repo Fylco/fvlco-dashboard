@@ -1003,11 +1003,21 @@ function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); delete CHART
 // =======================================================
 // DATA LOADING
 // =======================================================
-async function fetchCSV(url) {
-  const bust = `&_t=${Date.now()}`;
-  const res = await fetch(proxy(url + bust), { cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
-  return Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
+async function fetchCSV(url, retries = 2) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const bust = `&_t=${Date.now()}_${attempt}`;
+      const res = await fetch(proxy(url + bust), { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
+      return Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
+    } catch (e) {
+      lastErr = e;
+      // Reintento ante fallos transitorios de Google (ej. HTTP 400 esporádico)
+      if (attempt < retries) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 // Maquilas: layout de dos clientes lado a lado (VELCOPLAST cols 0-2, PRACTIDENT cols 4-6).
@@ -1182,31 +1192,40 @@ function setProgress(p, msg) {
   document.getElementById('load-msg').textContent = msg;
 }
 
+// Carga una hoja secundaria sin tumbar el dashboard si falla
+async function loadOptional(label, url, assign) {
+  try {
+    const parsed = await fetchCSV(url);
+    assign(parsed.data);
+  } catch (e) {
+    console.warn(`${label} no cargó (se continúa):`, e.message);
+    assign([]);
+  }
+}
+
 async function loadAll() {
   try {
+    // Producción es la ÚNICA hoja crítica: si falla, no hay dashboard.
     setProgress(10, 'Cargando Producción...');
     const prodParsed = await fetchCSV(SHEETS.produccion);
     DATA.prod = prodParsed.data.map(normalizeProd);
 
+    // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
     setProgress(28, 'Cargando No Conformes...');
-    const ncParsed = await fetchCSV(SHEETS.noConformes);
-    DATA.nc = ncParsed.data.map(normalizeProd);
-    DATA.ncByOrden = buildNcByOrden(DATA.nc);
+    await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
+    DATA.ncByOrden = buildNcByOrden(DATA.nc || []);
 
     setProgress(46, 'Cargando Plan Referencias...');
-    const planParsed = await fetchCSV(SHEETS.planRef);
-    DATA.planRef = planParsed.data;
+    await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
 
     setProgress(64, 'Cargando Ventas y Compras...');
-    const ventasParsed = await fetchCSV(SHEETS.ventas);
-    DATA.ventas = ventasParsed.data;
+    await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
 
     setProgress(82, 'Cargando Accidentalidad...');
-    const accidParsed = await fetchCSV(SHEETS.accid);
-    DATA.accid = accidParsed.data;
+    await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
 
     setProgress(92, 'Cargando Maquilas...');
-    await loadMaquilas();   // hoja distinta; no debe bloquear el resto si falla
+    await loadMaquilas();   // hoja distinta; ya maneja su propio error
 
     setProgress(100, 'Listo');
     document.getElementById('last-update').textContent =
@@ -1219,7 +1238,7 @@ async function loadAll() {
     renderAll();
     setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
   } catch(e) {
-    document.getElementById('load-msg').textContent = '⚠️ Error: '+e.message;
+    document.getElementById('load-msg').textContent = '⚠️ Error al cargar Producción: '+e.message+' — reintenta con Actualizar.';
     document.getElementById('load-bar').style.background='#EF4444';
   }
 }
