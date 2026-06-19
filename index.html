@@ -226,11 +226,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <select id="oee-f-maq"><option value="">Todas las máquinas</option></select>
         <select id="oee-f-turno">
           <option value="">Todos los turnos</option>
-          <option value="1">T1 — 6:00 AM a 2:00 PM</option>
-          <option value="2">T2 — 2:00 PM a 10:00 PM</option>
-          <option value="3">T3 — 10:00 PM a 6:00 AM</option>
-          <option value="4">T4 — 6:00 AM a 6:00 PM</option>
-          <option value="5">T5 — 6:00 PM a 6:00 AM</option>
+          <option value="1">Turno 1 (8h) — 6:00 AM a 2:00 PM</option>
+          <option value="2">Turno 2 (8h) — 2:00 PM a 10:00 PM</option>
+          <option value="3">Turno 3 (8h) — 10:00 PM a 6:00 AM</option>
+          <option value="4">Turno 1 Diurno (12h) — 6:00 AM a 6:00 PM</option>
+          <option value="5">Turno 2 Nocturno (12h) — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-filter" onclick="renderOEE()">Filtrar</button>
         <button class="btn-clear" onclick="clearFilters('oee');renderOEE()">Limpiar</button>
@@ -259,11 +259,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <select id="rd-f-dia"><option value="">Todos los días</option></select>
         <select id="rd-f-turno">
           <option value="">Todos los turnos</option>
-          <option value="1">T1 — 6:00 AM a 2:00 PM</option>
-          <option value="2">T2 — 2:00 PM a 10:00 PM</option>
-          <option value="3">T3 — 10:00 PM a 6:00 AM</option>
-          <option value="4">T4 — 6:00 AM a 6:00 PM</option>
-          <option value="5">T5 — 6:00 PM a 6:00 AM</option>
+          <option value="1">Turno 1 (8h) — 6:00 AM a 2:00 PM</option>
+          <option value="2">Turno 2 (8h) — 2:00 PM a 10:00 PM</option>
+          <option value="3">Turno 3 (8h) — 10:00 PM a 6:00 AM</option>
+          <option value="4">Turno 1 Diurno (12h) — 6:00 AM a 6:00 PM</option>
+          <option value="5">Turno 2 Nocturno (12h) — 6:00 PM a 6:00 AM</option>
         </select>
         <select id="rd-f-maq"><option value="">Todas las máquinas</option></select>
         <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
@@ -302,11 +302,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-clear" onclick="rcStepDay(1)" title="Día siguiente" style="font-weight:700;padding:6px 14px">Día siguiente ▶</button>
         <select id="rc-f-turno" onchange="renderReporteCompacto()">
           <option value="">Todos los turnos</option>
-          <option value="1">T1 — 6:00 AM a 2:00 PM</option>
-          <option value="2">T2 — 2:00 PM a 10:00 PM</option>
-          <option value="3">T3 — 10:00 PM a 6:00 AM</option>
-          <option value="4">T4 — 6:00 AM a 6:00 PM</option>
-          <option value="5">T5 — 6:00 PM a 6:00 AM</option>
+          <option value="1">Turno 1 (8h) — 6:00 AM a 2:00 PM</option>
+          <option value="2">Turno 2 (8h) — 2:00 PM a 10:00 PM</option>
+          <option value="3">Turno 3 (8h) — 10:00 PM a 6:00 AM</option>
+          <option value="4">Turno 1 Diurno (12h) — 6:00 AM a 6:00 PM</option>
+          <option value="5">Turno 2 Nocturno (12h) — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-clear" onclick="rcGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
         <button id="rc-pdf-btn" onclick="exportCompactImage()" style="background:#0891B2;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
@@ -1317,6 +1317,13 @@ function populateAllFilters() {
 
 function cap(s) { s = (s==null ? '' : String(s)); return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 
+// ── Etiquetas de turno (consistentes en TODOS los reportes) ──────────────
+// La planta trabaja 24h/día. Códigos del sheet: 1/2/3 = turnos de 8h;
+// 4 = turno de 12h diurno, 5 = turno de 12h nocturno.
+function turnoNum(t)  { return ({'1':'1','2':'2','3':'3','4':'1','5':'2'})[String(t)] || String(t); }
+function turnoTag(t)  { return ({'4':'Diurno','5':'Nocturno'})[String(t)] || ''; }
+function turnoLabel(t){ const n=turnoNum(t), g=turnoTag(t); return g ? `${n} (${g})` : n; }
+
 function gMes() { return getVal('g-mes').toLowerCase(); }
 function gDia() { return SEL_DIAS; } // Set
 
@@ -1781,9 +1788,9 @@ function renderParos() {
      backgroundColor:'#EF444488',borderRadius:4}
   ]);
 
-  // Por turno
+  // Por turno (8h: 1/2/3 · 12h: diurno=4, nocturno=5)
   const turnos=[1,2,3,4,5];
-  const tNames=['T1','T2','T3','T4','T5'];
+  const tNames=['Turno 1 (8h)','Turno 2 (8h)','Turno 3 (8h)','Diurno (12h)','Nocturno (12h)'];
   makeChart('paro-turno','doughnut',tNames,[
     {data:turnos.map(t=>sum(d.filter(r=>r._turno==t),'_paro')),backgroundColor:PAL,borderWidth:0}
   ]);
@@ -1804,7 +1811,7 @@ function renderParos() {
     return `<tr>
       <td style="white-space:nowrap">${cap(r._mes||'—')} / Día ${r['DIA']||'—'}</td>
       <td>Máq ${r._maq||'—'}</td>
-      <td>T${r._turno||'—'}</td>
+      <td>${r._turno?'Turno '+turnoLabel(r._turno):'—'}</td>
       <td>${r._prod?r._prod.substring(0,30):'—'}</td>
       <td style="color:#F59E0B;font-weight:600">${razon}</td>
       <td style="text-align:right;color:#EF4444;font-weight:700">${r._paro} min</td>
@@ -2434,7 +2441,7 @@ function renderReporteDiario() {
       <td>Día ${g.dia}</td>
       <td>${g.prod}</td>
       <td>${g.maq}</td>
-      <td>T${g.turno}</td>
+      <td>${turnoLabel(g.turno)}</td>
       <td style="text-align:right">${g.cavReal}</td>
       <td style="text-align:right">${g.cavTeor}</td>
       <td style="text-align:right">${g.est>0?g.est.toFixed(1)+' s':'-'}</td>
@@ -2895,12 +2902,9 @@ function renderReporteCompacto() {
   const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
   const cumplColor = cumpl>=90?'#059669':cumpl>=70?'#D97706':'#DC2626';
 
-  // ── Etiquetas de turno coherentes ──────────────────────────────────────
-  // Códigos del sheet: 1/2/3 = turnos de 8h; 4 = 12h diurno, 5 = 12h nocturno.
-  // Se muestran como Turno 1/2/3 (8h) o Turno 1 Diurno / 2 Nocturno (12h).
-  const tDisp = t => ({'1':'1','2':'2','3':'3','4':'1','5':'2'})[String(t)] || String(t);
-  const tNote = t => ({'4':'Diurno','5':'Nocturno'})[String(t)] || '';
-  const turnosLabel = set => [...set].sort().map(t => tDisp(t) + (tNote(t)?` (${tNote(t)})`:'')).join(', ') || '—';
+  // Etiquetas de turno: usan los helpers GLOBALES (iguales en todos los reportes)
+  const tDisp = turnoNum, tNote = turnoTag;
+  const turnosLabel = set => [...set].sort().map(turnoLabel).join(', ') || '—';
 
   // ── Filas de tablas (layout horizontal) ────────────────────────────────
   const prodRows = maqList.map(g=>`<tr>
