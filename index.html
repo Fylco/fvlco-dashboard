@@ -2899,15 +2899,16 @@ function renderReporteCompacto() {
 
   const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
 
-  // ── NC del día por ORDEN (cruce nº de orden + fecha de la columna A) ────
-  // Solo cuenta NC cuya FECHA Y HORA (col A) coincide con el día consultado,
-  // indexado por número de orden de producción → cruce confiable.
-  const ncByOrdenDia = {};
+  // ── NC del día por MÁQUINA (col B) + fecha (col A) ─────────────────────
+  // Se respeta la MÁQUINA que reporta el NC: así, si una orden está
+  // compartida entre dos máquinas o su fecha no coincide, el NC se asigna
+  // a la máquina que realmente lo registró (no por la orden).
+  const ncByMaqDia = {};
   (DATA.nc||[]).forEach(r => {
-    if (r._fechaKey !== fKey) return;                 // misma fecha (col A)
-    const orden = String(r._orden || '').trim();
-    const nc    = pNum(r['CANTIDAD NC']) || 0;
-    if (orden && nc>0) ncByOrdenDia[orden] = (ncByOrdenDia[orden]||0) + nc;
+    if (r._fechaKey !== fKey) return;                          // fecha col A == día
+    const maq = String(r._maq ?? r['MÁQUINA'] ?? r['MAQUINA'] ?? '').trim();
+    const nc  = pNum(r['CANTIDAD NC']) || 0;
+    if (maq && nc>0) ncByMaqDia[maq] = (ncByMaqDia[maq]||0) + nc;
   });
 
   // ── Métricas por máquina — metodología del reporte de planta (Excel) ───
@@ -2946,10 +2947,9 @@ function renderReporteCompacto() {
     //    si corre más rápido que el ciclo estándar no puede superar el ideal)
     g.rend = g.undProg>0 ? Math.min(100, g.undProd/g.undProg*100) : null;
 
-    // #6 CALIDAD = producidas ÷ (producidas + NC). NC = suma de las órdenes
-    //    que corrió esta máquina ese día (cruce por nº de orden + fecha col A).
-    const ordenes = new Set(g.rows.map(r=>String(r._orden||'').trim()).filter(Boolean));
-    let nc = 0; ordenes.forEach(o => { nc += (ncByOrdenDia[o] || 0); });
+    // #6 CALIDAD = producidas ÷ (producidas + NC). NC = el reportado por
+    //    ESTA máquina ese día (col B + fecha col A), respetando la máquina.
+    const nc = ncByMaqDia[g.maq] || 0;
     g.nc  = nc;
     g.cal = (g.undProd+nc)>0 ? g.undProd/(g.undProd+nc)*100 : null;
 
