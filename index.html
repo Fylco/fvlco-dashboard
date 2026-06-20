@@ -312,6 +312,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button id="rc-pdf-btn" onclick="exportCompactImage()" style="background:#0891B2;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
           <i class="fa-solid fa-camera"></i> Descargar imagen
         </button>
+        <button id="rc-share-btn" onclick="shareCompactImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px">
+          <i class="fa-brands fa-whatsapp"></i> Compartir
+        </button>
       </div>
       <div id="rc-content"></div>
     </div>
@@ -2695,6 +2698,39 @@ async function exportCompactImage() {
   } catch(err) {
     alert('Error generando la imagen: '+err.message);
     console.error(err);
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+}
+
+// Comparte el reporte como imagen PNG (Web Share API → WhatsApp en celular).
+// En PC / navegador sin soporte, descarga la imagen como respaldo.
+async function shareCompactImage() {
+  const el = document.getElementById('rc-content');
+  const btn = document.getElementById('rc-share-btn');
+  if (!el) return;
+  const prev = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
+  try {
+    const canvas = await html2canvas(el, { backgroundColor:'#FFFFFF', scale:3, useCORS:true });
+    const sel = document.getElementById('rc-f-dia');
+    const fecha = (sel && sel.value) ? sel.value : 'reporte';
+    const fname = `Reporte_Compacto_${fecha}.png`;
+    const blob  = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file  = new File([blob], fname, { type:'image/png' });
+    if (navigator.canShare && navigator.canShare({ files:[file] })) {
+      // Celular: abre el menú nativo → elegir WhatsApp y el grupo
+      await navigator.share({ files:[file], title:'Reporte de Producción FVLco', text:`Reporte de Producción FVLco — ${fecha}` });
+    } else {
+      // PC / sin soporte: descargar y avisar
+      const link = document.createElement('a');
+      link.download = fname; link.href = canvas.toDataURL('image/png'); link.click();
+      alert('Este dispositivo no permite compartir directamente. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.\n\nTip: desde el celular el botón Compartir abre WhatsApp automáticamente.');
+    }
+  } catch(err) {
+    if (!err || err.name !== 'AbortError') {  // AbortError = el usuario canceló
+      alert('No se pudo compartir: ' + ((err && err.message) || err));
+      console.error(err);
+    }
   }
   if (btn) { btn.disabled = false; btn.innerHTML = prev; }
 }
