@@ -2874,6 +2874,15 @@ function renderReporteCompacto() {
 
   // ── Métricas por máquina — metodología del reporte de planta (Excel) ───
   maqList.forEach(g => {
+    // Tope de paro por turno: no puede exceder la duración del turno
+    // (8h = 480 min en T1/T2/T3; 12h = 720 min en T4/T5). Evita paros
+    // imposibles (>1440 min/día) por datos mal cargados.
+    Object.keys(g.porTurno).forEach(t => {
+      const maxParo = (t==='4' || t==='5') ? 720 : 480;
+      if (g.porTurno[t].paro > maxParo) g.porTurno[t].paro = maxParo;
+    });
+    g.paro = Object.values(g.porTurno).reduce((s,v)=>s+v.paro, 0);
+
     g.horas   = Object.values(g.dtSet).reduce((s,ts)=>s+calcShiftHours(ts),0);
     g.turnosN = g.horas>0 ? Math.max(1, Math.min(3, Math.round(g.horas/8))) : 0;
     const cavR = g.cavReal || g.cavTeor || 0;   // cavidades reales (func)
@@ -3004,7 +3013,7 @@ function renderReporteCompacto() {
       <div style="background:#F3F4F6;padding:14px 20px;border-bottom:3px solid #0891B2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-size:1.5rem;font-weight:800;color:#111827">PRODUCCIÓN FYLCO</div>
-          <div style="font-size:1rem;color:#6B7280">${fechaTxt}</div>
+          <div style="font-size:1.05rem;color:#374151;font-weight:600">${fechaTxt}</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #0891B2">
