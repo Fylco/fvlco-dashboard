@@ -2831,7 +2831,7 @@ function renderReporteCompacto() {
     const maq = String(r._maq || '—');
     if (!maqMap[maq]) maqMap[maq] = {
       maq, prod:r._prod||'—', rows:[], turnos:new Set(), dtSet:{}, porTurno:{},
-      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, undProd:0
+      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, undProd:0, razones:[]
     };
     const g = maqMap[maq];
     g.rows.push(r);
@@ -2842,6 +2842,11 @@ function renderReporteCompacto() {
     if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0 };
     g.porTurno[t].prod += pN(r._cant);
     g.porTurno[t].paro += pN(r._paro);
+    // Razones de paro: solo de filas con paro registrado, sin duplicar
+    if (pN(r._paro) > 0) {
+      const rz = String(r['RAZON PARO'] || r['RAZÓN PARO'] || '').trim();
+      if (rz && !g.razones.includes(rz)) g.razones.push(rz);
+    }
     if (!g.cavTeor)   g.cavTeor   = _cavTeorOf(r);
     if (!g.cicloEst)  g.cicloEst  = pN(r['T. CICLO EST']);
     if (!g.cavReal)   g.cavReal   = _findColVal(r,'CAVIDAD','TEOR') || 0;
@@ -2971,7 +2976,7 @@ function renderReporteCompacto() {
     return `<tr>
       <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
       <td>${g.prod}<div style="font-size:.82rem;color:#6B7280;margin-top:4px">${turnoDet}</div></td>
-      <td style="text-align:right;color:#DC2626">${ri(g.paro)} min</td>
+      <td style="text-align:right;color:#DC2626">${ri(g.paro)} min${g.razones.length?`<div style="font-size:.82rem;color:#DC2626;margin-top:4px;font-weight:400">${g.razones.join(', ')}</div>`:''}</td>
       <td style="text-align:right">${pc(g.disp)}</td>
       <td style="text-align:right">${pc(g.rend)}</td>
       <td style="text-align:right">${pc(g.cal)}</td>
