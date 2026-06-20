@@ -1968,16 +1968,23 @@ function _findColVal(r, keyword, exclude) {
   }
   return null;
 }
-// Cavidades TEÓRICAS con respaldos: CAV.TEORICAS → mapa por producto →
-// cavidades reales (col CAVIDADES) → col 'cav' → 1. Evita undProg absurdo
-// cuando CAV.TEORICAS viene vacía en el sheet.
+// Molde (cavidades teóricas) por máquina — override TEMPORAL mientras la
+// columna AO (CAV.TEORICAS) del sheet se termina de llenar. Cuando AO trae
+// un valor > 0, ESE manda (es el dato real). Pídele al usuario los moldes.
+const MOLDE_CAV = {
+  '3': 24,   // Máquina 3 — molde de 24 cavidades (confirmado por el usuario)
+};
+// Cavidades TEÓRICAS con respaldos, en orden de prioridad:
+//   1) CAV.TEORICAS (col AO) si > 0  → dato real del sheet
+//   2) MOLDE_CAV[máquina]            → override temporal del usuario
+//   3) mapa por producto / cavidades reales / col 'cav' / 1
 function _cavTeorOf(r) {
+  const ao  = pNum(r['CAV.TEORICAS']) || 0;
+  if (ao > 0) return ao;
+  const molde = MOLDE_CAV[String(r._maq)] || 0;
+  if (molde > 0) return molde;
   const map = (typeof CAV_TEOR_MAP !== 'undefined') ? (CAV_TEOR_MAP[r._prod] || 0) : 0;
-  return Math.max(
-    (pNum(r['CAV.TEORICAS']) || 0) || map ||
-    _findColVal(r, 'CAVIDAD', '') || (pNum(r['cav']) || 0) || 1,
-    1
-  );
+  return Math.max(map || _findColVal(r, 'CAVIDAD', '') || (pNum(r['cav']) || 0) || 1, 1);
 }
 // Cavidades reales (col K "CAVIDADES"), fallback a teóricas, fallback a 1
 function getCav(r) {
@@ -2773,19 +2780,21 @@ function renderReporteCompacto() {
   );
 
   // ── Regla anti-doble-conteo de turnos ──────────────────────────────────
-  // T4 (6am-6pm) y T5 (6pm-6am) son turnos "padre" de 12h: cubren el día
-  // completo. Si una máquina reporta T4/T5, los T1/T2/T3 quedan DENTRO de
-  // ellos → contarlos sumaría dos veces. Regla: si hay T4/T5, usar solo
-  // T4/T5; si no, usar T1/T2/T3. (Misma lógica que calcShiftHours.)
+  // T4 (día 6am-6pm, 12h) SUBSUME a los turnos 1 y 2 (día de 8h).
+  // T5 (noche 6pm-6am, 12h) SUBSUME al turno 3 (noche de 8h).
+  // Solo se descartan los turnos realmente contenidos; T5 (noche) NO
+  // reemplaza a T1/T2 (día), que son producción aparte.
   const allByMaq = {};
   rows.forEach(r => { (allByMaq[String(r._maq||'—')] ||= []).push(r); });
   const effRows = [];
   Object.values(allByMaq).forEach(rs => {
     const ts = new Set(rs.map(r=>String(r._turno||'')));
-    const useParent = ts.has('4') || ts.has('5');
+    const has4 = ts.has('4'), has5 = ts.has('5');
     rs.forEach(r => {
       const t = String(r._turno||'');
-      if (useParent ? (t==='4'||t==='5') : true) effRows.push(r);
+      if (has4 && (t==='1' || t==='2')) return;  // T4 cubre el día
+      if (has5 && t==='3') return;               // T5 cubre la noche
+      effRows.push(r);
     });
   });
 
