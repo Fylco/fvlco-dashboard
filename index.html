@@ -1153,7 +1153,16 @@ function normalizeProd(r) {
   // _mes SIEMPRE string (vacío si MES no es texto, ej. filas con fecha mal
   // puesta en esa columna → pNum la volvió número). Evita .toLowerCase crash.
   out._mes   = typeof out['MES'] === 'string' ? out['MES'].toLowerCase() : '';
-  out._maq   = String(out['MÁQUINA'] ?? out['MAQUINA'] ?? '');
+  // _maq robusto: el encabezado "MÁQUINA" a veces llega con la Á en otra
+  // codificación (ej. en la hoja NC) y out['MÁQUINA'] no la encuentra. Se
+  // busca de forma flexible cualquier columna que contenga "QUINA".
+  let _maqVal = out['MÁQUINA'] ?? out['MAQUINA'];
+  if (_maqVal == null || _maqVal === '') {
+    for (const k of Object.keys(out)) {
+      if (k.toUpperCase().includes('QUINA')) { _maqVal = out[k]; break; }
+    }
+  }
+  out._maq   = String(_maqVal ?? '');
   out._turno = String(out['TURNO'] ?? '');
   out._prod  = String(out['PRODUCTO'] ?? '');
   out._orden = out['ORDEN'] ?? '';
