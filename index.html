@@ -2890,8 +2890,9 @@ function renderReporteCompacto() {
     // #4 DISPONIBILIDAD = tiempo real trabajado ÷ tiempo programado (TRT + paros)
     g.disp = g.tProg>0 ? g.tReal/g.tProg*100 : null;
 
-    // #5 RENDIMIENTO = unidades producidas ÷ unidades teóricas
-    g.rend = g.undProg>0 ? g.undProd/g.undProg*100 : null;
+    // #5 RENDIMIENTO = unidades producidas ÷ unidades teóricas (tope 100%:
+    //    si corre más rápido que el ciclo estándar no puede superar el ideal)
+    g.rend = g.undProg>0 ? Math.min(100, g.undProd/g.undProg*100) : null;
 
     // #6 CALIDAD = unidades buenas (producidas) ÷ (producidas + NC)
     const nc = ncByMaq[g.maq] || 0;
