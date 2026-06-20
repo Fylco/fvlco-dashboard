@@ -3085,7 +3085,7 @@ function renderReporteCompacto() {
               <td style="text-align:right;color:#0891B2">${pc(promDisp)}</td>
               <td style="text-align:right;color:#7C3AED">${pc(promRend)}</td>
               <td style="text-align:right;color:#059669">${pc(promCal)}</td>
-              <td></td>
+              <td style="text-align:right;font-weight:800;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'}">${pc(oeePondUnid)}</td>
             </tr></tfoot>
           </table>
         </div>
