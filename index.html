@@ -2960,7 +2960,7 @@ function renderReporteCompacto() {
       .join(' · ');
     return `<tr>
       <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
-      <td>${g.prod}<div style="font-size:.62rem;color:#6B7280;margin-top:3px">${turnoDet}</div></td>
+      <td>${g.prod}<div style="font-size:.82rem;color:#6B7280;margin-top:4px">${turnoDet}</div></td>
       <td style="text-align:right;color:#DC2626">${ri(g.paro)} min</td>
       <td style="text-align:right">${pc(g.disp)}</td>
       <td style="text-align:right">${pc(g.rend)}</td>
@@ -2979,30 +2979,30 @@ function renderReporteCompacto() {
   contentEl.innerHTML = `
     <style>
       #rc-paper { color:#1F2937; }
-      #rc-paper .tbl th { color:#4B5563; border-bottom:1px solid #D1D5DB; }
-      #rc-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#1F2937; }
+      #rc-paper .tbl th { color:#4B5563; border-bottom:1px solid #D1D5DB; font-size:.92rem; padding:10px 12px; }
+      #rc-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#1F2937; font-size:1.02rem; padding:11px 12px; }
       #rc-paper .tbl tr:hover td { background:#F3F4F6; }
-      #rc-paper .section-title { color:#6B7280; }
+      #rc-paper .section-title { color:#6B7280; font-size:.85rem; }
       #rc-paper .section-title::after { background:#D1D5DB; }
     </style>
     <div id="rc-paper" style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:12px;overflow:hidden">
       <div style="background:#F3F4F6;padding:14px 20px;border-bottom:3px solid #0891B2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-size:1.1rem;font-weight:800;color:#111827">PRODUCCIÓN FYLCO</div>
-          <div style="font-size:.78rem;color:#6B7280">${fechaTxt}</div>
+          <div style="font-size:1.5rem;font-weight:800;color:#111827">PRODUCCIÓN FYLCO</div>
+          <div style="font-size:1rem;color:#6B7280">${fechaTxt}</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #0891B2">
-            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Personal operativo</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#0891B2">${totalPersonal??'—'}</div>
+            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Personal operativo</div>
+            <div style="font-size:1.5rem;font-weight:800;color:#0891B2">${totalPersonal??'—'}</div>
           </div>
           <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #D97706">
-            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Incap./ausente</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#D97706">${incap??'—'}</div>
+            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Incap./ausente</div>
+            <div style="font-size:1.5rem;font-weight:800;color:#D97706">${incap??'—'}</div>
           </div>
           <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #059669">
-            <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Fuerza laboral</div>
-            <div style="font-size:1.1rem;font-weight:800;color:#059669">${fuerzaLaboral!=null?fuerzaLaboral+'%':'—'}</div>
+            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Fuerza laboral</div>
+            <div style="font-size:1.5rem;font-weight:800;color:#059669">${fuerzaLaboral!=null?fuerzaLaboral+'%':'—'}</div>
           </div>
         </div>
       </div>
@@ -3023,20 +3023,20 @@ function renderReporteCompacto() {
 
       <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#F3F4F6;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB">
         <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #2563EB">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Planeadas</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#2563EB">${ri(totProg)}</div>
+          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Total Und. Planeadas</div>
+          <div style="font-size:1.75rem;font-weight:800;color:#2563EB">${ri(totProg)}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #059669">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Producidas</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#059669">${ri(totProd)}</div>
+          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Total Und. Producidas</div>
+          <div style="font-size:1.75rem;font-weight:800;color:#059669">${ri(totProd)}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #DC2626">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">Total Und. Faltantes</div>
-          <div style="font-size:1.3rem;font-weight:800;color:#DC2626">${ri(Math.max(0,totFalt))}</div>
+          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Total Und. Faltantes</div>
+          <div style="font-size:1.75rem;font-weight:800;color:#DC2626">${ri(Math.max(0,totFalt))}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid ${cumplColor}">
-          <div style="font-size:.6rem;color:#6B7280;text-transform:uppercase">% Cumplimiento Plan</div>
-          <div style="font-size:1.3rem;font-weight:800;color:${cumplColor}">${cumpl.toFixed(2)}%</div>
+          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">% Cumplimiento Plan</div>
+          <div style="font-size:1.75rem;font-weight:800;color:${cumplColor}">${cumpl.toFixed(2)}%</div>
         </div>
       </div>
 
@@ -3062,12 +3062,12 @@ function renderReporteCompacto() {
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
           <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Unidades</div>
-            <div style="font-size:2rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
+            <div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Unidades</div>
+            <div style="font-size:2.6rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
           </div>
           <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Tiempo</div>
-            <div style="font-size:2rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondTiempo)}</div>
+            <div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Tiempo</div>
+            <div style="font-size:2.6rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondTiempo)}</div>
           </div>
         </div>
       </div>
@@ -3922,11 +3922,11 @@ function fvBuildHTML(values,keys,models,bestModel,projLabels,metric,anomalies,to
 
   const kpiStyle = (c)=>`background:#111827;border:1px solid #374151;border-radius:10px;padding:16px;border-top:3px solid ${c};position:relative;overflow:hidden`;
   const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px">
-    <div style="${kpiStyle('#38bdf8')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total ${metric==='valor'?'Ventas':metric==='materia'?'Materia Prima':'Cantidad'}</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(total,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${keys.length} meses analizados</div></div>
-    <div style="${kpiStyle('#a78bfa')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Promedio Mensual</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(avg2,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Por mes en el período</div></div>
-    <div style="${kpiStyle('#34d399')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Último Período</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(last,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${fvMonthLabel(keys[keys.length-1])}</div></div>
-    <div style="${kpiStyle('#fb923c')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mejor Pronóstico</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(nextBest,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Modelo: ${bestModel.name}</div><div style="font-size:.68rem;${trendCl};margin-top:2px">${trendDir} Tendencia lineal</div></div>
-    <div style="${kpiStyle('#f87171')}"><div style="font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mejor Modelo (RMSE)</div><div style="font-size:1rem;font-weight:800;color:#F3F4F6;line-height:1.3">${bestModel.name}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">RMSE: ${fvFmtError(bestModel.err.rmse,metric)}</div><div style="font-size:.68rem;color:#34d399">MAPE ${fvFmtMAPE(bestModel.err.mape)}</div></div>
+    <div style="${kpiStyle('#38bdf8')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total ${metric==='valor'?'Ventas':metric==='materia'?'Materia Prima':'Cantidad'}</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(total,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${keys.length} meses analizados</div></div>
+    <div style="${kpiStyle('#a78bfa')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Promedio Mensual</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(avg2,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Por mes en el período</div></div>
+    <div style="${kpiStyle('#34d399')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Último Período</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(last,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${fvMonthLabel(keys[keys.length-1])}</div></div>
+    <div style="${kpiStyle('#fb923c')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mejor Pronóstico</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(nextBest,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Modelo: ${bestModel.name}</div><div style="font-size:.68rem;${trendCl};margin-top:2px">${trendDir} Tendencia lineal</div></div>
+    <div style="${kpiStyle('#f87171')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mejor Modelo (RMSE)</div><div style="font-size:1rem;font-weight:800;color:#F3F4F6;line-height:1.3">${bestModel.name}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">RMSE: ${fvFmtError(bestModel.err.rmse,metric)}</div><div style="font-size:.68rem;color:#34d399">MAPE ${fvFmtMAPE(bestModel.err.mape)}</div></div>
   </div>`;
 
   const modelPills = models.map(m=>`<span style="display:inline-flex;align-items:center;gap:5px;background:#1F2937;border:1px solid #374151;border-radius:20px;padding:3px 10px 3px 7px;font-size:.7rem;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:${m.color};flex-shrink:0"></span>${m.name}</span>`).join('');
