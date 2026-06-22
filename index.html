@@ -186,15 +186,17 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <span id="page-title" style="font-size:.95rem;font-weight:700;color:#EEEEEE">Resumen General</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
-      <select id="g-mes" onchange="applyGlobalFilter()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:4px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Tahoma,Arial,sans-serif">
-        <option value="">Todos los meses</option>
-      </select>
-      <div class="multi-sel-wrap">
-        <button class="multi-sel-btn" id="g-dia-btn" onclick="toggleDiaDD(event)">Todos los días ▾</button>
-        <div class="multi-sel-dropdown" id="g-dia-dd"></div>
-      </div>
-      <button class="btn-x" onclick="clearDias()" title="Quitar filtro de días">✕ días</button>
+      <span id="global-filter-group" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
+        <select id="g-mes" onchange="applyGlobalFilter()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:4px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+          <option value="">Todos los meses</option>
+        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="g-dia-btn" onclick="toggleDiaDD(event)">Todos los días ▾</button>
+          <div class="multi-sel-dropdown" id="g-dia-dd"></div>
+        </div>
+        <button class="btn-x" onclick="clearDias()" title="Quitar filtro de días">✕ días</button>
+      </span>
       <span id="last-update" style="font-size:.7rem;color:#4B5563"></span>
       <button onclick="reloadAll()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">
         <i class="fa-solid fa-rotate-right"></i> Actualizar
@@ -309,10 +311,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="5">Turno 2 — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-clear" onclick="rcGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
-        <button id="rc-pdf-btn" onclick="exportCompactImage()" style="background:#0891B2;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
-          <i class="fa-solid fa-camera"></i> Descargar imagen
-        </button>
-        <button id="rc-share-btn" onclick="shareCompactImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px">
+        <button id="rc-share-btn" onclick="shareCompactImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
           <i class="fa-brands fa-whatsapp"></i> Compartir
         </button>
       </div>
@@ -3219,6 +3218,14 @@ function showSection(id) {
     if(ic){ ic.style.background = color+'33'; ic.style.color = color; }
   }
   document.getElementById('page-title').textContent = TITLES[id]||id;
+
+  // Filtro global: oculto en Reporte Diario y Compacto (tienen filtros propios)
+  const gf = document.getElementById('global-filter-group');
+  if (gf) gf.style.display = (id==='reporte-diario' || id==='reporte-compacto') ? 'none' : 'flex';
+  // Descargar PDF: oculto en el Reporte Compacto (solo se usa Compartir)
+  const pdf = document.getElementById('btn-pdf');
+  if (pdf) pdf.style.display = (id==='reporte-compacto') ? 'none' : 'flex';
+
   if(SECTION_RENDERS[id] && DATA.prod.length) SECTION_RENDERS[id]();
   if(window.innerWidth<=768) closeSidebar();
 }
