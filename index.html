@@ -966,7 +966,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div style="font-size:.62rem;color:#6B7280;text-transform:uppercase;font-weight:700;letter-spacing:.1em;margin-bottom:2px">Estado Actual</div>
           <h2 style="font-size:1.05rem;font-weight:800;color:#EEEEEE;margin:0">Máquinas y Personal</h2>
         </div>
-        <button onclick="resetRecursos()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:6px 14px;color:#9CA3AF;font-size:.72rem;cursor:pointer;font-family:Tahoma,Arial,sans-serif"><i class="fa-solid fa-rotate-left" style="margin-right:5px"></i>Restaurar defaults</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="openAddMaqModal()" style="background:#8B5CF6;border:none;border-radius:6px;padding:6px 14px;color:#fff;font-size:.72rem;font-weight:600;cursor:pointer;font-family:Tahoma,Arial,sans-serif"><i class="fa-solid fa-plus" style="margin-right:5px"></i>Máquina</button>
+          <button onclick="openAddPerModal()" style="background:#3B82F6;border:none;border-radius:6px;padding:6px 14px;color:#fff;font-size:.72rem;font-weight:600;cursor:pointer;font-family:Tahoma,Arial,sans-serif"><i class="fa-solid fa-plus" style="margin-right:5px"></i>Personal</button>
+          <button onclick="resetRecursos()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:6px 14px;color:#9CA3AF;font-size:.72rem;cursor:pointer;font-family:Tahoma,Arial,sans-serif"><i class="fa-solid fa-rotate-left" style="margin-right:5px"></i>Restaurar</button>
+        </div>
       </div>
       <div id="rec-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-bottom:18px"></div>
       <div id="rec-alertas" style="margin-bottom:18px"></div>
@@ -977,7 +981,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="section-title">Personal</div>
       <div style="overflow-x:auto">
         <table class="tbl">
-          <thead><tr><th>Nombre</th><th>Cargo</th><th>Estado</th><th>Nota</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Cargo</th><th>Estado</th><th>Nota</th><th style="width:36px"></th></tr></thead>
           <tbody id="rec-personal-tbody"></tbody>
         </table>
       </div>
@@ -1117,8 +1121,9 @@ function renderRecursos() {
   const maqCard = m => {
     const es = ESTADO_STYLE[m.estado]||ESTADO_STYLE.inactiva;
     const sub = m.maqNum ? `Maq ${m.maqNum} · $${Math.round(m.costoHora/1000)}k/h` : `Sin asignar · $${Math.round(m.costoHora/1000)}k/h`;
-    return `<div onclick="cycleEstadoMaq('${m.id}')" style="background:#1F2937;border:1px solid #374151;border-top:3px solid ${es.color};border-radius:10px;padding:14px 16px;cursor:pointer;user-select:none" title="Clic para cambiar estado">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:8px">
+    return `<div onclick="cycleEstadoMaq('${m.id}')" style="background:#1F2937;border:1px solid #374151;border-top:3px solid ${es.color};border-radius:10px;padding:14px 16px;cursor:pointer;user-select:none;position:relative" title="Clic para cambiar estado">
+      <button onclick="event.stopPropagation();deleteMaquina('${m.id}','${m.nombre}')" style="position:absolute;top:7px;right:7px;background:none;border:none;color:#4B5563;cursor:pointer;font-size:.75rem;padding:2px 5px;border-radius:4px;line-height:1" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:8px;padding-right:18px">
         <div>
           <div style="font-size:.6rem;color:#4B5563;text-transform:uppercase;font-weight:700;margin-bottom:2px">${m.tipo}</div>
           <div style="font-size:1rem;font-weight:800;color:#EEEEEE">${m.nombre}</div>
@@ -1143,10 +1148,97 @@ function renderRecursos() {
         <td><span style="font-size:.68rem;color:#9CA3AF">${p.cargo}</span></td>
         <td><span style="font-size:.67rem;font-weight:700;padding:2px 8px;border-radius:20px;background:${es.bg};color:${es.color}">${es.label}</span></td>
         <td style="font-size:.7rem;color:#6B7280">${p.nota||''}</td>
+        <td><button onclick="event.stopPropagation();deletePersonal('${p.id}','${p.nombre}')" style="background:none;border:none;color:#4B5563;cursor:pointer;font-size:.75rem;padding:3px 6px;border-radius:4px" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button></td>
       </tr>`;
     };
     perTbody.innerHTML = [...per.filter(p=>p.cargo==='Operario'),...per.filter(p=>p.cargo==='Inspector')].map(row).join('');
   }
+}
+
+// =======================================================
+// RECURSOS — Modales agregar/eliminar
+// =======================================================
+function _recModalBase(titulo, color, campos, onSubmitFn) {
+  document.getElementById('rec-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'rec-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#1F2937;border:1px solid #374151;border-radius:14px;padding:24px;width:340px;max-width:92vw;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+        <div style="font-size:.92rem;font-weight:700;color:#EEEEEE">${titulo}</div>
+        <button onclick="closeRecModal()" style="background:none;border:none;color:#6B7280;font-size:1.1rem;cursor:pointer"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">${campos}</div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button onclick="closeRecModal()" style="flex:1;background:#374151;border:none;border-radius:8px;padding:9px;color:#9CA3AF;font-size:.78rem;cursor:pointer;font-family:Tahoma,Arial,sans-serif">Cancelar</button>
+        <button onclick="${onSubmitFn}()" style="flex:2;background:${color};border:none;border-radius:8px;padding:9px;color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:Tahoma,Arial,sans-serif"><i class="fa-solid fa-plus" style="margin-right:5px"></i>Agregar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function _fld(id, label, type, placeholder, options) {
+  if (options) {
+    return `<div><label style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;display:block;margin-bottom:4px">${label}</label>
+      <select id="${id}" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:8px 10px;color:#EEEEEE;font-size:.8rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+        ${options.map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}
+      </select></div>`;
+  }
+  return `<div><label style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;display:block;margin-bottom:4px">${label}</label>
+    <input id="${id}" type="${type||'text'}" placeholder="${placeholder||''}" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:8px 10px;color:#EEEEEE;font-size:.8rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>`;
+}
+function openAddMaqModal() {
+  _recModalBase('Agregar Máquina', '#8B5CF6',
+    _fld('rm-nombre','Nombre (ej. INY#8)','text','INY#8') +
+    _fld('rm-tipo','Tipo','','',[ ['inyectora','Inyectora'], ['tapadora','Tapadora'] ]) +
+    _fld('rm-maqnum','Maq # en dashboard (opcional)','text','7') +
+    _fld('rm-costo','Costo/hora (COP)','number','68490') +
+    _fld('rm-estado','Estado inicial','','',[ ['activa','Activa'], ['inactiva','Inactiva'], ['mantenimiento','Mantenimiento'], ['propuesta','Propuesta de compra'] ]),
+    'submitAddMaq');
+  setTimeout(()=>document.getElementById('rm-nombre')?.focus(), 50);
+}
+function openAddPerModal() {
+  _recModalBase('Agregar Persona', '#3B82F6',
+    _fld('rp-nombre','Nombre completo','text','NOMBRE APELLIDO') +
+    _fld('rp-cargo','Cargo','','',[ ['Operario','Operario'], ['Inspector','Inspector'] ]) +
+    _fld('rp-estado','Estado inicial','','',[ ['activo','Activo'], ['vacaciones','Vacaciones'], ['incapacitado','Incapacitado'], ['inactivo','Inactivo'] ]) +
+    _fld('rp-nota','Nota (opcional)','text','ej. Vuelve 30 jun'),
+    'submitAddPer');
+  setTimeout(()=>document.getElementById('rp-nombre')?.focus(), 50);
+}
+function closeRecModal() { document.getElementById('rec-modal')?.remove(); }
+function submitAddMaq() {
+  const nombre = (document.getElementById('rm-nombre')?.value||'').trim().toUpperCase();
+  if (!nombre) return;
+  const tipo    = document.getElementById('rm-tipo')?.value||'inyectora';
+  const maqNum  = (document.getElementById('rm-maqnum')?.value||'').trim();
+  const costo   = parseInt(document.getElementById('rm-costo')?.value)||68490;
+  const estado  = document.getElementById('rm-estado')?.value||'inactiva';
+  const st = getRecursosState();
+  st.maquinas.push({ id:'M'+Date.now(), nombre, tipo, maqNum, costoHora:costo, estado, nota:'' });
+  saveRecursosState(); closeRecModal(); renderRecursos();
+}
+function submitAddPer() {
+  const nombre = (document.getElementById('rp-nombre')?.value||'').trim().toUpperCase();
+  if (!nombre) return;
+  const cargo  = document.getElementById('rp-cargo')?.value||'Operario';
+  const estado = document.getElementById('rp-estado')?.value||'activo';
+  const nota   = (document.getElementById('rp-nota')?.value||'').trim();
+  const st = getRecursosState();
+  st.personal.push({ id:'P'+Date.now(), nombre, cargo, estado, nota });
+  saveRecursosState(); closeRecModal(); renderRecursos();
+}
+function deleteMaquina(id, nombre) {
+  if (!confirm(`¿Eliminar ${nombre}?`)) return;
+  const st = getRecursosState();
+  st.maquinas = st.maquinas.filter(m=>m.id!==id);
+  saveRecursosState(); renderRecursos();
+}
+function deletePersonal(id, nombre) {
+  if (!confirm(`¿Eliminar a ${nombre}?`)) return;
+  const st = getRecursosState();
+  st.personal = st.personal.filter(p=>p.id!==id);
+  saveRecursosState(); renderRecursos();
 }
 
 // =======================================================
