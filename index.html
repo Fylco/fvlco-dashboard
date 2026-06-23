@@ -985,7 +985,21 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <tbody id="rec-personal-tbody"></tbody>
         </table>
       </div>
-      <div style="margin-top:10px;font-size:.68rem;color:#4B5563"><i class="fa-regular fa-hand-pointer" style="margin-right:5px"></i>Clic en cualquier tarjeta o fila para cambiar el estado. Se guarda automáticamente en el navegador.</div>
+      <div style="margin-top:10px;font-size:.68rem;color:#4B5563"><i class="fa-regular fa-hand-pointer" style="margin-right:5px"></i>Clic en cualquier tarjeta o fila para cambiar el estado. Se guarda en el navegador y en Google Sheets si está configurado.</div>
+      <div style="margin-top:20px;border-top:1px solid #374151;padding-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em"><i class="fa-solid fa-rotate" style="margin-right:6px"></i>Sincronización con Google Sheets</div>
+          <span id="rec-sync-badge" style="font-size:.65rem;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(107,114,128,.15);color:#6B7280">LOCAL</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:.65rem;color:#4B5563;margin-bottom:4px">URL del Web App (Google Apps Script)</div>
+            <input id="rec-sync-url" type="text" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;box-sizing:border-box;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.72rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+          </div>
+          <button onclick="saveSyncConfig()" style="background:#10B981;border:none;border-radius:6px;padding:7px 14px;color:#fff;font-size:.72rem;font-weight:600;cursor:pointer;font-family:Tahoma,Arial,sans-serif;white-space:nowrap;flex-shrink:0"><i class="fa-solid fa-link" style="margin-right:5px"></i>Conectar</button>
+          <button onclick="syncNow()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:7px 14px;color:#9CA3AF;font-size:.72rem;cursor:pointer;font-family:Tahoma,Arial,sans-serif;white-space:nowrap;flex-shrink:0"><i class="fa-solid fa-cloud-arrow-up" style="margin-right:5px"></i>Subir ahora</button>
+        </div>
+      </div>
     </div>
 
   </div><!-- /content -->
@@ -1052,6 +1066,81 @@ function getRecursosState() {
 }
 function saveRecursosState() {
   try { localStorage.setItem('fvlco_recursos', JSON.stringify(_recursosState)); } catch(e) {}
+  _syncToSheet(_recursosState);
+}
+
+// ─── Sincronización con Google Sheets ────────────────────────────────────
+const SYNC_TOKEN = 'fvlco2026';
+let _syncInitDone = false;
+
+function _getSyncUrl() { return localStorage.getItem('fvlco_sync_url') || ''; }
+
+function _updateSyncBadge(status, msg) {
+  const badge = document.getElementById('rec-sync-badge');
+  if (!badge) return;
+  const map = {
+    local:   { bg:'rgba(107,114,128,.15)', c:'#6B7280', t:'LOCAL' },
+    syncing: { bg:'rgba(245,158,11,.15)',  c:'#F59E0B', t:'SINCRONIZANDO…' },
+    ok:      { bg:'rgba(16,185,129,.15)',  c:'#10B981', t:'✓ SINCRONIZADO' },
+    error:   { bg:'rgba(239,68,68,.15)',   c:'#EF4444', t:'ERROR SHEETS' },
+  };
+  const s = map[status] || map.local;
+  badge.style.background = s.bg; badge.style.color = s.c;
+  badge.textContent = msg || s.t;
+}
+
+function _syncToSheet(state) {
+  const url = _getSyncUrl(); if (!url) return;
+  _updateSyncBadge('syncing');
+  fetch(url, { method:'POST', body: JSON.stringify({ token: SYNC_TOKEN, data: state }) })
+    .then(function(r){ _updateSyncBadge(r.ok ? 'ok' : 'error'); })
+    .catch(function(){ _updateSyncBadge('error'); });
+}
+
+async function fetchFromSheet() {
+  const url = _getSyncUrl(); if (!url) return null;
+  try {
+    const r = await fetch(url + '?token=' + SYNC_TOKEN);
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j.ok && j.data) ? j.data : null;
+  } catch(e) { return null; }
+}
+
+function saveSyncConfig() {
+  const url = (document.getElementById('rec-sync-url')?.value || '').trim();
+  localStorage.setItem('fvlco_sync_url', url);
+  _syncInitDone = false;
+  if (url) { initRecursosSync(); } else { _updateSyncBadge('local'); }
+}
+
+async function syncNow() {
+  const url = _getSyncUrl();
+  if (!url) { alert('Primero configura la URL del Web App y haz clic en Conectar.'); return; }
+  _updateSyncBadge('syncing');
+  try {
+    const r = await fetch(url, { method:'POST', body: JSON.stringify({ token: SYNC_TOKEN, data: getRecursosState() }) });
+    _updateSyncBadge(r.ok ? 'ok' : 'error');
+  } catch(e) { _updateSyncBadge('error'); }
+}
+
+async function initRecursosSync() {
+  if (_syncInitDone) { _updateSyncBadge(_getSyncUrl() ? 'ok' : 'local'); return; }
+  const urlInput = document.getElementById('rec-sync-url');
+  const url = _getSyncUrl();
+  if (urlInput && url) urlInput.value = url;
+  if (!url) { _updateSyncBadge('local'); return; }
+  _updateSyncBadge('syncing');
+  const data = await fetchFromSheet();
+  if (data && data.maquinas && data.personal) {
+    _recursosState = data;
+    try { localStorage.setItem('fvlco_recursos', JSON.stringify(data)); } catch(e) {}
+    renderRecursos();
+    _updateSyncBadge('ok');
+  } else {
+    _updateSyncBadge('error');
+  }
+  _syncInitDone = true;
 }
 const MAQ_ESTADOS  = ['activa','mantenimiento','inactiva','propuesta'];
 const PER_ESTADOS  = ['activo','vacaciones','incapacitado','inactivo'];
@@ -3770,7 +3859,7 @@ function showSection(id) {
   if (pdf) pdf.style.display = (id==='reporte-compacto') ? 'none' : 'flex';
 
   if(SECTION_RENDERS[id] && DATA.prod.length) SECTION_RENDERS[id]();
-  if(id === 'po-recursos') renderRecursos();
+  if(id === 'po-recursos') { renderRecursos(); initRecursosSync(); }
   if(window.innerWidth<=768) closeSidebar();
 }
 
