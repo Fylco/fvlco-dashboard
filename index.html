@@ -3269,10 +3269,10 @@ function renderReporteCompacto() {
     return `<tr>
       <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
       <td>${g.prod}<div style="font-size:.82rem;color:#6B7280;margin-top:4px">${turnoDet}</div></td>
-      <td style="text-align:right;color:#DC2626">${ri(g.paro)} min${g.razones.length?`<div style="font-size:.82rem;color:#DC2626;margin-top:4px;font-weight:400">${g.razones.join(', ')}</div>`:''}</td>
-      <td style="text-align:right">${pc(g.disp)}</td>
-      <td style="text-align:right">${pc(g.rend)}</td>
-      <td style="text-align:right">${pc(g.cal)}</td>
+      <td style="text-align:right;color:#DC2626;background:#FFF2CC">${ri(g.paro)} min${g.razones.length?`<div style="font-size:.82rem;color:#DC2626;margin-top:4px;font-weight:400">${g.razones.join(', ')}</div>`:''}</td>
+      <td style="text-align:right;background:#FBE5C8;color:#7A4B12">${pc(g.disp)}</td>
+      <td style="text-align:right;background:#DCE9F7;color:#1F4E79">${pc(g.rend)}</td>
+      <td style="text-align:right;background:#D9EAD3;color:#2E5C1E">${pc(g.cal)}</td>
       <td style="text-align:right;font-weight:800;color:${oc}">${pc(g.oee)}</td>
     </tr>`;
   }).join('');
@@ -3317,33 +3317,33 @@ function renderReporteCompacto() {
 
       <div style="overflow-x:auto">
         <table class="tbl" style="width:100%;min-width:760px">
-          <thead><tr>
-            <th>Máq</th><th>Producto</th>
-            <th style="text-align:right">Cav. Teór.</th><th style="text-align:right">Ciclo STD</th>
-            <th style="text-align:center">Turnos</th>
-            <th style="text-align:right">Cav. Real</th><th style="text-align:right">Ciclo Real</th>
-            <th style="text-align:right">Und. Programadas</th><th style="text-align:right">Und. Producidas</th>
-            <th style="text-align:right">Und. Faltantes</th>
+          <thead><tr style="background:#FCE4D6">
+            <th style="background:#FCE4D6;color:#7A4B12">Máq</th><th style="background:#FCE4D6;color:#7A4B12">Producto</th>
+            <th style="text-align:right;background:#FCE4D6;color:#7A4B12">Cav. Teór.</th><th style="text-align:right;background:#FCE4D6;color:#7A4B12">Ciclo STD</th>
+            <th style="text-align:center;background:#FCE4D6;color:#7A4B12">Turnos</th>
+            <th style="text-align:right;background:#FCE4D6;color:#7A4B12">Cav. Real</th><th style="text-align:right;background:#FCE4D6;color:#7A4B12">Ciclo Real</th>
+            <th style="text-align:right;background:#FCE4D6;color:#7A4B12">Und. Programadas</th><th style="text-align:right;background:#D6EFF5;color:#155E63">Und. Producidas</th>
+            <th style="text-align:right;background:#FCE4D6;color:#7A4B12">Und. Faltantes</th>
           </tr></thead>
           <tbody>${prodRows||'<tr><td colspan="10" style="text-align:center;padding:20px;color:#6B7280">Sin datos para este día</td></tr>'}</tbody>
         </table>
       </div>
 
       <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#F3F4F6;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB">
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #2563EB">
-          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Total Und. Planeadas</div>
-          <div style="font-size:1.75rem;font-weight:800;color:#2563EB">${ri(totProg)}</div>
+        <div style="flex:1;min-width:140px;background:#FCE4D6;border:1px solid #F4B183;border-radius:8px;padding:10px">
+          <div style="font-size:.8rem;color:#7A4B12;text-transform:uppercase">Total Und. Planeadas</div>
+          <div style="font-size:1.75rem;font-weight:800;color:#B45309">${ri(totProg)}</div>
         </div>
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #059669">
-          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Total Und. Producidas</div>
-          <div style="font-size:1.75rem;font-weight:800;color:#059669">${ri(totProd)}</div>
+        <div style="flex:1;min-width:140px;background:#D6EFF5;border:1px solid #06B6D4;border-radius:8px;padding:10px">
+          <div style="font-size:.8rem;color:#155E63;text-transform:uppercase">Total Und. Producidas</div>
+          <div style="font-size:1.75rem;font-weight:800;color:#0E7490">${ri(totProd)}</div>
         </div>
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid #DC2626">
-          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Total Und. Faltantes</div>
+        <div style="flex:1;min-width:140px;background:#FCE4E4;border:1px solid #DC2626;border-radius:8px;padding:10px">
+          <div style="font-size:.8rem;color:#7F1D1D;text-transform:uppercase">Total Und. Faltantes</div>
           <div style="font-size:1.75rem;font-weight:800;color:#DC2626">${ri(Math.max(0,totFalt))}</div>
         </div>
-        <div style="flex:1;min-width:140px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:10px;border-left:3px solid ${cumplColor}">
-          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">% Cumplimiento Plan</div>
+        <div style="flex:1;min-width:140px;background:#FFF2CC;border:1px solid ${cumplColor};border-radius:8px;padding:10px">
+          <div style="font-size:.8rem;color:#7A4B12;text-transform:uppercase">% Cumplimiento Plan</div>
           <div style="font-size:1.75rem;font-weight:800;color:${cumplColor}">${cumpl.toFixed(2)}%</div>
         </div>
       </div>
@@ -3354,17 +3354,17 @@ function renderReporteCompacto() {
           <table class="tbl" style="width:100%;min-width:700px">
             <thead><tr>
               <th>Máquina</th><th>Producto / Turnos</th>
-              <th style="text-align:right">Tiempo Perdido</th>
-              <th style="text-align:right">Disponibilidad</th><th style="text-align:right">Rendimiento</th>
-              <th style="text-align:right">Calidad</th><th style="text-align:right">OEE</th>
+              <th style="text-align:right;background:#FFF2CC">Tiempo Perdido</th>
+              <th style="text-align:right;background:#FBE5C8">Disponibilidad</th><th style="text-align:right;background:#DCE9F7">Rendimiento</th>
+              <th style="text-align:right;background:#D9EAD3">Calidad</th><th style="text-align:right">OEE</th>
             </tr></thead>
             <tbody>${oeeRows||'<tr><td colspan="7" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
             <tfoot><tr style="border-top:2px solid #D1D5DB;font-weight:700">
               <td colspan="3" style="text-align:right;color:#6B7280">Promedios →</td>
-              <td style="text-align:right;color:#0891B2">${pc(promDisp)}</td>
-              <td style="text-align:right;color:#7C3AED">${pc(promRend)}</td>
-              <td style="text-align:right;color:#059669">${pc(promCal)}</td>
-              <td style="text-align:right;font-weight:800;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'}">${pc(oeePondUnid)}</td>
+              <td style="text-align:right;font-weight:800;background:#FBE5C8;color:#7A4B12">${pc(promDisp)}</td>
+              <td style="text-align:right;font-weight:800;background:#DCE9F7;color:#1F4E79">${pc(promRend)}</td>
+              <td style="text-align:right;font-weight:800;background:#D9EAD3;color:#2E5C1E">${pc(promCal)}</td>
+              <td></td>
             </tr></tfoot>
           </table>
         </div>
