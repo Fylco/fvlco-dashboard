@@ -1628,7 +1628,7 @@ function filterVentas() {
 function applyGlobalFilter() {
   const id = document.querySelector('.section.active')?.id?.replace('sec-','');
   const map = { resumen:renderResumen, oee:renderOEE, 'plan-mensual':renderPlanMensual,
-    'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF, paros:renderParos, accid:renderAccid, costos:renderCostos };
+    'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF, paros:renderParos, accid:renderAccid, costos:renderCostos, maquilas:renderMaquilas };
   if (id && map[id]) map[id]();
 }
 
@@ -2987,7 +2987,17 @@ function renderMaquilas() {
   if (!cont) return;
   const pN = v => { const n=parseFloat(String(v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; };
   const ri = n => Math.round(n||0).toLocaleString('es-CO');
-  const data = DATA.maquilas || [];
+  // Filtro global: mes (g-mes) + días (SEL_DIAS) aplicados por la FECHA de la maquila
+  const _gm = gMes(), _gd = gDia();
+  const _MES = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const data = (DATA.maquilas || []).filter(m => {
+    const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if (!mm) return !_gm && !_gd.size;            // sin fecha válida: solo si no hay filtro
+    const dia = String(parseInt(mm[1])), mes = _MES[parseInt(mm[2])] || '';
+    if (_gm && mes !== _gm) return false;
+    if (_gd.size && !_gd.has(dia)) return false;
+    return true;
+  });
 
   if (!data.length) {
     if (kpis) kpis.innerHTML = '';
