@@ -3397,13 +3397,6 @@ function renderReporteCompacto() {
               <th style="text-align:right;background:#D9EAD3">Calidad</th><th style="text-align:right">OEE</th>
             </tr></thead>
             <tbody>${oeeRows||'<tr><td colspan="7" style="text-align:center;padding:20px;color:#6B7280">Sin datos</td></tr>'}</tbody>
-            <tfoot><tr style="border-top:2px solid #D1D5DB;font-weight:700">
-              <td colspan="3" style="text-align:right;color:#6B7280">Promedios →</td>
-              <td style="text-align:right;font-weight:800;background:#FBE5C8;color:#7A4B12">${pc(promDisp)}</td>
-              <td style="text-align:right;font-weight:800;background:#DCE9F7;color:#1F4E79">${pc(promRend)}</td>
-              <td style="text-align:right;font-weight:800;background:#D9EAD3;color:#2E5C1E">${pc(promCal)}</td>
-              <td></td>
-            </tr></tfoot>
           </table>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
