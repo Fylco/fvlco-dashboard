@@ -1887,10 +1887,17 @@ function renderNC() {
 
   const totalNC  = d.reduce((s,r)=>s+(pNum(r['CANTIDAD NC'])||0),0);
   const pctNC    = totalProd>0?(totalNC/totalProd*100):0;
-  // Pesos en kg
+  // Descartar PESO anómalos (errores de captura): umbral integral basado en
+  // TODOS los datos (mediana×20, mínimo 500 kg). Un solo registro nunca debe
+  // pesar miles de kg cuando lo típico es <100 kg.
+  const _allPeso = (DATA.nc||[]).map(r=>pNum(r['PESO TOTAL'])||0).filter(v=>v>0).sort((a,b)=>a-b);
+  const _medPeso = _allPeso.length ? _allPeso[Math.floor(_allPeso.length/2)] : 0;
+  const _pesoMax = Math.max(500, _medPeso*20);
+  const peso = r => { const p = pNum(r['PESO TOTAL'])||0; return p<=_pesoMax ? p : 0; };
+  // Pesos en kg (con descarte de outliers)
   const pitRows  = d.filter(r=>(r['CAUSA']||'').toUpperCase().includes('PITORRO'));
-  const kgPitorro= pitRows.reduce((s,r)=>s+(pNum(r['PESO TOTAL'])||0),0);
-  const kgTotal  = d.reduce((s,r)=>s+(pNum(r['PESO TOTAL'])||0),0);
+  const kgPitorro= pitRows.reduce((s,r)=>s+peso(r),0);
+  const kgTotal  = d.reduce((s,r)=>s+peso(r),0);
   const pctKgNC  = kgProcesados>0?(kgTotal/kgProcesados*100):0;
 
   document.getElementById('nc-kpis').innerHTML=
@@ -1919,7 +1926,7 @@ function renderNC() {
   const MESES_ORD=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const pitMes={}, procMes={};
   d.forEach(r=>{ const m=String(r['MES']||'').trim().toLowerCase(); if(!m) return;
-    if((r['CAUSA']||'').toUpperCase().includes('PITORRO')) pitMes[m]=(pitMes[m]||0)+(pNum(r['PESO TOTAL'])||0); });
+    if((r['CAUSA']||'').toUpperCase().includes('PITORRO')) pitMes[m]=(pitMes[m]||0)+peso(r); });
   DATA.prod.forEach(r=>{ const m=r._mes||''; if(!m) return; procMes[m]=(procMes[m]||0)+(pNum(r['KILOS CONSUMIDOS'])||0); });
   const mKeys=[...new Set([...Object.keys(pitMes),...Object.keys(procMes)])].sort((a,b)=>MESES_ORD.indexOf(a)-MESES_ORD.indexOf(b));
   makeChart('nc-pitorro','bar',mKeys.map(cap),[
