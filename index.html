@@ -1132,11 +1132,15 @@ async function initRecursosSync() {
   if (!url) { _updateSyncBadge('local'); return; }
   _updateSyncBadge('syncing');
   const data = await fetchFromSheet();
-  if (data && data.maquinas && data.personal) {
+  if (data && (data.maquinas.length > 0 || data.personal.length > 0)) {
+    // Sheet tiene datos → usarlos como fuente de verdad
     _recursosState = data;
     try { localStorage.setItem('fvlco_recursos', JSON.stringify(data)); } catch(e) {}
     renderRecursos();
     _updateSyncBadge('ok');
+  } else if (data) {
+    // Sheet vacío → subir datos locales al Sheet
+    _syncToSheet(getRecursosState());
   } else {
     _updateSyncBadge('error');
   }
