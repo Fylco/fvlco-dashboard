@@ -1882,20 +1882,27 @@ function groupNC(col) {
 }
 function renderNC() {
   const d = filterNC();
+  // Mes del panel NC (independiente del filtro global)
+  const ncMes = (getVal('nc-fp-mes')||getVal('g-mes')||'').toLowerCase();
+  // Producción del MISMO mes → kilos procesados y unidades, para % consistente
+  const prodMes = DATA.prod.filter(r => !ncMes || (r._mes||'') === ncMes);
+  const kgProcesados = prodMes.reduce((s,r)=>s+(pNum(r['KILOS CONSUMIDOS'])||0),0);
+  const totalProd    = sum(prodMes,'_cant');
+
   const totalNC  = d.reduce((s,r)=>s+(pNum(r['CANTIDAD NC'])||0),0);
-  const totalProd = sum(filterProd(),'_cant');
-  const pctNC = totalProd>0?(totalNC/totalProd*100):0;
-  // Pitorro ratio
-  const pitRows = d.filter(r=>(r['CAUSA']||'').toUpperCase().includes('PITORRO'));
+  const pctNC    = totalProd>0?(totalNC/totalProd*100):0;
+  // Pesos en kg
+  const pitRows  = d.filter(r=>(r['CAUSA']||'').toUpperCase().includes('PITORRO'));
   const kgPitorro= pitRows.reduce((s,r)=>s+(pNum(r['PESO TOTAL'])||0),0);
   const kgTotal  = d.reduce((s,r)=>s+(pNum(r['PESO TOTAL'])||0),0);
-  const ratioPit = kgTotal>0?(kgPitorro/kgTotal*100):0;
+  const pctKgNC  = kgProcesados>0?(kgTotal/kgProcesados*100):0;
 
   document.getElementById('nc-kpis').innerHTML=
-    kpiCard('Total NC',fmt(totalNC),'#EF4444',`${d.length} registros`,'fa-solid fa-circle-xmark')+
-    kpiCard('% NC / Producción',pct(pctNC),'#F59E0B','Meta < 2%','fa-solid fa-percent')+
-    kpiCard('Pitorro (Rama) kg',fmt(kgPitorro,1),'#F97316',`${pct(ratioPit)} del total NC`,'fa-solid fa-code-branch')+
-    kpiCard('Kg NC Total',fmt(kgTotal,1),'#8B5CF6','Kg no conformes','fa-solid fa-weight-hanging');
+    kpiCard('Total NC (Und)',fmt(totalNC),'#EF4444',`${d.length} registros`,'fa-solid fa-circle-xmark')+
+    kpiCard('Kg NC Total',fmt(kgTotal,1),'#8B5CF6',`${pct(pctKgNC)} de lo procesado`,'fa-solid fa-weight-hanging')+
+    kpiCard('Pitorro (Rama) kg',fmt(kgPitorro,1),'#F97316',`${pct(kgTotal>0?kgPitorro/kgTotal*100:0)} del NC kg`,'fa-solid fa-code-branch')+
+    kpiCard('Total Kg Procesados',fmt(kgProcesados,1),'#10B981',ncMes?cap(ncMes):'Todos los meses','fa-solid fa-industry')+
+    kpiCard('% NC / Producción',pct(pctNC),'#F59E0B','Meta < 2%','fa-solid fa-percent');
 
   // Pareto causas
   const causas = {};
@@ -1912,23 +1919,24 @@ function renderNC() {
   makeChart('nc-maq','doughnut',mSorted.map(x=>x[0]),
     [{data:mSorted.map(x=>x[1]),backgroundColor:PAL,borderWidth:0}]);
 
-  // Pitorro vs total por mes
-  const pitMes={}; const totMes={};
-  d.forEach(r=>{ const m=r['MES']||'?'; const v=pNum(r['PESO TOTAL'])||0;
-    totMes[m]=(totMes[m]||0)+v;
-    if((r['CAUSA']||'').toUpperCase().includes('PITORRO')) pitMes[m]=(pitMes[m]||0)+v; });
-  const mKeys=Object.keys(totMes);
-  makeChart('nc-pitorro','bar',mKeys,[
-    {label:'Pitorro kg',data:mKeys.map(m=>pitMes[m]||0),backgroundColor:'#F9731688',borderRadius:4},
-    {label:'Otros NC kg',data:mKeys.map(m=>(totMes[m]||0)-(pitMes[m]||0)),backgroundColor:'#EF444488',borderRadius:4}
-  ],{extra:{scales:{x:{stacked:true},y:{stacked:true}}}});
+  // Pitorro (kg NC) vs Kilos Procesados (producción) por mes
+  const MESES_ORD=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const pitMes={}, procMes={};
+  d.forEach(r=>{ const m=String(r['MES']||'').trim().toLowerCase(); if(!m) return;
+    if((r['CAUSA']||'').toUpperCase().includes('PITORRO')) pitMes[m]=(pitMes[m]||0)+(pNum(r['PESO TOTAL'])||0); });
+  DATA.prod.forEach(r=>{ const m=r._mes||''; if(!m) return; procMes[m]=(procMes[m]||0)+(pNum(r['KILOS CONSUMIDOS'])||0); });
+  const mKeys=[...new Set([...Object.keys(pitMes),...Object.keys(procMes)])].sort((a,b)=>MESES_ORD.indexOf(a)-MESES_ORD.indexOf(b));
+  makeChart('nc-pitorro','bar',mKeys.map(cap),[
+    {label:'Pitorro/Rama kg',data:mKeys.map(m=>Math.round(pitMes[m]||0)),backgroundColor:'#F9731688',borderColor:'#F97316',borderWidth:1,borderRadius:4},
+    {label:'Kilos Procesados',data:mKeys.map(m=>Math.round(procMes[m]||0)),backgroundColor:'#10B98155',borderColor:'#10B981',borderWidth:1,borderRadius:4}
+  ]);
 
   // NC por mes
-  const ncMes={};
-  d.forEach(r=>{ const m=r['MES']||'?'; const v=pNum(r['CANTIDAD NC'])||0; if(v>0) ncMes[m]=(ncMes[m]||0)+v; });
-  const mKs=Object.keys(ncMes);
-  makeChart('nc-mes','line',mKs,[
-    {label:'Unid NC',data:mKs.map(m=>ncMes[m]),borderColor:'#EF4444',backgroundColor:'#EF444422',fill:true,tension:.4,pointRadius:3}
+  const ncMesMap={};
+  d.forEach(r=>{ const m=String(r['MES']||'?').trim().toLowerCase(); const v=pNum(r['CANTIDAD NC'])||0; if(v>0) ncMesMap[m]=(ncMesMap[m]||0)+v; });
+  const mKs=Object.keys(ncMesMap).sort((a,b)=>MESES_ORD.indexOf(a)-MESES_ORD.indexOf(b));
+  makeChart('nc-mes','line',mKs.map(cap),[
+    {label:'Unid NC',data:mKs.map(m=>ncMesMap[m]),borderColor:'#EF4444',backgroundColor:'#EF444422',fill:true,tension:.4,pointRadius:3}
   ]);
 }
 
@@ -3468,9 +3476,9 @@ function showSection(id) {
   }
   document.getElementById('page-title').textContent = TITLES[id]||id;
 
-  // Filtro global: oculto en Reporte Diario y Compacto (tienen filtros propios)
+  // Filtro global: oculto donde hay filtros propios (Reporte Diario, Compacto, No Conformes)
   const gf = document.getElementById('global-filter-group');
-  if (gf) gf.style.display = (id==='reporte-diario' || id==='reporte-compacto') ? 'none' : 'flex';
+  if (gf) gf.style.display = (id==='reporte-diario' || id==='reporte-compacto' || id==='noconf') ? 'none' : 'flex';
   // Descargar PDF: oculto en el Reporte Compacto (solo se usa Compartir)
   const pdf = document.getElementById('btn-pdf');
   if (pdf) pdf.style.display = (id==='reporte-compacto') ? 'none' : 'flex';
