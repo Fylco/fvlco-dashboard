@@ -221,6 +221,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="nav-item" onclick="showSection('po-inventario')" data-section="po-inventario" data-color="#34D399">
         <span class="nav-icon"><i class="fa-solid fa-warehouse"></i></span> Inventario MP
       </div>
+      <div class="nav-item" onclick="showSection('po-recursos')" data-section="po-recursos" data-color="#8B5CF6">
+        <span class="nav-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span> Máquinas y Personal
+      </div>
     </div>
 
   </div>
@@ -956,6 +959,31 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
     </div>
 
+    <!-- ======================================= RECURSOS == -->
+    <div class="section" id="sec-po-recursos" style="padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:.62rem;color:#6B7280;text-transform:uppercase;font-weight:700;letter-spacing:.1em;margin-bottom:2px">Estado Actual</div>
+          <h2 style="font-size:1.05rem;font-weight:800;color:#EEEEEE;margin:0">Máquinas y Personal</h2>
+        </div>
+        <button onclick="resetRecursos()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:6px 14px;color:#9CA3AF;font-size:.72rem;cursor:pointer;font-family:Tahoma,Arial,sans-serif"><i class="fa-solid fa-rotate-left" style="margin-right:5px"></i>Restaurar defaults</button>
+      </div>
+      <div id="rec-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-bottom:18px"></div>
+      <div id="rec-alertas" style="margin-bottom:18px"></div>
+      <div class="section-title">Inyectoras</div>
+      <div id="rec-inyectoras" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px;margin-bottom:24px"></div>
+      <div class="section-title">Tapadoras</div>
+      <div id="rec-tapadoras" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px;margin-bottom:24px"></div>
+      <div class="section-title">Personal</div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Nombre</th><th>Cargo</th><th>Estado</th><th>Nota</th></tr></thead>
+          <tbody id="rec-personal-tbody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;font-size:.68rem;color:#4B5563"><i class="fa-regular fa-hand-pointer" style="margin-right:5px"></i>Clic en cualquier tarjeta o fila para cambiar el estado. Se guarda automáticamente en el navegador.</div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 
@@ -973,6 +1001,153 @@ const SHEETS = {
 // Maquilas: hoja distinta. Endpoint gviz → CSV directo con CORS (sin redirección)
 const MAQUILAS_CSV = 'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=1924737619';
 const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + encodeURIComponent(u) : u;
+
+// =======================================================
+// RECURSOS — Máquinas y Personal (datos del sheet Restricciones)
+// =======================================================
+const RECURSOS_DEFAULT = {
+  maquinas: [
+    { id:'INY1', nombre:'INY#1', tipo:'inyectora', maqNum:'1', costoHora:67196,  estado:'activa',   nota:'' },
+    { id:'INY2', nombre:'INY#2', tipo:'inyectora', maqNum:'2', costoHora:67196,  estado:'activa',   nota:'' },
+    { id:'INY3', nombre:'INY#3', tipo:'inyectora', maqNum:'3', costoHora:68490,  estado:'activa',   nota:'' },
+    { id:'INY4', nombre:'INY#4', tipo:'inyectora', maqNum:'4', costoHora:68490,  estado:'activa',   nota:'' },
+    { id:'INY5', nombre:'INY#5', tipo:'inyectora', maqNum:'',  costoHora:68490,  estado:'inactiva', nota:'' },
+    { id:'INY6', nombre:'INY#6', tipo:'inyectora', maqNum:'',  costoHora:68490,  estado:'inactiva', nota:'' },
+    { id:'INY7', nombre:'INY#7', tipo:'inyectora', maqNum:'',  costoHora:68490,  estado:'inactiva', nota:'' },
+    { id:'TV1',  nombre:'TV#1',  tipo:'tapadora',  maqNum:'5', costoHora:62304,  estado:'activa',   nota:'' },
+    { id:'TV2',  nombre:'TV#2',  tipo:'tapadora',  maqNum:'6', costoHora:100753, estado:'activa',   nota:'' },
+    { id:'TV3',  nombre:'TV#3',  tipo:'tapadora',  maqNum:'',  costoHora:100753, estado:'inactiva', nota:'' },
+    { id:'TV4',  nombre:'TV#4',  tipo:'tapadora',  maqNum:'',  costoHora:100754, estado:'inactiva', nota:'' },
+  ],
+  personal: [
+    { id:'P1',  nombre:'MÓNICA',        cargo:'Operario',  estado:'vacaciones',   nota:'Vuelve 30 jun' },
+    { id:'P2',  nombre:'LUIS F',        cargo:'Operario',  estado:'activo',       nota:'' },
+    { id:'P3',  nombre:'JOHAN',         cargo:'Operario',  estado:'activo',       nota:'' },
+    { id:'P4',  nombre:'LILIANA J',     cargo:'Operario',  estado:'activo',       nota:'' },
+    { id:'P5',  nombre:'LAURA',         cargo:'Operario',  estado:'activo',       nota:'' },
+    { id:'P6',  nombre:'ANDREA TORRES', cargo:'Operario',  estado:'activo',       nota:'' },
+    { id:'P7',  nombre:'EDWIN DELGADO', cargo:'Operario',  estado:'activo',       nota:'' },
+    { id:'P8',  nombre:'MAROLYN',       cargo:'Operario',  estado:'activo',       nota:'' },
+    { id:'P9',  nombre:'SARA',          cargo:'Inspector', estado:'activo',       nota:'' },
+    { id:'P10', nombre:'PAULA',         cargo:'Inspector', estado:'activo',       nota:'' },
+    { id:'P11', nombre:'JUAN C',        cargo:'Inspector', estado:'activo',       nota:'' },
+    { id:'P12', nombre:'JENNIFER',      cargo:'Inspector', estado:'activo',       nota:'' },
+    { id:'P13', nombre:'UNFALY',        cargo:'Inspector', estado:'incapacitado', nota:'' },
+    { id:'P14', nombre:'ALEJANDRA',     cargo:'Inspector', estado:'activo',       nota:'' },
+    { id:'P15', nombre:'YETSY',         cargo:'Inspector', estado:'activo',       nota:'' },
+  ]
+};
+let _recursosState = null;
+function getRecursosState() {
+  if (_recursosState) return _recursosState;
+  try {
+    const saved = localStorage.getItem('fvlco_recursos');
+    _recursosState = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(RECURSOS_DEFAULT));
+  } catch(e) { _recursosState = JSON.parse(JSON.stringify(RECURSOS_DEFAULT)); }
+  return _recursosState;
+}
+function saveRecursosState() {
+  try { localStorage.setItem('fvlco_recursos', JSON.stringify(_recursosState)); } catch(e) {}
+}
+const MAQ_ESTADOS  = ['activa','mantenimiento','inactiva','propuesta'];
+const PER_ESTADOS  = ['activo','vacaciones','incapacitado','inactivo'];
+const ESTADO_STYLE = {
+  activa:        { color:'#10B981', bg:'rgba(16,185,129,.15)',  label:'ACTIVA'        },
+  mantenimiento: { color:'#F59E0B', bg:'rgba(245,158,11,.15)',  label:'MANTENIMIENTO' },
+  inactiva:      { color:'#6B7280', bg:'rgba(107,114,128,.15)', label:'INACTIVA'      },
+  propuesta:     { color:'#8B5CF6', bg:'rgba(139,92,246,.15)',  label:'PROPUESTA'     },
+  activo:        { color:'#10B981', bg:'rgba(16,185,129,.15)',  label:'ACTIVO'        },
+  vacaciones:    { color:'#3B82F6', bg:'rgba(59,130,246,.15)',  label:'VACACIONES'    },
+  incapacitado:  { color:'#F97316', bg:'rgba(249,115,22,.15)',  label:'INCAPACITADO'  },
+  inactivo:      { color:'#6B7280', bg:'rgba(107,114,128,.15)', label:'INACTIVO'      },
+};
+function cycleEstadoMaq(id) {
+  const st = getRecursosState();
+  const m = st.maquinas.find(x=>x.id===id); if (!m) return;
+  m.estado = MAQ_ESTADOS[(MAQ_ESTADOS.indexOf(m.estado)+1) % MAQ_ESTADOS.length];
+  saveRecursosState(); renderRecursos();
+}
+function cycleEstadoPersonal(id) {
+  const st = getRecursosState();
+  const p = st.personal.find(x=>x.id===id); if (!p) return;
+  p.estado = PER_ESTADOS[(PER_ESTADOS.indexOf(p.estado)+1) % PER_ESTADOS.length];
+  saveRecursosState(); renderRecursos();
+}
+function resetRecursos() {
+  if (!confirm('¿Restaurar todos los estados al valor original?')) return;
+  _recursosState = JSON.parse(JSON.stringify(RECURSOS_DEFAULT));
+  saveRecursosState(); renderRecursos();
+}
+function renderRecursos() {
+  const st = getRecursosState();
+  const maq = st.maquinas, per = st.personal;
+  const maqActivas = maq.filter(m=>m.estado==='activa').length;
+  const inyActivas = maq.filter(m=>m.tipo==='inyectora'&&m.estado==='activa').length;
+  const tvActivas  = maq.filter(m=>m.tipo==='tapadora'&&m.estado==='activa').length;
+  const perDisp    = per.filter(p=>p.estado==='activo').length;
+  const perVac     = per.filter(p=>p.estado==='vacaciones').length;
+  const perInc     = per.filter(p=>p.estado==='incapacitado').length;
+  const costoActivo= maq.filter(m=>m.estado==='activa').reduce((s,m)=>s+m.costoHora,0);
+
+  const kpiEl = document.getElementById('rec-kpis');
+  if (!kpiEl) return;
+  kpiEl.innerHTML = [
+    { label:'Máquinas Activas',    val:`${maqActivas}<span style="font-size:.85rem;color:#4B5563">/${maq.length}</span>`, color:'#10B981', sub:`${inyActivas} inyectoras · ${tvActivas} tapadoras` },
+    { label:'Personal Disponible', val:`${perDisp}<span style="font-size:.85rem;color:#4B5563">/${per.length}</span>`,   color:'#3B82F6', sub:perVac||perInc?`${perVac?perVac+' vacac.':''} ${perInc?perInc+' incap.':''}`.trim():'Todos disponibles' },
+    { label:'Capacidad/día',       val:`${maqActivas*3}<span style="font-size:.7rem;color:#4B5563"> turnos</span>`,      color:'#8B5CF6', sub:`${maqActivas} máq × 3 turnos` },
+    { label:'Costo activas/h',     val:`$${Math.round(costoActivo/1000)}k`,                                              color:'#F59E0B', sub:'Suma tarifas activas' },
+  ].map(k=>`<div class="kpi-card" style="border-top:3px solid ${k.color};padding:16px 18px">
+    <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;margin-bottom:6px">${k.label}</div>
+    <div style="font-size:1.7rem;font-weight:800;color:${k.color}">${k.val}</div>
+    <div style="font-size:.68rem;color:#6B7280;margin-top:4px">${k.sub}</div>
+  </div>`).join('');
+
+  const alertas = [];
+  if (maqActivas < 4) alertas.push(['#EF4444','fa-circle-exclamation',`Solo ${maqActivas} máquinas activas — capacidad muy reducida. Considera activar una inactiva o proponer compra.`]);
+  else if (maqActivas < 6) alertas.push(['#F59E0B','fa-triangle-exclamation',`${maqActivas} máquinas activas — verifica si cubre la demanda del plan mensual.`]);
+  if (perDisp < 10) alertas.push(['#F59E0B','fa-person-circle-exclamation',`Solo ${perDisp} personas disponibles de ${per.length} — revisa cobertura de turnos.`]);
+  const props = maq.filter(m=>m.estado==='propuesta');
+  if (props.length) alertas.push(['#8B5CF6','fa-cart-shopping',`Propuesta de compra: ${props.map(m=>m.nombre).join(', ')}.`]);
+  if (perVac||perInc) alertas.push(['#3B82F6','fa-circle-info',`${perVac?perVac+' en vacaciones':''} ${perInc?(perVac?'· ':'')+perInc+' incapacitado/a':''} · Disponibles: ${perDisp}/${per.length}.`]);
+  const alertEl = document.getElementById('rec-alertas');
+  if (alertEl) alertEl.innerHTML = alertas.length
+    ? alertas.map(([c,i,m])=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-left:3px solid ${c};border-radius:6px;margin-bottom:8px;background:${c}18"><i class="fa-solid ${i}" style="color:${c};margin-top:1px;flex-shrink:0"></i><span style="font-size:.78rem;color:#D1D5DB">${m}</span></div>`).join('')
+    : `<div style="color:#4B5563;font-size:.78rem"><i class="fa-solid fa-circle-check" style="color:#10B981;margin-right:6px"></i>Sin alertas — recursos operando bien.</div>`;
+
+  const maqCard = m => {
+    const es = ESTADO_STYLE[m.estado]||ESTADO_STYLE.inactiva;
+    const sub = m.maqNum ? `Maq ${m.maqNum} · $${Math.round(m.costoHora/1000)}k/h` : `Sin asignar · $${Math.round(m.costoHora/1000)}k/h`;
+    return `<div onclick="cycleEstadoMaq('${m.id}')" style="background:#1F2937;border:1px solid #374151;border-top:3px solid ${es.color};border-radius:10px;padding:14px 16px;cursor:pointer;user-select:none" title="Clic para cambiar estado">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:8px">
+        <div>
+          <div style="font-size:.6rem;color:#4B5563;text-transform:uppercase;font-weight:700;margin-bottom:2px">${m.tipo}</div>
+          <div style="font-size:1rem;font-weight:800;color:#EEEEEE">${m.nombre}</div>
+          <div style="font-size:.65rem;color:#6B7280">${sub}</div>
+        </div>
+        <span style="font-size:.58rem;font-weight:700;padding:2px 7px;border-radius:20px;background:${es.bg};color:${es.color};white-space:nowrap;flex-shrink:0">${es.label}</span>
+      </div>
+      <div style="font-size:.58rem;color:#374151;text-align:right"><i class="fa-regular fa-hand-pointer"></i></div>
+    </div>`;
+  };
+  const inyEl = document.getElementById('rec-inyectoras');
+  const tvEl  = document.getElementById('rec-tapadoras');
+  if (inyEl) inyEl.innerHTML = maq.filter(m=>m.tipo==='inyectora').map(maqCard).join('');
+  if (tvEl)  tvEl.innerHTML  = maq.filter(m=>m.tipo==='tapadora').map(maqCard).join('');
+
+  const perTbody = document.getElementById('rec-personal-tbody');
+  if (perTbody) {
+    const row = p => {
+      const es = ESTADO_STYLE[p.estado]||ESTADO_STYLE.inactivo;
+      return `<tr onclick="cycleEstadoPersonal('${p.id}')" style="cursor:pointer" title="Clic para cambiar estado">
+        <td style="font-weight:600">${p.nombre}</td>
+        <td><span style="font-size:.68rem;color:#9CA3AF">${p.cargo}</span></td>
+        <td><span style="font-size:.67rem;font-weight:700;padding:2px 8px;border-radius:20px;background:${es.bg};color:${es.color}">${es.label}</span></td>
+        <td style="font-size:.7rem;color:#6B7280">${p.nota||''}</td>
+      </tr>`;
+    };
+    perTbody.innerHTML = [...per.filter(p=>p.cargo==='Operario'),...per.filter(p=>p.cargo==='Inspector')].map(row).join('');
+  }
+}
 
 // =======================================================
 // PALETTE & CONSTANTS
@@ -2228,8 +2403,13 @@ function _findColVal(r, keyword, exclude) {
 // Molde (cavidades teóricas) por máquina — override TEMPORAL mientras la
 // columna AO (CAV.TEORICAS) del sheet se termina de llenar. Cuando AO trae
 // un valor > 0, ESE manda (es el dato real). Pídele al usuario los moldes.
+// MOLDE_CAV: override por máquina cuando CAV.TEORICAS (col AO) está vacía.
+// Las cavidades dependen del PRODUCTO (molde), no de la máquina — así que
+// este mapa solo sirve cuando una máquina corre siempre el mismo molde.
+// Para máquinas con varios moldes (INY#3: 24/32/48 cav según producto),
+// dejar vacío y confiar en la columna CAVIDADES del sheet.
 const MOLDE_CAV = {
-  '3': 8,    // Máquina 3 (VALVULA LATERAL) — molde de 8 cavidades (confirmado por el usuario)
+  // '2': 8,  // INY#2 corre siempre VLA38 (8 cav) — descomentar si CAV.TEORICAS sigue vacía
 };
 // Cavidades TEÓRICAS con respaldos, en orden de prioridad:
 //   1) CAV.TEORICAS (col AO) si > 0  → dato real del sheet
@@ -2597,7 +2777,7 @@ function renderReporteDiario() {
       const est = pNum(r['T. CICLO EST']);
       if (est > 0) {
         g.est     = est;
-        g.cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_MAP[prod] || 1, 1);
+        g.cavTeor = _cavTeorOf(r);
         g.cavReal = Math.max(_findColVal(r,'CAVIDAD','TEOR') || g.cavTeor, 1);
       }
     }
@@ -2627,7 +2807,7 @@ function renderReporteDiario() {
     const cant     = pNum(r._cant);
     const est      = pNum(r['T. CICLO EST']);
     const real     = pNum(r['T. CICLO REAL']) || pNum(r['T.CICLO REAL']);
-    const cavRealR = Math.max(_findColVal(r,'CAVIDAD','TEOR') || pNum(r['CAV.TEORICAS']) || CAV_MAP[r._prod] || 1, 1);
+    const cavRealR = Math.max(_findColVal(r,'CAVIDAD','TEOR') || _cavTeorOf(r), 1);
     m.hParo += (r._paro || 0) / 60;
     m.cant  += cant;
     // OEE_t: tiempo real = cicloReal si existe, sino cicloEst (máquina ocupada corriendo)
@@ -3452,7 +3632,8 @@ const TITLES = {
   'po-tablero':'Tablero Plan Operativo','po-plan':'Plan Maestro',
   'po-capacidad':'Capacidad por Máquina','po-maquila':'Maquila Plan',
   'po-personal':'Personal Q1/Q2','po-horas':'Horas & Costos',
-  'po-lote':'Lote Mínimo','po-inventario':'Inventario MP'
+  'po-lote':'Lote Mínimo','po-inventario':'Inventario MP',
+  'po-recursos':'Máquinas y Personal'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
@@ -3497,6 +3678,7 @@ function showSection(id) {
   if (pdf) pdf.style.display = (id==='reporte-compacto') ? 'none' : 'flex';
 
   if(SECTION_RENDERS[id] && DATA.prod.length) SECTION_RENDERS[id]();
+  if(id === 'po-recursos') renderRecursos();
   if(window.innerWidth<=768) closeSidebar();
 }
 
