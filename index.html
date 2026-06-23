@@ -402,42 +402,30 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
     <!-- ======================================= NO CONFORMES == -->
     <div class="section" id="sec-noconf">
-      <div style="display:flex;gap:18px;align-items:flex-start">
-
-        <!-- PANEL IZQUIERDO -->
-        <div style="width:210px;min-width:210px;flex-shrink:0">
-          <div class="filter-panel">
-            <div class="fp-title">Filtros</div>
-
-            <div class="fp-label">Mes</div>
-            <select id="nc-fp-mes" class="fp-select" onchange="renderNC()">
-              <option value="">Todos los meses</option>
-            </select>
-
-            <div class="fp-label">Día</div>
-            <div class="multi-sel-wrap" style="margin-bottom:4px">
-              <button class="multi-sel-btn" id="nc-dia-btn" onclick="toggleNcDiaDD(event)" style="width:100%;text-align:left">Todos los días ▾</button>
-              <div class="multi-sel-dropdown" id="nc-dia-dd"></div>
-            </div>
-            <button class="btn-x" onclick="clearNcDias()" style="width:100%;margin-bottom:4px;text-align:center">✕ Quitar días</button>
-
-            <div class="fp-label">Máquina</div>
-            <select id="nc-f-maq" class="fp-select">
-              <option value="">Todas las máquinas</option>
-            </select>
-
-            <div class="fp-label" style="margin-top:14px">Causa NC</div>
-            <div id="nc-causas-list" style="max-height:320px;overflow-y:auto;margin-top:4px"></div>
-
-            <div style="margin-top:14px;display:flex;gap:6px">
-              <button class="btn-filter" onclick="renderNC()" style="flex:1">Filtrar</button>
-              <button class="btn-clear" onclick="clearNcPanel()" style="flex:1">Limpiar</button>
-            </div>
-          </div>
+      <!-- FILTROS HORIZONTALES (arriba) -->
+      <div class="filter-bar" style="align-items:center;background:#111827;border:1px solid #374151;border-radius:10px;padding:10px 14px">
+        <span style="font-size:.62rem;font-weight:700;color:#4B5563;text-transform:uppercase;letter-spacing:.1em">Filtros:</span>
+        <select id="nc-fp-mes" class="fp-select" style="width:auto;margin-bottom:0" onchange="renderNC()">
+          <option value="">Todos los meses</option>
+        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="nc-dia-btn" onclick="toggleNcDiaDD(event)">Todos los días ▾</button>
+          <div class="multi-sel-dropdown" id="nc-dia-dd"></div>
         </div>
+        <button class="btn-x" onclick="clearNcDias()" title="Quitar filtro de días">✕ días</button>
+        <select id="nc-f-maq" class="fp-select" style="width:auto;margin-bottom:0" onchange="renderNC()">
+          <option value="">Todas las máquinas</option>
+        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="nc-causa-btn" onclick="toggleNcCausaDD(event)">Todas las causas ▾</button>
+          <div class="multi-sel-dropdown" id="nc-causas-list" style="max-height:320px;overflow-y:auto;min-width:230px"></div>
+        </div>
+        <button class="btn-filter" onclick="renderNC()">Filtrar</button>
+        <button class="btn-clear" onclick="clearNcPanel()">Limpiar</button>
+      </div>
 
-        <!-- CONTENIDO PRINCIPAL -->
-        <div style="flex:1;min-width:0">
+      <!-- CONTENIDO PRINCIPAL -->
+      <div style="min-width:0;margin-top:16px">
           <div id="nc-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:20px"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
             <div class="chart-card"><div class="section-title">NC por Causa (Pareto)</div><div style="height:260px"><canvas id="nc-causa"></canvas></div></div>
@@ -448,8 +436,6 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
             <div class="chart-card"><div class="section-title">NC por Mes</div><div style="height:240px"><canvas id="nc-mes"></canvas></div></div>
           </div>
         </div>
-
-      </div>
     </div>
 
     <!-- ======================================= OTIF == -->
@@ -1174,6 +1160,12 @@ function toggleNcDiaDD(e) {
   dd.classList.toggle('show');
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
+function toggleNcCausaDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('nc-causas-list');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
 function toggleNcDia(dia) {
   if (SEL_DIAS_NC.has(dia)) SEL_DIAS_NC.delete(dia); else SEL_DIAS_NC.add(dia);
   const btn = document.getElementById('nc-dia-btn');
@@ -1344,9 +1336,13 @@ function normalizeProd(r) {
   // pNum() quita los puntos (separador de miles CO) y rompe los decimales:
   // "17.1" → 171, "14,5" → ok pero "14.5" → 145. El ciclo SÍ usa decimales,
   // así que se re-parsean sin eliminar puntos.
+  // Campos con DECIMALES (ciclo, pesos, kilos): el sheet los trae con punto
+  // o coma decimal (ej. "8.6", "2,35"). pNum eliminaría el punto e inflaría
+  // el valor (8.6 → 86), por eso se re-parsean preservando el decimal.
   const _decRaw = {};
   for (const k of Object.keys(out)) {
-    if (k.toUpperCase().includes('CICLO')) _decRaw[k] = out[k];
+    const ku = k.toUpperCase();
+    if (ku.includes('CICLO') || ku.includes('PESO') || ku.includes('KILO')) _decRaw[k] = out[k];
   }
 
   for (const k in out) {
