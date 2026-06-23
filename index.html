@@ -94,6 +94,14 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
   .overlay-sidebar { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 40; display: none; }
   .overlay-sidebar.show { display: block; }
 }
+.nav-group-header { display:flex; align-items:center; gap:8px; padding:8px 14px; cursor:pointer; color:#6B7280; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; border-radius:8px; margin:4px 8px; transition:all .2s; user-select:none; }
+.nav-group-header:hover { color:#D1D5DB; background:rgba(255,255,255,.04); }
+.nav-group-header .nav-icon { width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:.75rem; flex-shrink:0; background:rgba(255,255,255,.06); color:#6B7280; }
+.nav-group-items { overflow:hidden; transition:max-height .35s ease; }
+.nav-group-items.collapsed { max-height:0 !important; }
+.nav-chevron { margin-left:auto; font-size:.58rem; transition:transform .3s; }
+.nav-chevron.open { transform:rotate(180deg); }
+.po-badge { background:rgba(16,185,129,.2); color:#10B981; border-radius:4px; padding:1px 6px; font-size:.55rem; font-weight:700; letter-spacing:.04em; }
 </style>
 </head>
 <body>
@@ -128,48 +136,93 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
   </div>
   <!-- Nav -->
   <div style="flex:1;overflow-y:auto;padding:8px 0">
-    <div class="nav-item active" onclick="showSection('resumen')" data-section="resumen" data-color="#6366F1">
-      <span class="nav-icon"><i class="fa-solid fa-gauge-high"></i></span> Resumen General
+
+    <!-- ── GRUPO: Control de Planta ── -->
+    <div class="nav-group-header" onclick="toggleNavGroup('ctrl-planta')">
+      <span class="nav-icon"><i class="fa-solid fa-industry"></i></span>
+      Control de Planta
+      <i class="fa-solid fa-chevron-down nav-chevron" id="chevron-ctrl-planta"></i>
     </div>
-    <div class="nav-item" onclick="showSection('oee')" data-section="oee" data-color="#10B981">
-      <span class="nav-icon"><i class="fa-solid fa-circle-nodes"></i></span> OEE
+    <div class="nav-group-items collapsed" id="group-ctrl-planta" style="max-height:1200px">
+      <div class="nav-item active" onclick="showSection('resumen')" data-section="resumen" data-color="#6366F1">
+        <span class="nav-icon"><i class="fa-solid fa-gauge-high"></i></span> Resumen General
+      </div>
+      <div class="nav-item" onclick="showSection('oee')" data-section="oee" data-color="#10B981">
+        <span class="nav-icon"><i class="fa-solid fa-circle-nodes"></i></span> OEE
+      </div>
+      <div class="nav-item" onclick="showSection('reporte-diario')" data-section="reporte-diario" data-color="#3B82F6">
+        <span class="nav-icon"><i class="fa-solid fa-calendar-day"></i></span> Reporte Diario
+      </div>
+      <div class="nav-item" onclick="showSection('reporte-compacto')" data-section="reporte-compacto" data-color="#22D3EE">
+        <span class="nav-icon"><i class="fa-solid fa-file-lines"></i></span> Reporte Compacto
+      </div>
+      <div class="nav-item" onclick="showSection('plan-mensual')" data-section="plan-mensual" data-color="#F59E0B">
+        <span class="nav-icon"><i class="fa-solid fa-calendar-check"></i></span> Plan vs Real Mensual
+      </div>
+      <div class="nav-item" onclick="showSection('plan-ref')" data-section="plan-ref" data-color="#8B5CF6">
+        <span class="nav-icon"><i class="fa-solid fa-boxes-stacked"></i></span> Plan vs Real Referencias
+      </div>
+      <div class="nav-item" onclick="showSection('noconf')" data-section="noconf" data-color="#EF4444">
+        <span class="nav-icon"><i class="fa-solid fa-triangle-exclamation"></i></span> No Conformes
+      </div>
+      <div class="nav-item" onclick="showSection('otif')" data-section="otif" data-color="#06B6D4">
+        <span class="nav-icon"><i class="fa-solid fa-truck-fast"></i></span> OTIF
+      </div>
+      <div class="nav-item" onclick="showSection('paros')" data-section="paros" data-color="#F97316">
+        <span class="nav-icon"><i class="fa-solid fa-clock"></i></span> Tiempos de Paro
+      </div>
+      <div class="nav-item" onclick="showSection('accid')" data-section="accid" data-color="#EC4899">
+        <span class="nav-icon"><i class="fa-solid fa-helmet-safety"></i></span> Status Personal
+      </div>
+      <div class="nav-item" onclick="showSection('costos')" data-section="costos" data-color="#84CC16">
+        <span class="nav-icon"><i class="fa-solid fa-dollar-sign"></i></span> Costos
+      </div>
+      <div class="nav-item" onclick="showSection('forecast')" data-section="forecast" data-color="#38BDF8">
+        <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Forecast
+      </div>
+      <div class="nav-item" onclick="showSection('maquilas')" data-section="maquilas" data-color="#A78BFA">
+        <span class="nav-icon"><i class="fa-solid fa-handshake"></i></span> Maquilas
+      </div>
+      <div class="nav-item" onclick="showSection('descripcion')" data-section="descripcion" data-color="#A78BFA">
+        <span class="nav-icon"><i class="fa-solid fa-book-open"></i></span> Descripción de Indicadores
+      </div>
     </div>
-    <div class="nav-item" onclick="showSection('reporte-diario')" data-section="reporte-diario" data-color="#3B82F6">
-      <span class="nav-icon"><i class="fa-solid fa-calendar-day"></i></span> Reporte Diario
+
+    <!-- ── GRUPO: Plan Operativo ── -->
+    <div style="border-top:1px solid #1F2937;margin:8px 0 4px"></div>
+    <div class="nav-group-header" onclick="toggleNavGroup('plan-op')" style="color:#10B981">
+      <span class="nav-icon" style="background:rgba(16,185,129,.15);color:#10B981"><i class="fa-solid fa-clipboard-list"></i></span>
+      Plan Operativo
+      <span class="po-badge" style="margin-left:4px">NUEVO</span>
+      <i class="fa-solid fa-chevron-down nav-chevron open" id="chevron-plan-op" style="color:#10B981"></i>
     </div>
-    <div class="nav-item" onclick="showSection('reporte-compacto')" data-section="reporte-compacto" data-color="#22D3EE">
-      <span class="nav-icon"><i class="fa-solid fa-file-lines"></i></span> Reporte Compacto
+    <div class="nav-group-items" id="group-plan-op" style="max-height:1200px">
+      <div class="nav-item" onclick="showSection('po-tablero')" data-section="po-tablero" data-color="#10B981">
+        <span class="nav-icon"><i class="fa-solid fa-gauge"></i></span> Tablero Plan
+      </div>
+      <div class="nav-item" onclick="showSection('po-plan')" data-section="po-plan" data-color="#3B82F6">
+        <span class="nav-icon"><i class="fa-solid fa-list-check"></i></span> Plan Maestro
+      </div>
+      <div class="nav-item" onclick="showSection('po-capacidad')" data-section="po-capacidad" data-color="#8B5CF6">
+        <span class="nav-icon"><i class="fa-solid fa-industry"></i></span> Capacidad
+      </div>
+      <div class="nav-item" onclick="showSection('po-maquila')" data-section="po-maquila" data-color="#F97316">
+        <span class="nav-icon"><i class="fa-solid fa-boxes-packing"></i></span> Maquila Plan
+      </div>
+      <div class="nav-item" onclick="showSection('po-personal')" data-section="po-personal" data-color="#EC4899">
+        <span class="nav-icon"><i class="fa-solid fa-users"></i></span> Personal Q1/Q2
+      </div>
+      <div class="nav-item" onclick="showSection('po-horas')" data-section="po-horas" data-color="#F59E0B">
+        <span class="nav-icon"><i class="fa-solid fa-sack-dollar"></i></span> Horas &amp; Costos
+      </div>
+      <div class="nav-item" onclick="showSection('po-lote')" data-section="po-lote" data-color="#06B6D4">
+        <span class="nav-icon"><i class="fa-solid fa-cubes"></i></span> Lote Mínimo
+      </div>
+      <div class="nav-item" onclick="showSection('po-inventario')" data-section="po-inventario" data-color="#34D399">
+        <span class="nav-icon"><i class="fa-solid fa-warehouse"></i></span> Inventario MP
+      </div>
     </div>
-    <div class="nav-item" onclick="showSection('plan-mensual')" data-section="plan-mensual" data-color="#F59E0B">
-      <span class="nav-icon"><i class="fa-solid fa-calendar-check"></i></span> Plan vs Real Mensual
-    </div>
-    <div class="nav-item" onclick="showSection('plan-ref')" data-section="plan-ref" data-color="#8B5CF6">
-      <span class="nav-icon"><i class="fa-solid fa-boxes-stacked"></i></span> Plan vs Real Referencias
-    </div>
-    <div class="nav-item" onclick="showSection('noconf')" data-section="noconf" data-color="#EF4444">
-      <span class="nav-icon"><i class="fa-solid fa-triangle-exclamation"></i></span> No Conformes
-    </div>
-    <div class="nav-item" onclick="showSection('otif')" data-section="otif" data-color="#06B6D4">
-      <span class="nav-icon"><i class="fa-solid fa-truck-fast"></i></span> OTIF
-    </div>
-    <div class="nav-item" onclick="showSection('paros')" data-section="paros" data-color="#F97316">
-      <span class="nav-icon"><i class="fa-solid fa-clock"></i></span> Tiempos de Paro
-    </div>
-    <div class="nav-item" onclick="showSection('accid')" data-section="accid" data-color="#EC4899">
-      <span class="nav-icon"><i class="fa-solid fa-helmet-safety"></i></span> Status Personal
-    </div>
-    <div class="nav-item" onclick="showSection('costos')" data-section="costos" data-color="#84CC16">
-      <span class="nav-icon"><i class="fa-solid fa-dollar-sign"></i></span> Costos
-    </div>
-    <div class="nav-item" onclick="showSection('forecast')" data-section="forecast" data-color="#38BDF8">
-      <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Forecast
-    </div>
-    <div class="nav-item" onclick="showSection('maquilas')" data-section="maquilas" data-color="#A78BFA">
-      <span class="nav-icon"><i class="fa-solid fa-handshake"></i></span> Maquilas
-    </div>
-    <div class="nav-item" onclick="showSection('descripcion')" data-section="descripcion" data-color="#A78BFA">
-      <span class="nav-icon"><i class="fa-solid fa-book-open"></i></span> Descripción de Indicadores
-    </div>
+
   </div>
   <!-- Tagline -->
   <div style="padding:12px 16px;border-top:1px solid #374151;font-size:.68rem;color:#4B5563;font-style:italic;line-height:1.5">
@@ -733,6 +786,188 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
       <p style="font-size:.75rem;color:#6B7280;margin-bottom:20px">Guía de referencia de cada módulo del dashboard: qué mide, cómo se calcula y cuáles son sus limitaciones conocidas.</p>
       <div id="desc-modelos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px"></div>
+    </div>
+
+    <!-- ======================================================= PO: TABLERO == -->
+    <div class="section" id="sec-po-tablero">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Tablero Plan Operativo</div>
+          <div style="font-size:.72rem;color:#6B7280;margin-top:2px" id="po-last-calc">Cargando datos del plan...</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="po-mes-sel" onchange="recalcularPlan()" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:6px 12px;color:#EEEEEE;font-size:.78rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+            <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
+            <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
+            <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
+            <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+          </select>
+          <select id="po-anio-sel" onchange="recalcularPlan()" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:6px 12px;color:#EEEEEE;font-size:.78rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+            <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+          </select>
+          <button onclick="recalcularPlan()" style="background:#10B981;border:none;color:#fff;border-radius:8px;padding:7px 18px;cursor:pointer;font-size:.78rem;font-weight:700;font-family:Tahoma,Arial,sans-serif;display:flex;align-items:center;gap:6px">
+            <i class="fa-solid fa-rotate"></i> Recalcular Plan
+          </button>
+        </div>
+      </div>
+      <div id="po-tablero-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px"></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:18px">
+        <div class="chart-card"><div class="section-title">Pedidos por Semáforo</div><div style="height:200px"><canvas id="po-chart-semaforo"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">Capacidad vs Requerida</div><div style="height:200px"><canvas id="po-chart-capacidad"></canvas></div></div>
+        <div class="chart-card" style="grid-column:1/-1"><div class="section-title">Top productos — Unidades pendientes</div><div style="height:220px"><canvas id="po-chart-productos"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- ======================================================= PO: PLAN MAESTRO == -->
+    <div class="section" id="sec-po-plan">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Plan Maestro</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="po-plan-f-estado" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:5px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+            <option value="">Todos los estados</option>
+            <option value="verde">🟢 En tiempo</option>
+            <option value="amarillo">🟡 En riesgo</option>
+            <option value="rojo">🔴 Incumplimiento</option>
+          </select>
+          <select id="po-plan-f-cliente" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:5px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+            <option value="">Todos los clientes</option>
+          </select>
+          <button class="btn-filter" onclick="renderPlanMaestro()">Filtrar</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr>
+            <th></th><th>Pedido</th><th>Cliente</th><th>Producto</th>
+            <th style="text-align:right">Cant. Pendiente</th><th>Fecha Entrega</th>
+            <th style="text-align:center">Días Rest.</th><th>Máquina</th>
+            <th style="text-align:right">Horas Est.</th><th style="text-align:right">Valor</th>
+          </tr></thead>
+          <tbody id="po-plan-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================================================= PO: CAPACIDAD == -->
+    <div class="section" id="sec-po-capacidad">
+      <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Capacidad por Máquina</div>
+      <div id="po-cap-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:22px"></div>
+      <div class="chart-card" style="margin-bottom:20px"><div class="section-title">Horas disponibles vs requeridas</div><div style="height:260px"><canvas id="po-chart-cap-barras"></canvas></div></div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Máquina</th><th style="text-align:right">Horas Disponibles</th><th style="text-align:right">Horas Requeridas</th><th style="text-align:right">% Utilización</th><th>Estado</th></tr></thead>
+          <tbody id="po-cap-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================================================= PO: MAQUILA == -->
+    <div class="section" id="sec-po-maquila">
+      <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Plan de Maquila</div>
+      <div id="po-maq-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:22px"></div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Tipo</th><th>Producto</th><th>Cliente</th><th style="text-align:right">Cant. Pendiente</th><th>Fecha Entrega</th><th>Motivo</th><th style="text-align:right">Valor</th></tr></thead>
+          <tbody id="po-maq-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================================================= PO: PERSONAL == -->
+    <div class="section" id="sec-po-personal">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Personal Q1 / Q2</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="mostrarQuincena(1)" id="btn-q1" style="background:#EC4899;border:none;color:#fff;border-radius:8px;padding:6px 16px;cursor:pointer;font-size:.75rem;font-weight:600;font-family:Tahoma,Arial,sans-serif">Q1 (1–15)</button>
+          <button onclick="mostrarQuincena(2)" id="btn-q2" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:6px 16px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">Q2 (16–31)</button>
+        </div>
+      </div>
+      <div id="po-personal-info" style="background:#1F2937;border:1px solid #374151;border-radius:10px;padding:14px;margin-bottom:18px;font-size:.75rem;color:#9CA3AF"></div>
+      <div style="overflow-x:auto"><table class="tbl"><thead id="po-personal-thead"><tr><th>Persona</th><th>Tipo</th><th>Turno</th><th>Observación</th></tr></thead><tbody id="po-personal-tbody"></tbody></table></div>
+    </div>
+
+    <!-- ======================================================= PO: HORAS & COSTOS == -->
+    <div class="section" id="sec-po-horas">
+      <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Horas &amp; Costos del Plan</div>
+      <div id="po-horas-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:22px"></div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Producto</th><th>Cliente</th><th style="text-align:right">Unidades</th><th style="text-align:right">Horas Est.</th><th style="text-align:right">Valor Total</th><th style="text-align:right">Margen Est.</th></tr></thead>
+          <tbody id="po-horas-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================================================= PO: LOTE MÍNIMO == -->
+    <div class="section" id="sec-po-lote">
+      <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Lote Mínimo por Producto</div>
+      <div style="background:#1F2937;border:1px solid #374151;border-radius:10px;padding:14px;margin-bottom:20px;font-size:.75rem;color:#9CA3AF">
+        <i class="fa-solid fa-circle-info" style="color:#06B6D4;margin-right:6px"></i>El lote mínimo agrupa la producción para reducir cambios de molde. El total a producir se redondea al múltiplo del lote más cercano.
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Producto</th><th style="text-align:right">Unidades Pendientes</th><th style="text-align:right">Lote Mínimo</th><th style="text-align:right">Lotes Necesarios</th><th style="text-align:right">Total a Producir</th><th style="text-align:right">Excedente</th></tr></thead>
+          <tbody id="po-lote-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================================================= PO: INVENTARIO MP == -->
+    <div class="section" id="sec-po-inventario">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Inventario de Materias Primas</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="sincronizarSheetInv()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif;display:flex;align-items:center;gap:6px">
+            <i class="fa-solid fa-rotate"></i> Sincronizar Sheets
+          </button>
+          <button onclick="toggleFormInv()" style="background:#34D399;border:none;color:#111;border-radius:8px;padding:7px 16px;cursor:pointer;font-size:.75rem;font-weight:700;font-family:Tahoma,Arial,sans-serif;display:flex;align-items:center;gap:6px">
+            <i class="fa-solid fa-plus"></i> Registrar Movimiento
+          </button>
+        </div>
+      </div>
+      <!-- Formulario -->
+      <div id="form-inv" style="display:none;background:#1F2937;border:1px solid #374151;border-radius:12px;padding:20px;margin-bottom:20px">
+        <div style="font-size:.72rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px">Nuevo movimiento de MP</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:14px">
+          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Material *</div>
+            <input id="inv-material" placeholder="Ej: PEAD NATURAL" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
+          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Tipo *</div>
+            <select id="inv-tipo" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif">
+              <option value="ENTRADA">ENTRADA</option><option value="SALIDA">SALIDA</option><option value="AJUSTE">AJUSTE</option>
+            </select></div>
+          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Cantidad (kg) *</div>
+            <input id="inv-cantidad" type="number" placeholder="0" min="0" step="0.1" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
+          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Fecha</div>
+            <input id="inv-fecha" type="date" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
+          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Proveedor</div>
+            <input id="inv-proveedor" placeholder="Opcional" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
+          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Observación</div>
+            <input id="inv-obs" placeholder="Opcional" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="guardarMovimientoInv()" style="background:#34D399;border:none;color:#111;border-radius:8px;padding:7px 20px;cursor:pointer;font-size:.78rem;font-weight:700;font-family:Tahoma,Arial,sans-serif">Guardar</button>
+          <button onclick="toggleFormInv()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">Cancelar</button>
+          <span id="inv-msg" style="font-size:.72rem;color:#10B981;display:none"></span>
+        </div>
+      </div>
+      <!-- KPIs -->
+      <div id="po-inv-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:22px"></div>
+      <!-- Resumen por material -->
+      <div class="section-title">Resumen por Material</div>
+      <div style="overflow-x:auto;margin-bottom:24px">
+        <table class="tbl">
+          <thead><tr><th>Material</th><th style="text-align:right">Entradas (kg)</th><th style="text-align:right">Salidas (kg)</th><th style="text-align:right">Stock Actual (kg)</th><th style="text-align:right">Stock Mín.</th><th>Estado</th></tr></thead>
+          <tbody id="po-inv-summary-tbody"></tbody>
+        </table>
+      </div>
+      <!-- Movimientos -->
+      <div class="section-title">Movimientos Registrados</div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Fecha</th><th>Material</th><th>Tipo</th><th style="text-align:right">Cantidad (kg)</th><th>Proveedor</th><th>Observación</th><th>Fuente</th><th></th></tr></thead>
+          <tbody id="po-inv-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
   </div><!-- /content -->
@@ -3182,7 +3417,11 @@ const TITLES = {
   'reporte-compacto':'Reporte Diario Compacto',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
-  accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', maquilas:'Maquilas', descripcion:'Descripción de Indicadores'
+  accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', maquilas:'Maquilas', descripcion:'Descripción de Indicadores',
+  'po-tablero':'Tablero Plan Operativo','po-plan':'Plan Maestro',
+  'po-capacidad':'Capacidad por Máquina','po-maquila':'Maquila Plan',
+  'po-personal':'Personal Q1/Q2','po-horas':'Horas & Costos',
+  'po-lote':'Lote Mínimo','po-inventario':'Inventario MP'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
@@ -4167,6 +4406,505 @@ function renderDescripcion() {
       </div>
     </div>`).join('');
 }
+
+// =======================================================
+// PLAN OPERATIVO — ENGINE & RENDERS
+// =======================================================
+const PLAN_SHEETS = {
+  pedidos:      'https://docs.google.com/spreadsheets/d/1vZTs6xImawkKwiWEPmFaY4y6LrVRKrMaAHKuCz0dy98/gviz/tq?tqx=out:csv&gid=999968463',
+  restricciones:'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=880116194',
+  inventarioMP: 'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=1815112932',
+};
+const PLAN_DATA = { pedidos:[], restricciones:[], inventarioMP:[], plan:[], maquila:[] };
+const PLAN_CFG  = {
+  MAQUILA_FIJA:     ['TTE15_V2','TAPON'],
+  MAQUILA_OVERFLOW: ['VLA38','STA38'],
+  HORAS_DIA: { lunes:24,martes:24,miercoles:24,jueves:24,viernes:24,sabado:16,domingo:0 },
+  DIAS_CIERRE: [24,25,26], DIAS_RIESGO: 2,
+};
+let _poQ = 1;
+let _planLoaded = false;
+
+// ── nav groups ──────────────────────────────────────────
+function toggleNavGroup(id) {
+  const items   = document.getElementById('group-'+id);
+  const chevron = document.getElementById('chevron-'+id);
+  if (!items) return;
+  items.classList.toggle('collapsed');
+  if (chevron) chevron.classList.toggle('open');
+}
+
+// ── data loading ────────────────────────────────────────
+async function loadPlanData() {
+  const load = async (key, withHeader) => {
+    try {
+      const url = PLAN_SHEETS[key] + '&_t=' + Date.now();
+      const res = await fetch(proxy(url), { cache:'no-store' });
+      if (!res.ok) return;
+      const txt = await res.text();
+      PLAN_DATA[key] = Papa.parse(txt, { header: withHeader, skipEmptyLines: true }).data;
+    } catch(e) { console.warn('Plan sheet "'+key+'" no cargó:', e.message); }
+  };
+  await Promise.all([
+    load('pedidos', true),
+    load('restricciones', false),
+    load('inventarioMP', true),
+  ]);
+  // merge local inventory movements
+  const local = getLocalMovs();
+  PLAN_DATA.inventarioMP = [...PLAN_DATA.inventarioMP.map((r,i)=>({...r,_id:'s'+i,_src:'sheets'})),
+                            ...local.map(r=>({...r,_src:'local'}))];
+  _planLoaded = true;
+}
+
+async function sincronizarSheetInv() {
+  const btn = event.currentTarget;
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-rotate fa-spin"></i> Sincronizando...';
+  try {
+    const url = PLAN_SHEETS.inventarioMP + '&_t=' + Date.now();
+    const res = await fetch(proxy(url), { cache:'no-store' });
+    if (res.ok) {
+      const d = Papa.parse(await res.text(), { header:true, skipEmptyLines:true }).data;
+      const local = getLocalMovs();
+      PLAN_DATA.inventarioMP = [...d.map((r,i)=>({...r,_id:'s'+i,_src:'sheets'})),
+                                ...local.map(r=>({...r,_src:'local'}))];
+      renderInventarioMP();
+    }
+  } catch(e) { console.warn(e); }
+  btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Sincronizar Sheets';
+}
+
+// ── MPS engine ──────────────────────────────────────────
+function recalcularPlan() {
+  const now  = new Date();
+  const mes  = parseInt(document.getElementById('po-mes-sel')?.value)  || (now.getMonth()+1);
+  const anio = parseInt(document.getElementById('po-anio-sel')?.value) || now.getFullYear();
+
+  const pedidosMes = PLAN_DATA.pedidos.filter(r => {
+    const fStr = String(r['FECHA ENTREGA']||r['Fecha Entrega']||r['FECHA DE ENTREGA']||'').trim();
+    if (!fStr) return false;
+    const f = parseFechaPO(fStr); if (!f) return false;
+    return f.getMonth()+1 === mes && f.getFullYear() === anio;
+  });
+
+  const planItems=[], maqItems=[];
+  pedidosMes.forEach(r => {
+    const cod     = String(r['CÓD PRODUCTO']||r['COD PRODUCTO']||r['Cod Producto']||r['CODIGO']||'').trim();
+    const prod    = String(r['PRODUCTO']||r['Producto']||r['NOMBRE PRODUCTO']||'').trim();
+    const cliente = String(r['CLIENTE']||r['Cliente']||'').trim();
+    const cantRaw = String(r['CANT PENDIENTE']||r['CANTIDAD PENDIENTE']||r['CANTIDAD']||'0').replace(/[$.\s]/g,'').replace(',','.');
+    const cant    = parseFloat(cantRaw)||0;
+    const fStr    = String(r['FECHA ENTREGA']||r['Fecha Entrega']||'').trim();
+    const num     = String(r['NÚM PEDIDO']||r['NUM PEDIDO']||r['Num Pedido']||'').trim();
+    const valRaw  = String(r['VALOR TOTAL']||r['VALOR']||'0').replace(/[$.\s]/g,'').replace(',','.');
+    const val     = parseFloat(valRaw)||0;
+    if ((!prod&&!cod)||cant<=0) return;
+
+    const fecha = parseFechaPO(fStr) || new Date(anio, mes, 0);
+    const dias  = Math.ceil((fecha - now)/(864e5));
+    const sem   = dias<0?'rojo':dias<=PLAN_CFG.DIAS_RIESGO?'amarillo':'verde';
+    const emoji = {verde:'🟢',amarillo:'🟡',rojo:'🔴'}[sem];
+
+    const esFija  = PLAN_CFG.MAQUILA_FIJA.some(m=>cod.toUpperCase().includes(m)||prod.toUpperCase().includes(m));
+    const esOver  = PLAN_CFG.MAQUILA_OVERFLOW.some(m=>cod.toUpperCase().includes(m)||prod.toUpperCase().includes(m));
+    if (esFija) { maqItems.push({tipo:'FIJA',prod,cod,cliente,cant,fecha,num,val,emoji}); return; }
+    if (esOver) { maqItems.push({tipo:'OVERFLOW',prod,cod,cliente,cant,fecha,num,val,emoji}); }
+
+    const maq  = getMaqPO(cod,prod);
+    const hrs  = getHrsPO(cant,cod,prod);
+    planItems.push({num,prod,cod,cliente,cant,fecha,dias,sem,emoji,maq,hrs,val});
+  });
+
+  planItems.sort((a,b)=>{ const o={rojo:0,amarillo:1,verde:2}; return o[a.sem]-o[b.sem]||a.fecha-b.fecha; });
+  PLAN_DATA.plan=planItems; PLAN_DATA.maquila=maqItems;
+
+  const mes3=['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][mes];
+  const el=document.getElementById('po-last-calc');
+  if(el) el.textContent=`Plan ${mes3} ${anio} · ${planItems.length} pedidos en planta · ${maqItems.length} en maquila · ${new Date().toLocaleTimeString('es-CO')}`;
+
+  // populate client filter
+  const clientes=[...new Set(planItems.map(i=>i.cliente).filter(Boolean))].sort();
+  const sel=document.getElementById('po-plan-f-cliente');
+  if(sel){ sel.innerHTML='<option value="">Todos los clientes</option>'+clientes.map(c=>`<option>${c}</option>`).join(''); }
+
+  renderTablieroPlan(); renderPlanMaestro(); renderCapacidadPO();
+  renderMaquilaPlan(); renderPersonalPlan(); renderHorasCostosPO();
+  renderLoteMinimoPO(); renderInventarioMP();
+}
+
+function parseFechaPO(s) {
+  if(!s)return null;
+  const m1=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if(m1){let y=parseInt(m1[3]);if(y<100)y+=2000;return new Date(y,parseInt(m1[2])-1,parseInt(m1[1]));}
+  const m2=s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if(m2)return new Date(parseInt(m2[1]),parseInt(m2[2])-1,parseInt(m2[3]));
+  const d=new Date(s);return isNaN(d)?null:d;
+}
+
+function diasHabilesPO(mes,anio) {
+  const dias=[];const n=new Date(anio,mes,0).getDate();
+  const noms=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+  for(let d=1;d<=n;d++){const f=new Date(anio,mes-1,d);if(f.getDay()===0)continue;if(PLAN_CFG.DIAS_CIERRE.includes(d))continue;dias.push(f);}
+  return dias;
+}
+
+function getMaqPO(cod,prod) {
+  const data=PLAN_DATA.restricciones;
+  for(let r=0;r<data.length;r++){
+    const row=data[r];
+    const mc=row.findIndex(c=>String(c).includes('ASIGNACION MAQUINA PRINCIPAL')||String(c).includes('MÁQUINA PRINCIPAL'));
+    if(mc<0)continue;
+    for(let i=r+1;i<Math.min(r+120,data.length);i++){
+      const cell=String(data[i][0]||'').trim().toUpperCase();
+      if(!cell)break;
+      if(cell===cod.toUpperCase()||cell===prod.toUpperCase())return String(data[i][mc]||'').trim()||'—';
+    }
+  }
+  return '—';
+}
+
+function getHrsPO(cant,cod,prod) {
+  const data=PLAN_DATA.restricciones;
+  for(let r=0;r<data.length;r++){
+    const row=data[r];
+    const cc=row.findIndex(c=>String(c).toLowerCase().includes('ciclo real'));
+    const cv=row.findIndex(c=>String(c).toLowerCase().includes('cavidades real'));
+    if(cc<0||cv<0)continue;
+    for(let i=r+1;i<Math.min(r+120,data.length);i++){
+      const cell=String(data[i][0]||'').trim().toUpperCase();
+      if(!cell)break;
+      if(cell===cod.toUpperCase()||cell===prod.toUpperCase()){
+        const ciclo=parseFloat(String(data[i][cc]||'30').replace(',','.'))||30;
+        const cavs=parseInt(data[i][cv])||1;
+        const pph=(3600/ciclo)*cavs;
+        return pph>0?Math.round(cant/pph*10)/10:Math.round(cant/500*10)/10;
+      }
+    }
+  }
+  return Math.round(cant/500*10)/10;
+}
+
+// ── KPI card helper ────────────────────────────────────
+function poKpi(title,val,sub,color){
+  return `<div class="kpi-card" style="border-top:3px solid ${color}">
+    <div style="font-size:.6rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">${title}</div>
+    <div style="font-size:1.55rem;font-weight:800;color:${color};line-height:1.1">${val}</div>
+    ${sub?`<div style="font-size:.63rem;color:#6B7280;margin-top:4px">${sub}</div>`:''}
+  </div>`;
+}
+function fCOP(v){if(v===undefined||v===null)return'—';return'$'+Math.round(v).toLocaleString('es-CO');}
+
+// ── Tablero Plan ────────────────────────────────────────
+function renderTablieroPlan() {
+  const items=PLAN_DATA.plan, maq=PLAN_DATA.maquila;
+  const v=items.filter(i=>i.sem==='verde').length;
+  const a=items.filter(i=>i.sem==='amarillo').length;
+  const r=items.filter(i=>i.sem==='rojo').length;
+  const val=items.reduce((s,i)=>s+(i.val||0),0);
+  const hrs=items.reduce((s,i)=>s+(i.hrs||0),0);
+  const kpiEl=document.getElementById('po-tablero-kpis');
+  if(kpiEl)kpiEl.innerHTML=
+    poKpi('Pedidos en Planta',items.length,maq.length+' en maquila','#3B82F6')+
+    poKpi('En Tiempo 🟢',v,items.length?Math.round(v/items.length*100)+'%':'—','#10B981')+
+    poKpi('En Riesgo 🟡',a,'≤ '+PLAN_CFG.DIAS_RIESGO+' días','#F59E0B')+
+    poKpi('Incumplimiento 🔴',r,'fecha vencida','#EF4444')+
+    poKpi('Valor Plan',fCOP(val),'pedidos planta','#8B5CF6')+
+    poKpi('Horas Est.',Math.round(hrs)+'h','total planta','#06B6D4');
+
+  destroyChart('po-sem');
+  const elS=document.getElementById('po-chart-semaforo');
+  if(elS)CHARTS['po-sem']=new Chart(elS.getContext('2d'),{type:'doughnut',data:{labels:['En tiempo','En riesgo','Incumplimiento'],datasets:[{data:[v,a,r],backgroundColor:['#10B981','#F59E0B','#EF4444'],borderWidth:0,hoverOffset:6}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#9CA3AF',font:{size:11}}}},cutout:'68%',responsive:true,maintainAspectRatio:false}});
+
+  const mes=parseInt(document.getElementById('po-mes-sel')?.value)||(new Date().getMonth()+1);
+  const anio=parseInt(document.getElementById('po-anio-sel')?.value)||new Date().getFullYear();
+  const diasH=diasHabilesPO(mes,anio);
+  const noms=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+  const horasDisp=diasH.reduce((s,d)=>s+(PLAN_CFG.HORAS_DIA[noms[d.getDay()]]||0),0);
+  const maqMap={};items.forEach(i=>{if(i.maq&&i.maq!=='—')maqMap[i.maq]=(maqMap[i.maq]||0)+(i.hrs||0);});
+  const maqNms=Object.keys(maqMap);
+  destroyChart('po-cap2');
+  const elC=document.getElementById('po-chart-capacidad');
+  if(elC&&maqNms.length)CHARTS['po-cap2']=new Chart(elC.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(()=>horasDisp),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>Math.round(maqMap[m])),backgroundColor:'#8B5CF688',borderColor:'#8B5CF6',borderWidth:1,borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'}}},responsive:true,maintainAspectRatio:false}});
+
+  const prodMap={};items.forEach(i=>prodMap[i.prod]=(prodMap[i.prod]||0)+(i.cant||0));
+  const top=Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  destroyChart('po-prods');
+  const elP=document.getElementById('po-chart-productos');
+  if(elP&&top.length)CHARTS['po-prods']=new Chart(elP.getContext('2d'),{type:'bar',data:{labels:top.map(e=>e[0].length>22?e[0].slice(0,22)+'…':e[0]),datasets:[{label:'Unidades',data:top.map(e=>e[1]),backgroundColor:PAL.map(c=>c+'bb'),borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#9CA3AF',font:{size:10}},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
+}
+
+// ── Plan Maestro ────────────────────────────────────────
+function renderPlanMaestro() {
+  const estadoF=document.getElementById('po-plan-f-estado')?.value||'';
+  const clienteF=document.getElementById('po-plan-f-cliente')?.value||'';
+  const items=(PLAN_DATA.plan||[]).filter(i=>(!estadoF||i.sem===estadoF)&&(!clienteF||i.cliente===clienteF));
+  const tbody=document.getElementById('po-plan-tbody');
+  if(!tbody)return;
+  tbody.innerHTML=items.length?items.map(i=>`
+    <tr>
+      <td style="font-size:1rem">${i.emoji}</td>
+      <td style="color:#9CA3AF;font-size:.7rem">${i.num||'—'}</td>
+      <td style="font-weight:600">${i.cliente||'—'}</td>
+      <td>${i.prod||'—'}</td>
+      <td style="text-align:right;font-weight:600">${(i.cant||0).toLocaleString('es-CO')}</td>
+      <td style="font-size:.75rem">${i.fecha?i.fecha.toLocaleDateString('es-CO'):'-'}</td>
+      <td style="text-align:center;font-weight:700;color:${i.dias<0?'#EF4444':i.dias<=2?'#F59E0B':'#10B981'}">${i.dias??'—'}</td>
+      <td><span style="background:#374151;border-radius:4px;padding:2px 7px;font-size:.68rem">${i.maq||'—'}</span></td>
+      <td style="text-align:right;font-size:.75rem">${i.hrs?Math.round(i.hrs)+'h':'—'}</td>
+      <td style="text-align:right;color:#8B5CF6;font-size:.75rem">${fCOP(i.val)}</td>
+    </tr>`).join('')
+    :'<tr><td colspan="10" style="text-align:center;color:#4B5563;padding:32px">Sin pedidos para este período. Selecciona un mes y pulsa Recalcular Plan.</td></tr>';
+}
+
+// ── Capacidad ───────────────────────────────────────────
+function renderCapacidadPO() {
+  const items=PLAN_DATA.plan||[];
+  const mes=parseInt(document.getElementById('po-mes-sel')?.value)||(new Date().getMonth()+1);
+  const anio=parseInt(document.getElementById('po-anio-sel')?.value)||new Date().getFullYear();
+  const diasH=diasHabilesPO(mes,anio);
+  const noms=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+  const horasDisp=diasH.reduce((s,d)=>s+(PLAN_CFG.HORAS_DIA[noms[d.getDay()]]||0),0);
+  const maqMap={};items.forEach(i=>{if(i.maq&&i.maq!=='—')maqMap[i.maq]=(maqMap[i.maq]||0)+(i.hrs||0);});
+  const maqNms=Object.keys(maqMap);
+  const kpiEl=document.getElementById('po-cap-kpis');
+  if(kpiEl)kpiEl.innerHTML=
+    poKpi('Máquinas Activas',maqNms.length,'en el plan','#8B5CF6')+
+    poKpi('Horas Disponibles',Math.round(horasDisp)+'h','por máq · '+diasH.length+' días','#3B82F6')+
+    poKpi('Horas Requeridas',Math.round(items.reduce((s,i)=>s+(i.hrs||0),0))+'h','total plan','#F59E0B')+
+    poKpi('Días Hábiles',diasH.length,'en el mes seleccionado','#10B981');
+
+  const tbody=document.getElementById('po-cap-tbody');
+  if(tbody)tbody.innerHTML=maqNms.length?maqNms.map(m=>{
+    const req=Math.round(maqMap[m]);const pct=horasDisp?Math.round(req/horasDisp*100):0;
+    const color=pct>100?'#EF4444':pct>85?'#F59E0B':'#10B981';
+    return `<tr><td style="font-weight:700">${m}</td><td style="text-align:right">${Math.round(horasDisp)}h</td><td style="text-align:right">${req}h</td><td style="text-align:right;font-weight:700;color:${color}">${pct}%</td><td>${pct>100?'<span class="badge-red">Saturada</span>':pct>85?'<span class="badge-yellow">En riesgo</span>':'<span class="badge-green">OK</span>'}</td></tr>`;
+  }).join(''):'<tr><td colspan="5" style="text-align:center;color:#4B5563;padding:24px">Genera el plan primero</td></tr>';
+
+  destroyChart('po-cap-b');
+  const el=document.getElementById('po-chart-cap-barras');
+  if(el&&maqNms.length)CHARTS['po-cap-b']=new Chart(el.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(()=>Math.round(horasDisp)),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>{const p=horasDisp?maqMap[m]/horasDisp*100:0;return Math.round(maqMap[m]);}),backgroundColor:maqNms.map(m=>{const p=horasDisp?maqMap[m]/horasDisp*100:0;return p>100?'#EF444488':p>85?'#F59E0B88':'#10B98188';}),borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'}}},responsive:true,maintainAspectRatio:false}});
+}
+
+// ── Maquila Plan ────────────────────────────────────────
+function renderMaquilaPlan() {
+  const items=PLAN_DATA.maquila||[];
+  const kpiEl=document.getElementById('po-maq-kpis');
+  if(kpiEl)kpiEl.innerHTML=
+    poKpi('Total Maquila',items.length,'ítems','#F97316')+
+    poKpi('Maquila Fija',items.filter(i=>i.tipo==='FIJA').length,'siempre externo','#EF4444')+
+    poKpi('Maquila Overflow',items.filter(i=>i.tipo==='OVERFLOW').length,'excede capacidad','#F59E0B')+
+    poKpi('Valor Maquila',fCOP(items.reduce((s,i)=>s+(i.val||0),0)),'estimado','#8B5CF6');
+  const tbody=document.getElementById('po-maq-tbody');
+  if(tbody)tbody.innerHTML=items.length?items.map(i=>`
+    <tr>
+      <td><span style="background:${i.tipo==='FIJA'?'#EF444420':'#F59E0B20'};color:${i.tipo==='FIJA'?'#EF4444':'#F59E0B'};border-radius:4px;padding:2px 8px;font-size:.68rem;font-weight:700">${i.tipo}</span></td>
+      <td>${i.prod||'—'}</td><td>${i.cliente||'—'}</td>
+      <td style="text-align:right">${(i.cant||0).toLocaleString('es-CO')}</td>
+      <td style="font-size:.75rem">${i.fecha?i.fecha.toLocaleDateString('es-CO'):'-'}</td>
+      <td style="font-size:.7rem;color:#6B7280">${i.tipo==='FIJA'?'Producto asignado a maquila':'Excede capacidad planta'}</td>
+      <td style="text-align:right;color:#8B5CF6">${fCOP(i.val)}</td>
+    </tr>`).join('')
+    :'<tr><td colspan="7" style="text-align:center;color:#4B5563;padding:24px">No hay ítems de maquila para este período</td></tr>';
+}
+
+// ── Personal Q1/Q2 ─────────────────────────────────────
+function mostrarQuincena(q) {
+  _poQ=q;
+  ['btn-q1','btn-q2'].forEach((id,i)=>{
+    const el=document.getElementById(id);if(!el)return;
+    const active=i+1===q;
+    el.style.background=active?'#EC4899':'#1F2937';
+    el.style.border=active?'none':'1px solid #374151';
+    el.style.color=active?'#fff':'#9CA3AF';
+  });
+  renderPersonalPlan();
+}
+
+function renderPersonalPlan() {
+  const data=PLAN_DATA.restricciones;
+  const personal=[];
+  for(let r=0;r<data.length;r++){
+    const row=data[r];
+    if(!row.some(c=>String(c).trim()==='REVISA'))continue;
+    const cols={};row.forEach((c,i)=>{if(c)cols[String(c).trim()]=i;});
+    for(let i=r+1;i<data.length;i++){
+      const nom=String(data[i][cols['NOMBRE']??0]||'').trim();if(!nom)break;
+      if(String(data[i][cols['ESTADO']??5]||'').trim()!=='ACTIVO')continue;
+      personal.push({nombre:nom,revisa:String(data[i][cols['REVISA']??0]||'').trim()==='SI'});
+    }
+    break;
+  }
+  const mes=parseInt(document.getElementById('po-mes-sel')?.value)||(new Date().getMonth()+1);
+  const anio=parseInt(document.getElementById('po-anio-sel')?.value)||new Date().getFullYear();
+  const diasH=diasHabilesPO(mes,anio);
+  const diasQ=_poQ===1?diasH.filter(d=>d.getDate()<=15):diasH.filter(d=>d.getDate()>15);
+  const maqActivas=[...new Set((PLAN_DATA.plan||[]).map(i=>i.maq).filter(m=>m&&m!=='—'))];
+  const infoEl=document.getElementById('po-personal-info');
+  if(infoEl)infoEl.innerHTML=`<strong>${personal.length}</strong> personas activas en Restricciones · <strong>${diasQ.length}</strong> días hábiles en Q${_poQ} · <strong>${maqActivas.length}</strong> máquinas activas`;
+  const thead=document.getElementById('po-personal-thead');
+  const tbody=document.getElementById('po-personal-tbody');
+  if(!thead||!tbody)return;
+  const nsCort=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  thead.innerHTML=`<tr><th>Persona</th><th>Rol</th><th>Turno</th>${diasQ.map(d=>`<th style="text-align:center;padding:5px 3px;font-size:.62rem">${d.getDate()}<br><span style="color:#4B5563">${nsCort[d.getDay()]}</span></th>`).join('')}<th>Obs.</th></tr>`;
+  if(!personal.length){tbody.innerHTML='<tr><td colspan="20" style="text-align:center;color:#4B5563;padding:24px">Sin datos de personal en la hoja Restricciones</td></tr>';return;}
+  const desc1=['MÓNICA','LUIS F','JOHAN','LILIANA J','LAURA','ANDREA TORRES','EDWIN DELGADO'];
+  const desc2=['MAROLYN','SARA','PAULA','JUAN C','JENNIFER','UNFALY','ALEJANDRA','YETSY'];
+  const descansa=_poQ===1?desc1:desc2;
+  const rows=[];
+  maqActivas.forEach((maq,mi)=>{
+    const esTap=maq.toLowerCase().includes('tv');
+    const revs=personal.filter(p=>p.revisa);const alim=personal.filter(p=>!p.revisa);
+    if(esTap){rows.push({p:revs[mi%Math.max(revs.length,1)]||personal[0],turno:'T1',obs:`Tapadora ${maq} — REVISA`});rows.push({p:alim[mi%Math.max(alim.length,1)]||personal[1]||personal[0],turno:'T1',obs:`Tapadora ${maq} — alimenta`});}
+    else{const off=_poQ===1?0:Math.floor(personal.length/2);for(let i=0;i<2;i++){rows.push({p:personal[(mi+i+off)%personal.length],turno:['T1','T2','T3'][i%3],obs:`Máq. ${maq}`});}}
+  });
+  tbody.innerHTML=rows.length?rows.map(row=>{
+    const nom=row.p?.nombre||'—';
+    const celdas=diasQ.map(d=>{const esD=d.getDay()===6&&descansa.includes(nom.toUpperCase());return`<td style="text-align:center;font-size:.65rem;padding:3px;${esD?'background:#374151;color:#6B7280':'color:#D1D5DB'}">${esD?'DESC':nom.split(' ')[0]}</td>`;}).join('');
+    return`<tr><td style="font-weight:600;white-space:nowrap;font-size:.75rem">${nom}</td><td style="font-size:.68rem;color:#9CA3AF">${row.p?.revisa?'REVISORA':'OPERARIO'}</td><td><span style="background:#374151;border-radius:3px;padding:1px 5px;font-size:.65rem">${row.turno}</span></td>${celdas}<td style="font-size:.68rem;color:#6B7280">${row.obs}</td></tr>`;
+  }).join(''):'<tr><td colspan="20" style="text-align:center;color:#4B5563;padding:24px">No hay máquinas activas en el plan</td></tr>';
+}
+
+// ── Horas & Costos ─────────────────────────────────────
+function renderHorasCostosPO() {
+  const items=PLAN_DATA.plan||[];
+  const g={};
+  items.forEach(i=>{const k=i.cod||i.prod;if(!g[k])g[k]={prod:i.prod,cod:i.cod,cliente:i.cliente,u:0,h:0,v:0};g[k].u+=i.cant||0;g[k].h+=i.hrs||0;g[k].v+=i.val||0;});
+  const rows=Object.values(g).sort((a,b)=>b.v-a.v);
+  const totV=rows.reduce((s,r)=>s+r.v,0),totH=rows.reduce((s,r)=>s+r.h,0);
+  const kpiEl=document.getElementById('po-horas-kpis');
+  if(kpiEl)kpiEl.innerHTML=poKpi('Productos',rows.length,'distintos','#3B82F6')+poKpi('Horas Est.',Math.round(totH)+'h','total plan','#8B5CF6')+poKpi('Valor Total',fCOP(totV),'pedidos planta','#10B981');
+  const tbody=document.getElementById('po-horas-tbody');
+  if(tbody)tbody.innerHTML=rows.length?rows.map(r=>`
+    <tr>
+      <td style="font-weight:600">${r.prod||r.cod}</td>
+      <td style="color:#9CA3AF;font-size:.75rem">${r.cliente||'—'}</td>
+      <td style="text-align:right">${r.u.toLocaleString('es-CO')}</td>
+      <td style="text-align:right">${Math.round(r.h)}h</td>
+      <td style="text-align:right;color:#8B5CF6">${fCOP(r.v)}</td>
+      <td style="text-align:right;color:#6B7280">—</td>
+    </tr>`).join('')
+    :'<tr><td colspan="6" style="text-align:center;color:#4B5563;padding:24px">Genera el plan primero</td></tr>';
+}
+
+// ── Lote Mínimo ─────────────────────────────────────────
+function renderLoteMinimoPO() {
+  const items=PLAN_DATA.plan||[];
+  const LOTE=1000;
+  const g={};items.forEach(i=>{const k=i.cod||i.prod;if(!g[k])g[k]={prod:i.prod,u:0};g[k].u+=i.cant||0;});
+  const rows=Object.values(g).sort((a,b)=>b.u-a.u).map(r=>{const lotes=Math.ceil(r.u/LOTE);const tot=lotes*LOTE;return{...r,lotes,tot,exc:tot-r.u};});
+  const tbody=document.getElementById('po-lote-tbody');
+  if(tbody)tbody.innerHTML=rows.length?rows.map(r=>`
+    <tr>
+      <td style="font-weight:600">${r.prod}</td>
+      <td style="text-align:right">${r.u.toLocaleString('es-CO')}</td>
+      <td style="text-align:right">${LOTE.toLocaleString('es-CO')}</td>
+      <td style="text-align:right;font-weight:700">${r.lotes}</td>
+      <td style="text-align:right;color:#8B5CF6">${r.tot.toLocaleString('es-CO')}</td>
+      <td style="text-align:right;color:#6B7280">+${r.exc.toLocaleString('es-CO')}</td>
+    </tr>`).join('')
+    :'<tr><td colspan="6" style="text-align:center;color:#4B5563;padding:24px">Genera el plan primero</td></tr>';
+}
+
+// ── Inventario MP ──────────────────────────────────────
+const INV_KEY='fylco_inv_v1';
+function getLocalMovs(){try{return JSON.parse(localStorage.getItem(INV_KEY)||'[]');}catch(e){return[];}}
+function saveLocalMovs(m){localStorage.setItem(INV_KEY,JSON.stringify(m));}
+
+function renderInventarioMP() {
+  const movs=PLAN_DATA.inventarioMP||[];
+  const matMap={};
+  movs.forEach(m=>{
+    const mat=String(m['MATERIAL']||m['Material']||m['material']||m.material||'').trim();
+    if(!mat)return;
+    if(!matMap[mat])matMap[mat]={e:0,s:0,j:0};
+    const t=String(m['TIPO']||m['Tipo']||m.tipo||'').toUpperCase();
+    const q=parseFloat(String(m['CANTIDAD']||m['Cantidad']||m.cantidad||'0').replace(',','.'))||0;
+    if(t==='ENTRADA')matMap[mat].e+=q;else if(t==='SALIDA')matMap[mat].s+=q;else matMap[mat].j+=q;
+  });
+  const mats=Object.keys(matMap).sort();
+  const SMIN=500;
+  const kpiEl=document.getElementById('po-inv-kpis');
+  if(kpiEl)kpiEl.innerHTML=
+    poKpi('Materiales',mats.length,'registrados','#34D399')+
+    poKpi('Total Entradas',Math.round(mats.reduce((s,k)=>s+matMap[k].e,0))+' kg','período','#3B82F6')+
+    poKpi('Total Salidas',Math.round(mats.reduce((s,k)=>s+matMap[k].s,0))+' kg','período','#F59E0B')+
+    poKpi('Movimientos',movs.length,'registrados','#8B5CF6');
+
+  const sumTbody=document.getElementById('po-inv-summary-tbody');
+  if(sumTbody)sumTbody.innerHTML=mats.length?mats.map(mat=>{
+    const d=matMap[mat];const stk=d.e-d.s+d.j;const pedir=stk<SMIN;
+    return`<tr><td style="font-weight:600">${mat}</td><td style="text-align:right;color:#10B981">+${Math.round(d.e).toLocaleString('es-CO')}</td><td style="text-align:right;color:#F59E0B">-${Math.round(d.s).toLocaleString('es-CO')}</td><td style="text-align:right;font-weight:700;color:${pedir?'#EF4444':'#EEEEEE'}">${Math.round(stk).toLocaleString('es-CO')} kg</td><td style="text-align:right;color:#6B7280">${SMIN.toLocaleString()} kg</td><td>${pedir?'<span class="badge-red">PEDIR</span>':'<span class="badge-green">OK</span>'}</td></tr>`;
+  }).join(''):'<tr><td colspan="6" style="text-align:center;color:#4B5563;padding:24px">Sin datos de inventario. Sincroniza o registra movimientos.</td></tr>';
+
+  const movTbody=document.getElementById('po-inv-tbody');
+  if(movTbody)movTbody.innerHTML=[...movs].reverse().slice(0,60).map(m=>{
+    const mat=String(m['MATERIAL']||m['Material']||m.material||'').trim();
+    const tipo=String(m['TIPO']||m['Tipo']||m.tipo||'').toUpperCase();
+    const qty=parseFloat(String(m['CANTIDAD']||m['Cantidad']||m.cantidad||'0').replace(',','.'))||0;
+    const fecha=String(m['FECHA']||m['Fecha']||m.fecha||'').trim();
+    const prov=String(m['PROVEEDOR']||m['Proveedor']||m.proveedor||'').trim();
+    const obs=String(m['OBSERVACION']||m['Observación']||m.obs||'').trim();
+    const src=m._src||'sheets';
+    const tColor=tipo==='ENTRADA'?'#10B981':tipo==='SALIDA'?'#EF4444':'#F59E0B';
+    return`<tr><td style="font-size:.7rem;color:#9CA3AF">${fecha||'—'}</td><td style="font-weight:600">${mat}</td><td><span style="background:${tColor}20;color:${tColor};border-radius:4px;padding:2px 7px;font-size:.65rem;font-weight:700">${tipo||'—'}</span></td><td style="text-align:right;font-weight:700">${qty.toLocaleString('es-CO')} kg</td><td style="font-size:.7rem;color:#6B7280">${prov||'—'}</td><td style="font-size:.7rem;color:#6B7280">${obs||'—'}</td><td style="font-size:.68rem;color:${src==='local'?'#10B981':'#4B5563'}">${src==='local'?'Vercel':'Sheets'}</td><td>${src==='local'?`<button onclick="eliminarMovInv('${m._id}')" style="background:none;border:none;color:#4B5563;cursor:pointer" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>`:''}</td></tr>`;
+  }).join('')||'<tr><td colspan="8" style="text-align:center;color:#4B5563;padding:24px">Sin movimientos</td></tr>';
+}
+
+function toggleFormInv(){
+  const f=document.getElementById('form-inv');if(!f)return;
+  const show=f.style.display==='none';f.style.display=show?'block':'none';
+  if(show){const hoy=new Date();const ei=document.getElementById('inv-fecha');if(ei)ei.value=`${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;}
+}
+
+function guardarMovimientoInv(){
+  const mat=document.getElementById('inv-material')?.value.trim()||'';
+  const tipo=document.getElementById('inv-tipo')?.value||'ENTRADA';
+  const qty=parseFloat(document.getElementById('inv-cantidad')?.value)||0;
+  const emEl=document.getElementById('inv-material');
+  if(!mat){if(emEl)emEl.style.borderColor='#EF4444';return;}
+  if(qty<=0)return;
+  const mov={_id:'l'+Date.now(),_src:'local',material:mat,tipo,cantidad:qty,
+    fecha:document.getElementById('inv-fecha')?.value||new Date().toISOString().slice(0,10),
+    proveedor:document.getElementById('inv-proveedor')?.value.trim()||'',
+    obs:document.getElementById('inv-obs')?.value.trim()||''};
+  const movs=getLocalMovs();movs.push(mov);saveLocalMovs(movs);
+  PLAN_DATA.inventarioMP.push(mov);
+  const msg=document.getElementById('inv-msg');if(msg){msg.style.display='inline';msg.textContent='✓ Guardado';setTimeout(()=>msg.style.display='none',2500);}
+  ['inv-material','inv-cantidad','inv-proveedor','inv-obs'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  if(emEl)emEl.style.borderColor='#374151';
+  renderInventarioMP();
+}
+
+function eliminarMovInv(id){
+  const movs=getLocalMovs().filter(m=>m._id!==id);saveLocalMovs(movs);
+  PLAN_DATA.inventarioMP=PLAN_DATA.inventarioMP.filter(m=>m._id!==id);
+  renderInventarioMP();
+}
+
+// ── Auto-init plan al abrir sección ───────────────────
+const _origSS=showSection;
+window.showSection=function(id){
+  _origSS(id);
+  if(id.startsWith('po-')){
+    if(!_planLoaded){loadPlanData().then(()=>{const mes=new Date().getMonth()+1;const anio=new Date().getFullYear();const sel=document.getElementById('po-mes-sel');if(sel)sel.value=mes;recalcularPlan();});}
+    else{
+      if(id==='po-tablero')renderTablieroPlan();
+      else if(id==='po-plan')renderPlanMaestro();
+      else if(id==='po-capacidad')renderCapacidadPO();
+      else if(id==='po-maquila')renderMaquilaPlan();
+      else if(id==='po-personal')renderPersonalPlan();
+      else if(id==='po-horas')renderHorasCostosPO();
+      else if(id==='po-lote')renderLoteMinimoPO();
+      else if(id==='po-inventario')renderInventarioMP();
+    }
+  }
+};
+
+// Preload plan data in background
+setTimeout(()=>loadPlanData().then(()=>{
+  const sel=document.getElementById('po-mes-sel');
+  if(sel)sel.value=new Date().getMonth()+1;
+}).catch(e=>console.warn('Plan preload:',e)),2000);
 
 // =======================================================
 // INIT
