@@ -3170,25 +3170,79 @@ function renderReporteDiario() {
     totUndTeo += s.undProg > 0 ? s.undProg : s.cantTotal;
   });
 
-  // ── OEE Ponderado por Tiempo ─────────────────────────────────────────
-  // Usa effRowsRd (sin doble-conteo T4/T5) — misma base que Reporte Compacto
-  const disp_t = (calcDisponibilidad(effRowsRd) || 0) / 100;
-  const rend_t = (calcRendimiento(effRowsRd)    || 0) / 100;
-  const cal_t  = (calcCalidad(effRowsRd)        || 0) / 100;
-  const oee_t  = (avg(effRowsRd, '_oee')        || 0) / 100;
+  // ── KPIs por máquina: misma metodología que Reporte Compacto ────────────
+  // Construir estructura por máquina desde effRowsRd (ya deduplicado T4/T5)
+  const _mRd = {};
+  effRowsRd.forEach(r => {
+    const maq = String(r._maq||'—');
+    if (!_mRd[maq]) _mRd[maq] = {
+      maq, rows:[], dtSet:{}, porTurno:{},
+      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, undProd:0
+    };
+    const g = _mRd[maq], t = String(r._turno||''), dia = String(r._diaTurno||'');
+    g.rows.push(r);
+    if (!g.porTurno[t]) g.porTurno[t] = {prod:0,paro:0};
+    g.porTurno[t].prod += pNum(r._cant);
+    g.porTurno[t].paro += pNum(r._paro);
+    if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia]||=new Set()).add(t); }
+    if (!g.cavTeor)   g.cavTeor   = _cavTeorOf(r);
+    if (!g.cicloEst)  g.cicloEst  = pNum(r['T. CICLO EST']);
+    if (!g.cavReal)   g.cavReal   = _findColVal(r,'CAVIDAD','TEOR')||0;
+    if (!g.cicloReal) g.cicloReal = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||0;
+    g.undProd += pNum(r._cant);
+  });
+  // undProg por slot
+  const _scRd = {};
+  const _TSEG2 = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
+  effRowsRd.forEach(r => {
+    const sk = `${r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
+    if (!_scRd[sk]) _scRd[sk] = {undProg:0,cantTotal:0,paroProgSeg:0};
+    _scRd[sk].cantTotal += pNum(r._cant);
+    if (/programado/i.test(String(r['RAZON PARO']||r['RAZÓN PARO']||''))) _scRd[sk].paroProgSeg += pNum(r._paro)*60;
+  });
+  effRowsRd.forEach(r => {
+    const maq=String(r._maq||'?'), turno=String(r._turno||'?');
+    const sk=`${r._diaTurno||'?'}|${maq}|${turno}`, s=_scRd[sk];
+    if (!s.undProg && maq!=='?') {
+      const est=pNum(r['T. CICLO EST']);
+      if (est>0) s.undProg=Math.round((Math.max((_TSEG2[turno]||28800)-(s.paroProgSeg||0),0)/est)*_cavTeorOf(r));
+    }
+  });
+  // Métricas por máquina (idéntico al Compacto)
+  const _mRdArr = Object.values(_mRd);
+  _mRdArr.forEach(g => {
+    Object.keys(g.porTurno).forEach(t => { const mp=(t==='4'||t==='5')?720:480; if(g.porTurno[t].paro>mp)g.porTurno[t].paro=mp; });
+    g.paro = Object.values(g.porTurno).reduce((s,v)=>s+v.paro,0);
+    g.cicloReal = _modeBy(g.rows,r=>pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL']))||g.cicloReal;
+    g.cicloEst  = _modeBy(g.rows,r=>pNum(r['T. CICLO EST']))||g.cicloEst;
+    g.cavReal   = _modeBy(g.rows,r=>_findColVal(r,'CAVIDAD','TEOR'))||g.cavReal;
+    g.cavTeor   = _modeBy(g.rows,r=>_cavTeorOf(r))||g.cavTeor;
+    g.horas = Object.values(g.dtSet).reduce((s,ts)=>s+calcShiftHours(ts),0);
+    const cavR=g.cavReal||g.cavTeor||0, cEst=g.cicloEst||g.cicloReal||0, cReal=g.cicloReal||g.cicloEst||0;
+    g.undProg = (cEst>0&&g.horas>0)?Math.round((g.horas*3600/cEst)*(g.cavTeor||cavR||1)):g.undProd;
+    g.tReal   = (cavR>0&&cReal>0)?(g.undProd/cavR*cReal)/60:0;
+    g.tProg   = g.tReal+(g.paro||0);
+    g.disp    = g.tProg>0?g.tReal/g.tProg*100:null;
+    g.rend    = g.undProg>0?Math.min(100,g.undProd/g.undProg*100):null;
+    const nc_rd = oeeByMaq[g.maq]?._nc||0;
+    g.cal = (g.undProd+nc_rd)>0?g.undProd/(g.undProd+nc_rd)*100:null;
+    g.oee = (g.disp!=null&&g.rend!=null&&g.cal!=null)?(g.disp*g.rend*g.cal)/10000:null;
+  });
+  // Resumen: mismos promedios que Compacto
+  const _woRd = _mRdArr.filter(g=>g.oee!=null);
+  const _sumTRd = _woRd.reduce((s,g)=>s+(g.tReal||0),0);
+  const disp_t = (_woRd.length?_woRd.reduce((s,g)=>s+g.disp,0)/_woRd.length:0)/100;
+  const rend_t = (_woRd.length?_woRd.reduce((s,g)=>s+g.rend,0)/_woRd.length:0)/100;
+  const cal_t  = (_woRd.length?_woRd.reduce((s,g)=>s+g.cal,0)/_woRd.length:0)/100;
+  const oee_t  = _sumTRd>0?(_woRd.reduce((s,g)=>s+g.oee*(g.tReal||0),0)/_sumTRd)/100:0;
+  const disp_u = disp_t, rend_u = rend_t, cal_u = cal_t;
+  const oee_u  = (_woRd.length?_woRd.reduce((s,g)=>s+g.oee,0)/_woRd.length:0)/100;
 
-  // ── OEE Ponderado por Unidades = Und.Buenas / Und.Teóricas ──────────
-  const cal_u_pct = calcCalidad(effRowsRd) || 0;          // 0–100
-  const cal_u     = cal_u_pct / 100;
-  const undBuenas = Math.round(totCantO * cal_u);
-  const disp_u    = totHT > 0 ? totHF / totHT : 0;
-  // Rend_u = Und.Prod / Und.Teo (con cavidades TEÓRICAS → captura pérdida de cavidades)
-  const rend_u    = totUndTeo > 0 ? Math.min(totCantO / totUndTeo, 1) : 0;
-  const oee_u     = totUndTeo > 0 ? undBuenas / totUndTeo : 0;
-
-  const infoT = `H.Turno: ${totHT.toFixed(1)}h · H.Fab: ${totHF.toFixed(1)}h · H.Paro: ${(totHT-totHF).toFixed(1)}h`;
-  const ncCount = Math.round(totCantO - undBuenas);
-  const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${ncCount.toLocaleString()} · Buenas: ${undBuenas.toLocaleString()} · Teóricas: ${Math.round(totUndTeo).toLocaleString()}`;
+  const _totTReal = _woRd.reduce((s,g)=>s+(g.tReal||0),0);
+  const _totParo  = _woRd.reduce((s,g)=>s+(g.paro||0),0);
+  const infoT = `T.Real: ${_totTReal.toFixed(0)} min · T.Perdido: ${_totParo.toFixed(0)} min · ${_woRd.length} máq.`;
+  const _totNC2 = _woRd.reduce((s,g)=>s+(oeeByMaq[g.maq]?._nc||0),0);
+  const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${_totNC2.toLocaleString()} · Planeadas: ${Math.round(totUndTeo).toLocaleString()}`;
   const elT = document.getElementById('rd-oee-tiempo');
   const elU = document.getElementById('rd-oee-unid');
   if (elT) elT.innerHTML = _oeeCard('OEE Ponderado por Tiempo',    oee_t, disp_t, rend_t, cal_t, infoT);
@@ -3742,19 +3796,16 @@ function renderReporteCompacto() {
   const totFalt = totProg - totProd;
   const cumpl   = totProg>0 ? totProd/totProg*100 : 0;
 
-  // Totales resumen — mismas funciones que Reporte Diario para consistencia
-  // (effRows ya tiene el anti-doble-conteo de turnos T4/T5)
-  const promDisp     = calcDisponibilidad(effRows);
-  const promRend     = calcRendimiento(effRows);
-  const promCal      = calcCalidad(effRows);
-  // OEE por unidades = promedio de OEE FINAL del sheet (idéntico al Diario)
-  const oeePondUnid  = avg(effRows, '_oee');
-  // OEE por tiempo = Disp × Rend × Cal de las columnas ponderadas
-  const oeePondTiempo = (promDisp!=null && promRend!=null && promCal!=null)
-    ? (promDisp * promRend * promCal) / 10000
-    : oeePondUnid;
-
   const withOee = maqList.filter(g=>g.oee!=null);
+  // Promedios simples de los indicadores por máquina (metodología compacto gerencial)
+  const promDisp = withOee.length ? withOee.reduce((s,g)=>s+g.disp,0)/withOee.length : null;
+  const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
+  const promCal  = withOee.length ? withOee.reduce((s,g)=>s+g.cal,0)/withOee.length : null;
+  // OEE por unidades = promedio simple de OEE por máquina
+  const oeePondUnid = withOee.length ? withOee.reduce((s,g)=>s+g.oee,0)/withOee.length : null;
+  // OEE por tiempo = ponderado por tiempo real trabajado (tReal)
+  const sumTReal = withOee.reduce((s,g)=>s+(g.tReal||0),0);
+  const oeePondTiempo = sumTReal>0 ? withOee.reduce((s,g)=>s+g.oee*(g.tReal||0),0)/sumTReal : null;
 
   // ── Personal (de la hoja de accidentalidad) ─────────────────────────────
   let totalPersonal=null, incap=null, fuerzaLaboral=null;
