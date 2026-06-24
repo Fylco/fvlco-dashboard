@@ -1779,6 +1779,8 @@ function buildNcByOrden(ncRows) {
   return map;
 }
 
+// % Calidad = (Σ prod_orden - NC_orden) / Σ prod_orden × 100
+// Agrupa por orden para evitar doble conteo de NC al haber múltiples filas por orden.
 function calcCalidad(rows) {
   const ordenes = [...new Set(rows.map(r => r._orden).filter(Boolean))];
   let tp=0, tn=0;
@@ -1789,6 +1791,52 @@ function calcCalidad(rows) {
   });
   if (tp <= 0) return null;
   return Math.min(100, Math.max(0, ((tp-tn)/tp)*100));
+}
+
+// % Rendimiento — promedio ponderado por CANT REPORTADA.
+// El sheet calcula el % por fila (col AK); para agregar N filas usamos
+// promedio ponderado por producción: filas con más producto pesan más.
+function calcRendimiento(rows) {
+  let sumWR=0, totalW=0;
+  rows.forEach(r => {
+    const rend = r._rend;
+    const cant = r._cant||0;
+    if (rend !== null && rend !== undefined && !isNaN(rend) && rend > 0 && cant > 0) {
+      sumWR  += rend * cant;
+      totalW += cant;
+    }
+  });
+  if (totalW <= 0) return avg(rows,'_rend');
+  return Math.min(100, Math.max(0, sumWR / totalW));
+}
+
+// % Disponibilidad — ponderado por Tiempo Programado de cada fila.
+// Evita que filas de poco tiempo tengan el mismo peso que turnos completos.
+function calcDisponibilidad(rows) {
+  let sumWD=0, totalW=0;
+  rows.forEach(r => {
+    const disp = r._disp;
+    const tp   = pNum(r['Tiempo Programado']) || pNum(r['TIEMPO PROGRAMADO']) || 0;
+    if (disp !== null && disp !== undefined && !isNaN(disp) && disp > 0 && tp > 0) {
+      sumWD  += disp * tp;
+      totalW += tp;
+    }
+  });
+  if (totalW <= 0) return avg(rows,'_disp');
+  return Math.min(100, Math.max(0, sumWD / totalW));
+}
+
+// Fracción NC por orden = nc_total / prod_total para distribuir NC
+// proporcionalmente al calcular calidad fila a fila (ej: en gráficos).
+function buildNcFraction(rows) {
+  const prod = {};
+  rows.forEach(r => { if (r._orden) prod[r._orden] = (prod[r._orden]||0) + r._cant; });
+  const frac = {};
+  Object.keys(prod).forEach(o => {
+    const p = prod[o];
+    frac[o] = p > 0 ? Math.min(1, (DATA.ncByOrden[o]||0) / p) : 0;
+  });
+  return frac;
 }
 
 function setProgress(p, msg) {
@@ -2038,8 +2086,8 @@ function renderResumen() {
   const vnts = filterVentas();
   const nc   = filterNC();
   const oee  = avg(d,'_oee');
-  const rend = avg(d,'_rend');
-  const disp = avg(d,'_disp');
+  const rend = calcRendimiento(d);
+  const disp = calcDisponibilidad(d);
   const cal  = calcCalidad(d);
   const otif = calcOTIF(vnts);
   const accDias = getAccDias();
@@ -2085,8 +2133,8 @@ function renderResumen() {
 function renderOEE() {
   const d = filterProd();
   const oee  = avg(d,'_oee');
-  const rend = avg(d,'_rend');
-  const disp = avg(d,'_disp');
+  const rend = calcRendimiento(d);
+  const disp = calcDisponibilidad(d);
   const cal  = calcCalidad(d);
 
   // Gauge cards
@@ -2105,25 +2153,31 @@ function renderOEE() {
   gData.forEach(g=>makeGauge(g.id,g.val,g.col));
 
   // Trend — aggregate by mes+dia to avoid thousands of points
+  // Fracción NC por orden: evita doble conteo al haber múltiples filas por orden
+  const ncFrac = buildNcFraction(d);
   const avgArr = arr => { const v=arr.filter(x=>x>0&&x<=100); return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
   const byDay = {};
   d.forEach(r => {
     const key = (r._mes||'')+'_'+(r['DIA']||'?');
-    if (!byDay[key]) byDay[key] = {label: r['DIA']||'?', oee:[],rend:[],disp:[],calNumer:0,calDenom:0};
+    if (!byDay[key]) byDay[key] = {label: r['DIA']||'?', oee:[],rend:[],disp:[],calNumer:0,calDenom:0,rendW:0,rendCant:0,dispW:0,dispTP:0};
     if (r._oee  > 0 && r._oee  <= 100) byDay[key].oee.push(r._oee);
-    if (r._rend > 0 && r._rend <= 100) byDay[key].rend.push(r._rend);
-    if (r._disp > 0 && r._disp <= 100) byDay[key].disp.push(r._disp);
-    const nc = Math.min(DATA.ncByOrden[r._orden]||0, r._cant);
-    byDay[key].calNumer += (r._cant - nc);
+    // Rendimiento ponderado por cant
+    if (r._rend > 0 && r._rend <= 100 && r._cant > 0) { byDay[key].rendW += r._rend * r._cant; byDay[key].rendCant += r._cant; }
+    // Disponibilidad ponderada por Tiempo Programado
+    const tp = pNum(r['Tiempo Programado']) || pNum(r['TIEMPO PROGRAMADO']) || 0;
+    if (r._disp > 0 && r._disp <= 100 && tp > 0) { byDay[key].dispW += r._disp * tp; byDay[key].dispTP += tp; }
+    // Calidad: distribuye NC proporcionalmente (fracción calculada al nivel de orden)
+    const ncFila = r._cant * (ncFrac[r._orden]||0);
+    byDay[key].calNumer += (r._cant - ncFila);
     byDay[key].calDenom += r._cant;
   });
   const dayVals = Object.values(byDay);
   const tLabels = dayVals.map(x=>x.label);
   makeChart('oee-trend','line',tLabels,[
     {label:'OEE',          data:dayVals.map(x=>avgArr(x.oee)),  borderColor:'#10B981',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Rendimiento',  data:dayVals.map(x=>avgArr(x.rend)), borderColor:'#8B5CF6',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Disponibilidad',data:dayVals.map(x=>avgArr(x.disp)),borderColor:'#06B6D4',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Calidad',      data:dayVals.map(x=>x.calDenom>0?Math.min(100,(x.calNumer/x.calDenom)*100):null),borderColor:'#F59E0B',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Rendimiento',   data:dayVals.map(x=>x.rendCant>0?Math.min(100,x.rendW/x.rendCant):null), borderColor:'#8B5CF6',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Disponibilidad',data:dayVals.map(x=>x.dispTP>0?Math.min(100,x.dispW/x.dispTP):null),    borderColor:'#06B6D4',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Calidad',       data:dayVals.map(x=>x.calDenom>0?Math.min(100,(x.calNumer/x.calDenom)*100):null), borderColor:'#F59E0B',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
   ],{xScale:{ticks:{maxTicksLimit:15}},yScale:{min:0,max:100}});
 
   // OEE por maq
@@ -2140,8 +2194,8 @@ function renderOEE() {
       <td>${s.length}</td>
       <td>${fmt(sum(s,'_cant'))}</td>
       <td>${badge(avg(s,'_oee'))}</td>
-      <td>${badge(avg(s,'_rend'))}</td>
-      <td>${badge(avg(s,'_disp'))}</td>
+      <td>${badge(calcRendimiento(s))}</td>
+      <td>${badge(calcDisponibilidad(s))}</td>
       <td>${badge(calcCalidad(s))}</td>
       <td style="color:#EF4444">${fmt(sum(s,'_paro'))} min</td>
     </tr>`;
@@ -3038,10 +3092,10 @@ function renderReporteDiario() {
   // ── OEE Ponderado por Tiempo ─────────────────────────────────────────
   // Usa las columnas del sheet (OEE FINAL, % RENDIMIENTO, % DISPONIBILIDAD)
   // para coincidir con los valores reportados en la pestaña OEE del sistema
-  const disp_t = (avg(rows, '_disp') || 0) / 100;
-  const rend_t = (avg(rows, '_rend') || 0) / 100;
-  const cal_t  = (calcCalidad(rows) || 0) / 100;
-  const oee_t  = (avg(rows, '_oee')  || 0) / 100;
+  const disp_t = (calcDisponibilidad(rows) || 0) / 100;
+  const rend_t = (calcRendimiento(rows)    || 0) / 100;
+  const cal_t  = (calcCalidad(rows)        || 0) / 100;
+  const oee_t  = (avg(rows, '_oee')        || 0) / 100;
 
   // ── OEE Ponderado por Unidades = Und.Buenas / Und.Teóricas ──────────
   // NC por referencia/orden (no por máquina) — igual que la pestaña OEE
@@ -4056,22 +4110,21 @@ function exportPDF() {
     // ── OEE
     newPage('OEE — Eficiencia Global');
     secTitle('OEE por Máquina');
-    const oeeMaq = {};
+    const oeeMaqRows = {};
     dProd.forEach(r=>{
       const m='Máq '+(r._maq||'?');
-      if(!oeeMaq[m]) oeeMaq[m]={oee:[],rend:[],disp:[],cant:0};
-      if(r._oee>0&&r._oee<=100) oeeMaq[m].oee.push(r._oee);
-      if(r._rend>0&&r._rend<=100) oeeMaq[m].rend.push(r._rend);
-      if(r._disp>0&&r._disp<=100) oeeMaq[m].disp.push(r._disp);
-      oeeMaq[m].cant+=r._cant||0;
+      if(!oeeMaqRows[m]) oeeMaqRows[m]=[];
+      oeeMaqRows[m].push(r);
     });
-    const avg = arr=>arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:null;
     table(
       ['Máquina','OEE Prom.','Rendimiento','Disponibilidad','Unidades'],
-      Object.entries(oeeMaq).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>[
-        m, avg(v.oee)?pct(avg(v.oee)):'—', avg(v.rend)?pct(avg(v.rend)):'—',
-        avg(v.disp)?pct(avg(v.disp)):'—', fmt(v.cant)
-      ]),
+      Object.entries(oeeMaqRows).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,rows])=>{
+        const oeeVal  = avg(rows,'_oee');
+        const rendVal = calcRendimiento(rows);
+        const dispVal = calcDisponibilidad(rows);
+        const cantVal = rows.reduce((s,r)=>s+(r._cant||0),0);
+        return [m, oeeVal?pct(oeeVal):'—', rendVal?pct(rendVal):'—', dispVal?pct(dispVal):'—', fmt(cantVal)];
+      }),
       [30,35,35,40,40]
     );
 
