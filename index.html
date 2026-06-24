@@ -3728,18 +3728,19 @@ function renderReporteCompacto() {
   const totFalt = totProg - totProd;
   const cumpl   = totProg>0 ? totProd/totProg*100 : 0;
 
+  // Totales resumen — mismas funciones que Reporte Diario para consistencia
+  // (effRows ya tiene el anti-doble-conteo de turnos T4/T5)
+  const promDisp     = calcDisponibilidad(effRows);
+  const promRend     = calcRendimiento(effRows);
+  const promCal      = calcCalidad(effRows);
+  // OEE por unidades = promedio de OEE FINAL del sheet (idéntico al Diario)
+  const oeePondUnid  = avg(effRows, '_oee');
+  // OEE por tiempo = Disp × Rend × Cal de las columnas ponderadas
+  const oeePondTiempo = (promDisp!=null && promRend!=null && promCal!=null)
+    ? (promDisp * promRend * promCal) / 10000
+    : oeePondUnid;
+
   const withOee = maqList.filter(g=>g.oee!=null);
-  // Promedios simples — incluyen TODAS las máquinas (corrige el error del Excel)
-  const promDisp = withOee.length ? withOee.reduce((s,g)=>s+g.disp,0)/withOee.length : null;
-  const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
-  const promCal  = withOee.length ? withOee.reduce((s,g)=>s+g.cal,0)/withOee.length : null;
-
-  // #8 OEE TOTAL POR UNIDADES = promedio SIMPLE de los OEE de todas las máquinas
-  const oeePondUnid = withOee.length ? withOee.reduce((s,g)=>s+g.oee,0)/withOee.length : null;
-
-  // #9 OEE TOTAL POR TIEMPO = Σ(tiempo real trabajado × OEE) ÷ Σ tiempo real trabajado
-  const sumTReal = withOee.reduce((s,g)=>s+(g.tReal||0),0);
-  const oeePondTiempo = sumTReal>0 ? withOee.reduce((s,g)=>s+g.oee*(g.tReal||0),0)/sumTReal : null;
 
   // ── Personal (de la hoja de accidentalidad) ─────────────────────────────
   let totalPersonal=null, incap=null, fuerzaLaboral=null;
