@@ -2197,12 +2197,30 @@ function renderOEE() {
   });
   const dayVals = Object.values(byDay);
   const tLabels = dayVals.map(x=>x.label);
+
+  // Eje derecho (componentes): escala dinámica para mostrar variación real
+  const compVals = [
+    ...dayVals.map(x=>x.rendCant>0?x.rendW/x.rendCant:null),
+    ...dayVals.map(x=>x.dispTP>0?x.dispW/x.dispTP:null),
+    ...dayVals.map(x=>x.calValue)
+  ].filter(v=>v!=null&&v>0);
+  const compMin = compVals.length ? Math.max(0, Math.floor(Math.min(...compVals)/5)*5 - 5) : 0;
+
   makeChart('oee-trend','line',tLabels,[
-    {label:'OEE',          data:dayVals.map(x=>avgArr(x.oee)),  borderColor:'#10B981',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Rendimiento',   data:dayVals.map(x=>x.rendCant>0?Math.min(100,x.rendW/x.rendCant):null), borderColor:'#8B5CF6',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Disponibilidad',data:dayVals.map(x=>x.dispTP>0?Math.min(100,x.dispW/x.dispTP):null),    borderColor:'#06B6D4',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Calidad',       data:dayVals.map(x=>x.calValue!=null?Math.min(100,Math.max(0,x.calValue)):null), borderColor:'#F59E0B',fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-  ],{xScale:{ticks:{maxTicksLimit:15}},yScale:{min:0,max:100}});
+    {label:'OEE',           yAxisID:'y',  data:dayVals.map(x=>avgArr(x.oee)),  borderColor:'#10B981',borderWidth:2,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Rendimiento',   yAxisID:'y1', data:dayVals.map(x=>x.rendCant>0?Math.min(100,x.rendW/x.rendCant):null), borderColor:'#8B5CF6',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Disponibilidad',yAxisID:'y1', data:dayVals.map(x=>x.dispTP>0?Math.min(100,x.dispW/x.dispTP):null),    borderColor:'#06B6D4',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Calidad',       yAxisID:'y1', data:dayVals.map(x=>x.calValue!=null?Math.min(100,Math.max(0,x.calValue)):null), borderColor:'#F59E0B',borderWidth:2,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+  ],{
+    xScale:{ticks:{maxTicksLimit:15}},
+    extra:{
+      scales:{
+        x:{ticks:{color:'#6B7280',font:{size:10}},grid:{color:'#1F2937'},ticks:{maxTicksLimit:15}},
+        y:{ position:'left',  min:0, max:100, ticks:{color:'#10B981',font:{size:10},callback:v=>v+'%'}, grid:{color:'#374151'}, title:{display:true,text:'OEE',color:'#10B981',font:{size:10}} },
+        y1:{ position:'right', min:compMin, max:100, ticks:{color:'#9CA3AF',font:{size:10},callback:v=>v+'%'}, grid:{drawOnChartArea:false}, title:{display:true,text:'Componentes',color:'#9CA3AF',font:{size:10}} }
+      }
+    }
+  });
 
   // OEE por maq
   const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
