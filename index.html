@@ -2273,7 +2273,8 @@ function renderPlanMensual() {
 function renderPlanRef() {
   const mesSel = getVal('pref-f-mes');
   const meses = mesSel ? [mesSel] : MESES_CAP;
-  const normRef = s => String(s||'').trim().toUpperCase().replace(/\s+/g,' ');
+  // Elimina TODOS los espacios para comparar: "38 MM" == "38MM", "CON LINER" == "CONLINER"
+  const normRef = s => String(s||'').trim().toUpperCase().replace(/\s+/g,'');
 
   // Solo leer hasta la fila TOTAL — después hay secciones de cavidades/costos con mismos nombres
   const planRows = [];
