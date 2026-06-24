@@ -2273,6 +2273,7 @@ function renderPlanMensual() {
 function renderPlanRef() {
   const mesSel = getVal('pref-f-mes');
   const meses = mesSel ? [mesSel] : MESES_CAP;
+  const normRef = s => String(s||'').trim().toUpperCase().replace(/\s+/g,' ');
 
   // Solo leer hasta la fila TOTAL — después hay secciones de cavidades/costos con mismos nombres
   const planRows = [];
@@ -2282,13 +2283,34 @@ function renderPlanRef() {
     if (!ref) continue;
     planRows.push(row);
   }
-  const refs = planRows.map(row=>{
-    const ref = row['REFERENCIA / PRODUCTO'].trim();
+
+  // Mapa plan por nombre normalizado
+  const planMap = {};  // normRef → {ref, plan}
+  planRows.forEach(row => {
+    const ref  = row['REFERENCIA / PRODUCTO'].trim();
     const plan = meses.reduce((s,m)=>s+(pNum(row[m])||0),0);
-    const real = DATA.prod.filter(r=>r._prod===ref&&(!mesSel||r._mes===mesSel.toLowerCase()))
-                          .reduce((s,r)=>s+r._cant,0);
-    return {ref, plan, real};
-  }).filter(x=>x.plan>0||x.real>0).sort((a,b)=>b.plan-a.plan).slice(0,15);
+    planMap[normRef(ref)] = {ref, plan};
+  });
+
+  // Producción filtrada
+  const prodFilt = DATA.prod.filter(r => !mesSel || r._mes === mesSel.toLowerCase());
+
+  // Producción real agrupada por producto (normalizado)
+  const realMap = {};  // normRef → {ref, real}
+  prodFilt.forEach(r => {
+    const k = normRef(r._prod);
+    if (!k) return;
+    if (!realMap[k]) realMap[k] = {ref: r._prod, real: 0};
+    realMap[k].real += r._cant;
+  });
+
+  // Unión de claves plan + real
+  const allKeys = new Set([...Object.keys(planMap), ...Object.keys(realMap)]);
+  const refs = [...allKeys].map(k => ({
+    ref:  (planMap[k]||realMap[k]).ref,
+    plan: (planMap[k]||{plan:0}).plan,
+    real: (realMap[k]||{real:0}).real
+  })).filter(x=>x.plan>0||x.real>0).sort((a,b)=>b.plan-a.plan).slice(0,15);
 
   makeChart('pref-chart','bar',refs.map(x=>x.ref.substring(0,30)),[
     {label:'Planeado',data:refs.map(x=>x.plan),backgroundColor:'#8B5CF644',borderColor:'#8B5CF6',borderWidth:2,borderRadius:3},
