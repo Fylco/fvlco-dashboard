@@ -3022,6 +3022,22 @@ function renderReporteDiario() {
 
   const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, fMaq);
   const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+
+  // Anti-doble-conteo: mismo criterio que Reporte Compacto
+  // T4 (12h día) cubre T1+T2; T5 (12h noche) cubre T3
+  const _byMaqRd = {};
+  rows.forEach(r => { (_byMaqRd[String(r._maq||'—')] ||= []).push(r); });
+  const effRowsRd = [];
+  Object.values(_byMaqRd).forEach(rs => {
+    const ts = new Set(rs.map(r=>String(r._turno||'')));
+    const has4 = ts.has('4'), has5 = ts.has('5');
+    rs.forEach(r => {
+      const t = String(r._turno||'');
+      if (has4 && (t==='1' || t==='2')) return;
+      if (has5 && t==='3') return;
+      effRowsRd.push(r);
+    });
+  });
   // Segundos por turno
   const TURNO_SEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
 
@@ -3155,16 +3171,14 @@ function renderReporteDiario() {
   });
 
   // ── OEE Ponderado por Tiempo ─────────────────────────────────────────
-  // Usa las columnas del sheet (OEE FINAL, % RENDIMIENTO, % DISPONIBILIDAD)
-  // para coincidir con los valores reportados en la pestaña OEE del sistema
-  const disp_t = (calcDisponibilidad(rows) || 0) / 100;
-  const rend_t = (calcRendimiento(rows)    || 0) / 100;
-  const cal_t  = (calcCalidad(rows)        || 0) / 100;
-  const oee_t  = (avg(rows, '_oee')        || 0) / 100;
+  // Usa effRowsRd (sin doble-conteo T4/T5) — misma base que Reporte Compacto
+  const disp_t = (calcDisponibilidad(effRowsRd) || 0) / 100;
+  const rend_t = (calcRendimiento(effRowsRd)    || 0) / 100;
+  const cal_t  = (calcCalidad(effRowsRd)        || 0) / 100;
+  const oee_t  = (avg(effRowsRd, '_oee')        || 0) / 100;
 
   // ── OEE Ponderado por Unidades = Und.Buenas / Und.Teóricas ──────────
-  // NC por referencia/orden (no por máquina) — igual que la pestaña OEE
-  const cal_u_pct = calcCalidad(rows) || 0;                // 0–100
+  const cal_u_pct = calcCalidad(effRowsRd) || 0;          // 0–100
   const cal_u     = cal_u_pct / 100;
   const undBuenas = Math.round(totCantO * cal_u);
   const disp_u    = totHT > 0 ? totHF / totHT : 0;
