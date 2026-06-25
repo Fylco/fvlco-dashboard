@@ -83,10 +83,12 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .fp-label { font-size:.68rem; color:#9CA3AF; margin:12px 0 5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
 .fp-select { width:100%; background:#1F2937; border:1px solid #374151; border-radius:6px; padding:5px 8px; color:#EEEEEE; font-size:.74rem; outline:none; font-family:Tahoma,Arial,sans-serif; margin-bottom:2px; }
 .fp-select:focus { border-color:#8B5CF6; }
-.razon-item { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:4px; cursor:pointer; font-size:.7rem; color:#9CA3AF; user-select:none; }
-.razon-item:hover { background:rgba(239,68,68,.1); color:#EEEEEE; }
-.razon-item input[type=checkbox] { accent-color:#EF4444; width:12px; height:12px; cursor:pointer; flex-shrink:0; }
-.razon-count { margin-left:auto; font-size:.62rem; color:#4B5563; }
+.razon-item { display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:20px; border:1px solid #374151; cursor:pointer; font-size:.68rem; color:#9CA3AF; user-select:none; white-space:nowrap; background:#1F2937; }
+.razon-item:hover { background:rgba(239,68,68,.15); border-color:#EF4444; color:#EEEEEE; }
+.razon-item input[type=checkbox] { accent-color:#EF4444; width:11px; height:11px; cursor:pointer; flex-shrink:0; }
+.razon-item input[type=checkbox]:checked ~ span { color:#FBBF24; }
+.razon-item:has(input:checked) { background:rgba(239,68,68,.18); border-color:#EF4444; color:#FBBF24; }
+.razon-count { font-size:.6rem; color:#6B7280; background:#111827; padding:1px 5px; border-radius:8px; }
 @media (max-width: 768px) {
   .sidebar { transform: translateX(-240px); }
   .sidebar.open { transform: translateX(0); }
@@ -461,59 +463,59 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
     <!-- ======================================= PAROS == -->
     <div class="section" id="sec-paros">
-      <div style="display:flex;gap:18px;align-items:flex-start">
 
-        <!-- PANEL IZQUIERDO DE FILTROS -->
-        <div style="width:210px;min-width:210px;flex-shrink:0">
-          <div class="filter-panel">
-            <div class="fp-title">Filtros</div>
+      <!-- BARRA DE FILTROS SUPERIOR -->
+      <div style="background:#111827;border:1px solid #1F2937;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
 
-            <div class="fp-label">Mes</div>
-            <select id="paro-fp-mes" class="fp-select" onchange="syncParoMes()">
-              <option value="">Todos los meses</option>
-            </select>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Mes</span>
+          <select id="paro-fp-mes" class="fp-select" style="min-width:130px" onchange="syncParoMes()">
+            <option value="">Todo (Mes)</option>
+          </select>
+        </div>
 
-            <div class="fp-label">Día</div>
-            <div class="multi-sel-wrap" style="margin-bottom:4px">
-              <button class="multi-sel-btn" id="paro-dia-btn" onclick="toggleParoDiaDD(event)" style="width:100%;text-align:left">Todos los días ▾</button>
-              <div class="multi-sel-dropdown" id="paro-dia-dd"></div>
-            </div>
-            <button class="btn-x" onclick="clearParoDias()" style="width:100%;margin-bottom:4px;text-align:center">✕ Quitar días</button>
-
-            <div class="fp-label">Máquina</div>
-            <select id="paro-f-maq" class="fp-select">
-              <option value="">Todas las máquinas</option>
-            </select>
-
-            <div class="fp-label" style="margin-top:14px">Razón de Paro</div>
-            <div id="paro-razones-list" style="max-height:320px;overflow-y:auto;margin-top:4px"></div>
-
-            <div style="margin-top:14px;display:flex;gap:6px">
-              <button class="btn-filter" onclick="renderParos()" style="flex:1">Filtrar</button>
-              <button class="btn-clear" onclick="clearParoPanel()" style="flex:1">Limpiar</button>
-            </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Día</span>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="paro-dia-btn" onclick="toggleParoDiaDD(event)" style="min-width:140px;text-align:left">Todos los días ▾</button>
+            <div class="multi-sel-dropdown" id="paro-dia-dd"></div>
           </div>
         </div>
 
-        <!-- CONTENIDO PRINCIPAL -->
-        <div style="flex:1;min-width:0">
-          <div id="paro-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:20px"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
-            <div class="chart-card"><div class="section-title">Pareto de Paros por Razón</div><div style="height:280px"><canvas id="paro-pareto"></canvas></div></div>
-            <div class="chart-card"><div class="section-title">Tiempo de Paro por Máquina (min)</div><div style="height:280px"><canvas id="paro-maq"></canvas></div></div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
-            <div class="chart-card"><div class="section-title">Paros por Turno</div><div style="height:220px"><canvas id="paro-turno"></canvas></div></div>
-            <div class="chart-card"><div class="section-title">Tendencia Tiempo Paro por Mes</div><div style="height:220px"><canvas id="paro-trend"></canvas></div></div>
-          </div>
-          <!-- Tabla de observaciones -->
-          <div class="chart-card" style="overflow-x:auto">
-            <div class="section-title">Detalle de Paros y Observaciones</div>
-            <table class="tbl" id="paro-obs-tbl"></table>
-          </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Máquina</span>
+          <select id="paro-f-maq" class="fp-select" style="min-width:140px">
+            <option value="">Todas las máquinas</option>
+          </select>
         </div>
 
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Razón de Paro</span>
+          <div id="paro-razones-list" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:32px"></div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <button class="btn-x" onclick="clearParoDias()" style="white-space:nowrap">✕ Quitar días</button>
+          <button class="btn-filter" onclick="renderParos()">Filtrar</button>
+          <button class="btn-clear" onclick="clearParoPanel()">Limpiar</button>
+        </div>
       </div>
+
+      <!-- CONTENIDO PRINCIPAL -->
+      <div id="paro-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <div class="chart-card"><div class="section-title">Pareto de Paros por Razón</div><div style="height:280px"><canvas id="paro-pareto"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">Tiempo de Paro por Máquina (min)</div><div style="height:280px"><canvas id="paro-maq"></canvas></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <div class="chart-card"><div class="section-title">Paros por Turno</div><div style="height:220px"><canvas id="paro-turno"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">Tendencia Tiempo Paro por Mes</div><div style="height:220px"><canvas id="paro-trend"></canvas></div></div>
+      </div>
+      <div class="chart-card" style="overflow-x:auto">
+        <div class="section-title">Detalle de Paros y Observaciones</div>
+        <table class="tbl" id="paro-obs-tbl"></table>
+      </div>
+
     </div>
 
     <!-- ======================================= ACCIDENTALIDAD == -->
