@@ -43,7 +43,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .nav-item.active { font-weight: 600; border-left: 3px solid; padding-left: 11px; }
 .section { display: none; }
 .section.active { display: block; }
-.kpi-card { background: #1F2937; border: 1px solid #374151; border-radius: 12px; padding: 18px 20px; position: relative; overflow: hidden; }
+.kpi-card { background: #1F2937; border: 1px solid #374151; border-radius: 12px; padding: 16px 18px; position: relative; overflow: visible; min-width: 0; }
 .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
 .chart-card { background: #1F2937; border: 1px solid #374151; border-radius: 12px; padding: 20px; }
 .badge-green { background: rgba(16,185,129,.15); color: #10B981; padding: 2px 8px; border-radius: 20px; font-size: .7rem; font-weight: 700; }
@@ -271,7 +271,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================= RESUMEN == -->
     <div class="section active" id="sec-resumen">
       <div class="section-title">Indicadores Clave</div>
-      <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px"></div>
+      <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px"></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:18px">
         <div class="chart-card"><div class="section-title">OEE por Máquina</div><div style="height:220px"><canvas id="r-oee-maq"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Plan vs Real Mensual</div><div style="height:220px"><canvas id="r-plan-mes"></canvas></div></div>
@@ -431,7 +431,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
       <!-- CONTENIDO PRINCIPAL -->
       <div style="min-width:0;margin-top:16px">
-          <div id="nc-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:20px"></div>
+          <div id="nc-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
             <div class="chart-card"><div class="section-title">NC por Causa (Pareto)</div><div style="height:260px"><canvas id="nc-causa"></canvas></div></div>
             <div class="chart-card"><div class="section-title">NC por Máquina</div><div style="height:260px"><canvas id="nc-maq"></canvas></div></div>
@@ -450,7 +450,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-filter" onclick="renderOTIF()">Filtrar</button>
         <button class="btn-clear" onclick="clearFilters('otif');renderOTIF()">Limpiar</button>
       </div>
-      <div id="otif-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px"></div>
+      <div id="otif-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
         <div class="chart-card"><div class="section-title">OTIF por Mes</div><div style="height:260px"><canvas id="otif-mes"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Cumplimiento por Cliente</div><div style="height:260px"><canvas id="otif-cliente"></canvas></div></div>
@@ -510,7 +510,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
 
       <!-- CONTENIDO PRINCIPAL -->
-      <div id="paro-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:20px"></div>
+      <div id="paro-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
         <div class="chart-card"><div class="section-title">Pareto de Paros por Razón</div><div style="height:280px"><canvas id="paro-pareto"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Tiempo de Paro por Máquina (min)</div><div style="height:280px"><canvas id="paro-maq"></canvas></div></div>
@@ -774,7 +774,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </div>
         <button onclick="loadMaquilas().then(renderMaquilas)" style="background:#1F2937;border:1px solid #A78BFA;color:#A78BFA;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600">↺ Actualizar maquilas</button>
       </div>
-      <div id="maquilas-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px"></div>
+      <div id="maquilas-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
       <div id="maquilas-content"></div>
     </div>
 
@@ -809,7 +809,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           </button>
         </div>
       </div>
-      <div id="po-tablero-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px"></div>
+      <div id="po-tablero-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px"></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:18px">
         <div class="chart-card"><div class="section-title">Pedidos por Semáforo</div><div style="height:200px"><canvas id="po-chart-semaforo"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Capacidad vs Requerida</div><div style="height:200px"><canvas id="po-chart-capacidad"></canvas></div></div>
@@ -850,7 +850,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================================= PO: CAPACIDAD == -->
     <div class="section" id="sec-po-capacidad">
       <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Capacidad por Máquina</div>
-      <div id="po-cap-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:22px"></div>
+      <div id="po-cap-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:22px"></div>
       <div class="chart-card" style="margin-bottom:20px"><div class="section-title">Horas disponibles vs requeridas</div><div style="height:260px"><canvas id="po-chart-cap-barras"></canvas></div></div>
       <div style="overflow-x:auto">
         <table class="tbl">
@@ -863,7 +863,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================================= PO: MAQUILA == -->
     <div class="section" id="sec-po-maquila">
       <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Plan de Maquila</div>
-      <div id="po-maq-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:22px"></div>
+      <div id="po-maq-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:22px"></div>
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead><tr><th>Tipo</th><th>Producto</th><th>Cliente</th><th style="text-align:right">Cant. Pendiente</th><th>Fecha Entrega</th><th>Motivo</th><th style="text-align:right">Valor</th></tr></thead>
@@ -888,7 +888,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================================= PO: HORAS & COSTOS == -->
     <div class="section" id="sec-po-horas">
       <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Horas &amp; Costos del Plan</div>
-      <div id="po-horas-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:22px"></div>
+      <div id="po-horas-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:22px"></div>
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead><tr><th>Producto</th><th>Cliente</th><th style="text-align:right">Unidades</th><th style="text-align:right">Horas Est.</th><th style="text-align:right">Valor Total</th><th style="text-align:right">Margen Est.</th></tr></thead>
@@ -927,7 +927,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <!-- Formulario -->
       <div id="form-inv" style="display:none;background:#1F2937;border:1px solid #374151;border-radius:12px;padding:20px;margin-bottom:20px">
         <div style="font-size:.72rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px">Nuevo movimiento de MP</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:14px">
           <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Material *</div>
             <input id="inv-material" placeholder="Ej: PEAD NATURAL" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
           <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Tipo *</div>
@@ -950,7 +950,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </div>
       </div>
       <!-- KPIs -->
-      <div id="po-inv-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:22px"></div>
+      <div id="po-inv-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:22px"></div>
       <!-- Resumen por material -->
       <div class="section-title">Resumen por Material</div>
       <div style="overflow-x:auto;margin-bottom:24px">
@@ -2138,7 +2138,7 @@ function makeGauge(id, val, color) {
 function kpiCard(label, val, color, sub='', icon='') {
   return `<div class="kpi-card" style="border-top:3px solid ${color}">
     <div style="font-size:.65rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${icon?`<i class="${icon}" style="margin-right:4px"></i>`:''}${label}</div>
-    <div style="font-size:1.8rem;font-weight:800;color:${color};line-height:1">${val}</div>
+    <div style="font-size:1.5rem;font-weight:800;color:${color};line-height:1.1;word-break:break-all;overflow-wrap:anywhere">${val}</div>
     <div style="font-size:.7rem;color:#4B5563;margin-top:5px">${sub}</div>
   </div>`;
 }
@@ -4867,7 +4867,7 @@ function fvBuildHTML(values,keys,models,bestModel,projLabels,metric,anomalies,to
   const anomalyBlock = anomalies.length>0 ? `<div style="background:#1F2937;border:1px solid #F59E0B44;border-radius:8px;padding:14px 18px;color:#F59E0B;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px"><i class="fa-solid fa-triangle-exclamation" style="margin-top:2px;flex-shrink:0"></i><div><strong>Valores atípicos detectados</strong> en: ${anomalies.map(i=>`${fvMonthLabel(keys[i])} (${fvFmt(values[i],metric)})`).join(', ')}. Considera excluirlos.</div></div>` : '';
 
   const kpiStyle = (c)=>`background:#111827;border:1px solid #374151;border-radius:10px;padding:16px;border-top:3px solid ${c};position:relative;overflow:hidden`;
-  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px">
+  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:22px">
     <div style="${kpiStyle('#38bdf8')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total ${metric==='valor'?'Ventas':metric==='materia'?'Materia Prima':'Cantidad'}</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(total,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${keys.length} meses analizados</div></div>
     <div style="${kpiStyle('#a78bfa')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Promedio Mensual</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(avg2,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">Por mes en el período</div></div>
     <div style="${kpiStyle('#34d399')}"><div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Último Período</div><div style="font-size:1.4rem;font-weight:800;color:#F3F4F6">${fvFmt(last,metric)}</div><div style="font-size:.68rem;color:#6B7280;margin-top:4px">${fvMonthLabel(keys[keys.length-1])}</div></div>
