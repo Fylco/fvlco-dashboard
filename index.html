@@ -3234,13 +3234,18 @@ function renderReporteDiario() {
     const maq = String(r._maq||'—');
     if (!_mRd[maq]) _mRd[maq] = {
       maq, rows:[], dtSet:{}, porTurno:{},
-      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, undProd:0
+      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, undProd:0, paroProg:0, paroNoProg:0
     };
     const g = _mRd[maq], t = String(r._turno||''), dia = String(r._diaTurno||'');
     g.rows.push(r);
     if (!g.porTurno[t]) g.porTurno[t] = {prod:0,paro:0};
     g.porTurno[t].prod += pNum(r._cant);
     g.porTurno[t].paro += pNum(r._paro);
+    if (pNum(r._paro) > 0) {
+      const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
+      if (/programado/i.test(rz)) g.paroProg += pNum(r._paro);
+      else g.paroNoProg += pNum(r._paro);
+    }
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia]||=new Set()).add(t); }
     if (!g.cavTeor)   g.cavTeor   = _cavTeorOf(r);
     if (!g.cicloEst)  g.cicloEst  = pNum(r['T. CICLO EST']);
@@ -3278,7 +3283,7 @@ function renderReporteDiario() {
     const cavR=g.cavReal||g.cavTeor||0, cEst=g.cicloEst||g.cicloReal||0, cReal=g.cicloReal||g.cicloEst||0;
     g.undProg = (cEst>0&&g.horas>0)?Math.round((g.horas*3600/cEst)*(g.cavTeor||cavR||1)):g.undProd;
     g.tReal   = (cavR>0&&cReal>0)?(g.undProd/cavR*cReal)/60:0;
-    g.tProg   = g.tReal+(g.paro||0);
+    g.tProg   = g.tReal+(g.paroNoProg||0);
     g.disp    = g.tProg>0?g.tReal/g.tProg*100:null;
     g.rend    = g.undProg>0?Math.min(100,g.undProd/g.undProg*100):null;
     const nc_rd = oeeByMaq[g.maq]?._nc||0;
@@ -3734,7 +3739,7 @@ function renderReporteCompacto() {
     const maq = String(r._maq || '—');
     if (!maqMap[maq]) maqMap[maq] = {
       maq, prod:r._prod||'—', rows:[], turnos:new Set(), dtSet:{}, porTurno:{},
-      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, undProd:0, razones:[]
+      cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, paroProg:0, paroNoProg:0, undProd:0, razones:[]
     };
     const g = maqMap[maq];
     g.rows.push(r);
@@ -3749,6 +3754,8 @@ function renderReporteCompacto() {
     if (pN(r._paro) > 0) {
       const rz = String(r['RAZON PARO'] || r['RAZÓN PARO'] || '').trim();
       if (rz && !g.razones.includes(rz)) g.razones.push(rz);
+      if (esProgramado(rz)) g.paroProg += pN(r._paro);
+      else g.paroNoProg += pN(r._paro);
     }
     if (!g.cavTeor)   g.cavTeor   = _cavTeorOf(r);
     if (!g.cicloEst)  g.cicloEst  = pN(r['T. CICLO EST']);
@@ -3811,10 +3818,12 @@ function renderReporteCompacto() {
 
     // #2 TIEMPO REAL TRABAJADO (min) = (producción ÷ cav reales × ciclo real) ÷ 60
     g.tReal = (cavR>0 && cReal>0) ? (g.undProd/cavR*cReal)/60 : 0;
-    // #1 TIEMPO PROGRAMADO (min) = tiempo real trabajado + paros
-    g.tProg = g.tReal + (g.paro||0);
+    // #1 TIEMPO PROGRAMADO (min) = tiempo real + paros NO programados
+    // Los paros programados (mantenimiento planeado, cambio de molde planificado, etc.)
+    // reducen el tiempo disponible de la planta — no penalizan Disponibilidad OEE.
+    g.tProg = g.tReal + (g.paroNoProg||0);
 
-    // #4 DISPONIBILIDAD = tiempo real trabajado ÷ tiempo programado (TRT + paros)
+    // #4 DISPONIBILIDAD = tiempo real trabajado ÷ (tReal + paros no programados)
     g.disp = g.tProg>0 ? g.tReal/g.tProg*100 : null;
 
     // #5 RENDIMIENTO = unidades producidas ÷ unidades teóricas (tope 100%:
