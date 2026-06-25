@@ -1962,6 +1962,29 @@ async function reloadAll() {
   await loadAll();
 }
 
+// Refresco silencioso (sin overlay) para el auto-refresh
+async function silentRefresh() {
+  try {
+    const prodParsed = await fetchCSV(SHEETS.produccion);
+    DATA.prod = prodParsed.data.map(normalizeProd);
+    await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
+    DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
+    DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
+    await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
+    await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
+    await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
+    await loadMaquilas();
+    document.getElementById('last-update').textContent =
+      `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`;
+    populateAllFilters();
+    buildCavMap();
+    buildCavTeorMap();
+    renderAll();
+  } catch(e) {
+    console.warn('Auto-refresh falló:', e.message);
+  }
+}
+
 // =======================================================
 // FILTERS
 // =======================================================
@@ -5536,6 +5559,8 @@ setTimeout(()=>loadPlanData().then(()=>{
 // INIT
 // =======================================================
 loadAll();
+// Auto-refresh silencioso cada 5 minutos
+setInterval(silentRefresh, 5 * 60 * 1000);
 // Aplicar color inicial al nav-item activo por defecto
 (function(){
   const activeNav = document.querySelector('.nav-item.active');
