@@ -3093,21 +3093,8 @@ function renderReporteDiario() {
   const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, fMaq);
   const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
 
-  // Anti-doble-conteo: mismo criterio que Reporte Compacto
-  // T4 (12h día) cubre T1+T2; T5 (12h noche) cubre T3
-  const _byMaqRd = {};
-  rows.forEach(r => { (_byMaqRd[String(r._maq||'—')] ||= []).push(r); });
-  const effRowsRd = [];
-  Object.values(_byMaqRd).forEach(rs => {
-    const ts = new Set(rs.map(r=>String(r._turno||'')));
-    const has4 = ts.has('4'), has5 = ts.has('5');
-    rs.forEach(r => {
-      const t = String(r._turno||'');
-      if (has4 && (t==='1' || t==='2')) return;
-      if (has5 && t==='3') return;
-      effRowsRd.push(r);
-    });
-  });
+  // Todos los turnos se suman; no hay filtrado T4/T5
+  const effRowsRd = rows.slice();
   // Segundos por turno
   const TURNO_SEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
 
@@ -3711,24 +3698,8 @@ function renderReporteCompacto() {
     r._fechaKey === fKey && (!fTurno || String(r._turno) === fTurno)
   );
 
-  // ── Regla anti-doble-conteo de turnos ──────────────────────────────────
-  // T4 (día 6am-6pm, 12h) SUBSUME a los turnos 1 y 2 (día de 8h).
-  // T5 (noche 6pm-6am, 12h) SUBSUME al turno 3 (noche de 8h).
-  // Solo se descartan los turnos realmente contenidos; T5 (noche) NO
-  // reemplaza a T1/T2 (día), que son producción aparte.
-  const allByMaq = {};
-  rows.forEach(r => { (allByMaq[String(r._maq||'—')] ||= []).push(r); });
-  const effRows = [];
-  Object.values(allByMaq).forEach(rs => {
-    const ts = new Set(rs.map(r=>String(r._turno||'')));
-    const has4 = ts.has('4'), has5 = ts.has('5');
-    rs.forEach(r => {
-      const t = String(r._turno||'');
-      if (has4 && (t==='1' || t==='2')) return;  // T4 cubre el día
-      if (has5 && t==='3') return;               // T5 cubre la noche
-      effRows.push(r);
-    });
-  });
+  // Todos los turnos se suman; no hay filtrado T4/T5
+  const effRows = rows.slice();
 
   // ── Capacidad programada por slot (sobre filas efectivas) ──────────────
   // Segundos por turno: T1/T2/T3 = 8h (28800); T4/T5 = 12h (43200).
