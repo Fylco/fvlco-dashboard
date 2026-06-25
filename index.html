@@ -1019,15 +1019,18 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 // =======================================================
 // URLS
 // =======================================================
+// export?format=csv lee el estado actual del sheet sin caché de servidor
+const _SID = '1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8';
+const _exp = gid => `https://docs.google.com/spreadsheets/d/${_SID}/export?format=csv&gid=${gid}`;
 const SHEETS = {
-  produccion:   'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=503325164',
-  noConformes:  'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=579426498',
-  planRef:      'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=9934746',
-  accid:        'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=904371036',
-  ventas:       'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=2006233736',
+  produccion:   _exp('503325164'),
+  noConformes:  _exp('579426498'),
+  planRef:      _exp('9934746'),
+  accid:        _exp('904371036'),
+  ventas:       _exp('2006233736'),
 };
-// Maquilas: hoja distinta. Endpoint gviz → CSV directo con CORS (sin redirección)
-const MAQUILAS_CSV = 'https://docs.google.com/spreadsheets/d/1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8/gviz/tq?tqx=out:csv&gid=1924737619';
+// Maquilas: misma hoja, endpoint export directo
+const MAQUILAS_CSV = _exp('1924737619');
 const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + encodeURIComponent(u) : u;
 
 // =======================================================
