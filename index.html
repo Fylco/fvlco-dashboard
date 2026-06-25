@@ -489,9 +489,17 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           </select>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:220px">
           <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Razón de Paro</span>
-          <div id="paro-razones-list" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:32px"></div>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="paro-razon-btn" onclick="toggleParoRazonDD(event)" style="min-width:220px;text-align:left" id="paro-razon-lbl">Todas las razones ▾</button>
+            <div class="multi-sel-dropdown" id="paro-razon-dd" style="min-width:280px;max-height:320px;overflow-y:auto">
+              <label class="razon-item" style="border-bottom:1px solid #374151;margin-bottom:4px;padding-bottom:6px;font-weight:600;color:#F3F4F6">
+                <input type="checkbox" id="paro-razon-all" onchange="toggleAllRazones(this)"> Seleccionar todas
+              </label>
+              <div id="paro-razones-list"></div>
+            </div>
+          </div>
         </div>
 
         <div style="display:flex;gap:8px;align-items:flex-end">
@@ -1501,16 +1509,48 @@ function updateCostosDiaBtn() {
   else { btn.textContent=`${SEL_DIAS_COSTOS.size} día(s) ▾`; btn.classList.add('active'); }
 }
 
-// ── Panel paros: razones
+// ── Panel paros: razones dropdown
+function toggleParoRazonDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('paro-razon-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
 function toggleRazon(r) {
   if (SEL_RAZONES.has(r)) SEL_RAZONES.delete(r); else SEL_RAZONES.add(r);
+  _syncRazonAllChk();
+  updateParoRazonBtn();
+}
+function toggleAllRazones(chk) {
+  const all = chk.checked;
+  document.querySelectorAll('#paro-razones-list input[type=checkbox]').forEach(cb => {
+    cb.checked = all;
+    const r = cb.dataset.razon;
+    if (r) { if (all) SEL_RAZONES.add(r); else SEL_RAZONES.delete(r); }
+  });
+  updateParoRazonBtn();
+}
+function _syncRazonAllChk() {
+  const allChk = document.getElementById('paro-razon-all');
+  if (!allChk) return;
+  const cbs = document.querySelectorAll('#paro-razones-list input[type=checkbox]');
+  allChk.checked = cbs.length > 0 && [...cbs].every(cb => cb.checked);
+  allChk.indeterminate = !allChk.checked && SEL_RAZONES.size > 0;
+}
+function updateParoRazonBtn() {
+  const btn = document.getElementById('paro-razon-btn');
+  if (!btn) return;
+  if (SEL_RAZONES.size === 0) { btn.textContent = 'Todas las razones ▾'; btn.classList.remove('active'); }
+  else { btn.textContent = `${SEL_RAZONES.size} razón(es) ▾`; btn.classList.add('active'); }
 }
 function clearParoPanel() {
   SEL_RAZONES.clear(); SEL_DIAS_PARO.clear();
   document.getElementById('paro-fp-mes').value='';
   document.getElementById('paro-f-maq').value='';
   document.querySelectorAll('#paro-razones-list input,#paro-dia-dd input').forEach(cb=>cb.checked=false);
-  updateParoDiaBtn();
+  const allChk = document.getElementById('paro-razon-all');
+  if (allChk) { allChk.checked=false; allChk.indeterminate=false; }
+  updateParoDiaBtn(); updateParoRazonBtn();
   renderParos();
 }
 function syncParoMes() { renderParos(); }
@@ -1960,11 +2000,13 @@ function populateAllFilters() {
   const razones = Object.entries(razonMap).sort((a,b)=>b[1]-a[1]);
   const list = document.getElementById('paro-razones-list');
   if (list) list.innerHTML = razones.map(([r,cnt])=>`
-    <label class="razon-item">
-      <input type="checkbox" onchange="toggleRazon('${r.replace(/'/g,"\\'")}')">
-      <span style="flex:1">${r||'Sin dato'}</span>
-      <span class="razon-count">${cnt}</span>
+    <label class="razon-item" style="display:flex;border-radius:4px;padding:5px 8px;margin-bottom:2px;background:transparent;border:none;width:100%;box-sizing:border-box">
+      <input type="checkbox" data-razon="${r.replace(/"/g,'&quot;')}" onchange="toggleRazon('${r.replace(/'/g,"\\'")}')">
+      <span style="flex:1;margin-left:6px;white-space:normal;line-height:1.3">${r||'Sin dato'}</span>
+      <span class="razon-count" style="margin-left:8px;flex-shrink:0">${cnt}</span>
     </label>`).join('');
+  // Sincronizar estado del checkbox "Seleccionar todas" al recargar
+  _syncRazonAllChk(); updateParoRazonBtn();
   // NC & OTIF
   const ncMeses = [...new Set(DATA.nc.map(r=>String(r['MES ']||r['MES']||'').trim()).filter(Boolean))];
   const ncMaq   = [...new Set(DATA.nc.map(r=>((r['MÁQUINA']??r['MAQUINA'])||'')).filter(Boolean))].sort();
