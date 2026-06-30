@@ -1670,21 +1670,22 @@ async function loadMaquilas() {
 function parseMaquilas(rows) {
   if (!rows || !rows.length) return [];
   const header = rows[0] || [];
-  // Nombre de cada cliente: lo que va antes de "FECHA" en su columna de inicio
+  // Layout: VELCOPLAST cols 0-3, separador col 4, PRACTIDENT cols 5-8
   const blocks = [
-    { name: String(header[0]||'').replace(/fecha.*/i,'').trim() || 'Cliente A', c:[0,1,2] },
-    { name: String(header[4]||'').replace(/fecha.*/i,'').trim() || 'Cliente B', c:[4,5,6] }
+    { name: String(header[0]||'').replace(/fecha.*/i,'').trim() || 'VELCOPLAST', c:[0,1,2,3] },
+    { name: String(header[5]||'').replace(/fecha.*/i,'').trim() || 'PRACTIDENT', c:[5,6,7,8] }
   ];
   const recs = [];
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i] || [];
     blocks.forEach(b => {
-      const fecha = String(r[b.c[0]]||'').trim();
-      const ref   = String(r[b.c[1]]||'').trim();
-      const cant  = String(r[b.c[2]]||'').trim();
+      const fecha  = String(r[b.c[0]]||'').trim();
+      const ref    = String(r[b.c[1]]||'').trim();
+      const cant   = String(r[b.c[2]]||'').trim();
+      const orden  = String(r[b.c[3]]||'').trim();
       // saltar filas de subencabezado o vacías
       if (/^fecha$/i.test(fecha) || /^referencia/i.test(ref)) return;
-      if (ref || cant) recs.push({ cliente:b.name, fecha, referencia:ref, cantidad:cant });
+      if (ref || cant) recs.push({ cliente:b.name, fecha, referencia:ref, cantidad:cant, orden });
     });
   }
   return recs;
@@ -3661,6 +3662,7 @@ function renderMaquilas() {
       <td>${m.fecha||'—'}</td>
       <td>${m.referencia||'—'}</td>
       <td style="text-align:right;color:#10B981;font-weight:600">${m.cantidad?ri(pN(m.cantidad)):'—'}</td>
+      <td style="color:#9CA3AF">${m.orden||'—'}</td>
     </tr>`).join('');
     return `<div class="chart-card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -3668,7 +3670,7 @@ function renderMaquilas() {
         <div style="font-size:.8rem;background:#374151;border-radius:6px;padding:4px 12px;color:#10B981;font-weight:600">Total: ${ri(subtotal)} und</div>
       </div>
       <table class="tbl" style="width:100%">
-        <thead><tr><th>Fecha</th><th>Referencia / Producto</th><th style="text-align:right">Cantidad</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Referencia / Producto</th><th style="text-align:right">Cantidad</th><th>Orden de Prod.</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
@@ -3925,6 +3927,7 @@ function renderReporteCompacto() {
     <td>${m.fecha||'—'}</td>
     <td>${m.referencia||'—'}</td>
     <td style="text-align:right">${m.cantidad?ri(pN(m.cantidad)):'—'}</td>
+    <td style="color:#6B7280">${m.orden||'—'}</td>
   </tr>`).join('');
 
   contentEl.innerHTML = `
@@ -4019,7 +4022,7 @@ function renderReporteCompacto() {
       <div style="padding:14px 20px;border-top:1px solid #E5E7EB">
         <div class="section-title" style="margin-bottom:10px"><i class="fa-solid fa-handshake" style="color:#7C3AED;margin-right:6px"></i>Maquilas — ${fechaTxt}</div>
         <table class="tbl" style="width:100%">
-          <thead><tr><th>Cliente</th><th>Fecha</th><th>Referencia</th><th style="text-align:right">Cantidad</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Fecha</th><th>Referencia</th><th style="text-align:right">Cantidad</th><th>Orden de Prod.</th></tr></thead>
           <tbody>${maquilaRows}</tbody>
         </table>
       </div>
