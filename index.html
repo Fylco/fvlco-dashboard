@@ -3828,28 +3828,35 @@ function renderReporteDiario() {
     g.disp    = g.tProg>0?g.tReal/g.tProg*100:null;
     g.rend    = g.undProg>0?Math.min(100,g.undProd/g.undProg*100):null;
     const nc_rd = oeeByMaq[g.maq]?._nc||0;
-    g.cal = (g.undProd+nc_rd)>0?g.undProd/(g.undProd+nc_rd)*100:null;
+    g.cal = g.undProd>0 ? Math.min(100,Math.max(0,(g.undProd-nc_rd)/g.undProd*100)) : null;
     g.oee = (g.disp!=null&&g.rend!=null&&g.cal!=null)?(g.disp*g.rend*g.cal)/10000:null;
   });
   // Resumen: mismos promedios que Compacto
   const _woRd = _mRdArr.filter(g=>g.oee!=null);
-  const _sumTRd = _woRd.reduce((s,g)=>s+(g.tReal||0),0);
-  const disp_t = (_woRd.length?_woRd.reduce((s,g)=>s+g.disp,0)/_woRd.length:0)/100;
-  const rend_t = (_woRd.length?_woRd.reduce((s,g)=>s+g.rend,0)/_woRd.length:0)/100;
-  const cal_t  = (_woRd.length?_woRd.reduce((s,g)=>s+g.cal,0)/_woRd.length:0)/100;
-  const oee_t  = _sumTRd>0?(_woRd.reduce((s,g)=>s+g.oee*(g.tReal||0),0)/_sumTRd)/100:0;
-  const disp_u = disp_t, rend_u = rend_t, cal_u = cal_t;
-  const oee_u  = (_woRd.length?_woRd.reduce((s,g)=>s+g.oee,0)/_woRd.length:0)/100;
-
   const _totTReal = _woRd.reduce((s,g)=>s+(g.tReal||0),0);
   const _totParo  = _woRd.reduce((s,g)=>s+(g.paro||0),0);
-  const infoT = `T.Real: ${_totTReal.toFixed(0)} min · T.Perdido: ${_totParo.toFixed(0)} min · ${_woRd.length} máq.`;
-  const _totNC2 = _woRd.reduce((s,g)=>s+(oeeByMaq[g.maq]?._nc||0),0);
-  const infoU = `Prod: ${totCantO.toLocaleString()} · NC: ${_totNC2.toLocaleString()} · Planeadas: ${Math.round(totUndTeo).toLocaleString()}`;
+  const _totNC2   = _woRd.reduce((s,g)=>s+(oeeByMaq[g.maq]?._nc||0),0);
+
+  // OEE Global = misma metodología que Resumen/OEE → garantiza valores idénticos
+  // entre pestañas para el mismo período filtrado.
+  const _dGlob = calcDisponibilidad(effRowsRd);
+  const _rGlob = calcRendimiento(effRowsRd);
+  const _cGlob = calcCalidad(effRowsRd);
+  const _oGlob = calcOEEFromDRC(effRowsRd);
+  const toF = v => (v!=null ? v/100 : 0);
+
+  // Vista alternativa: promedio simple de OEE por máquina
+  const _oeePromMaq = (_woRd.length ? _woRd.reduce((s,g)=>s+g.oee,0)/_woRd.length : 0)/100;
+  const _dispProm   = (_woRd.length ? _woRd.reduce((s,g)=>s+g.disp,0)/_woRd.length : 0)/100;
+  const _rendProm   = (_woRd.length ? _woRd.reduce((s,g)=>s+g.rend,0)/_woRd.length : 0)/100;
+  const _calProm    = (_woRd.length ? _woRd.reduce((s,g)=>s+g.cal,0)/_woRd.length : 0)/100;
+
+  const infoGlob = `Prod: ${totCantO.toLocaleString()} · NC: ${_totNC2.toLocaleString()} · T.Real: ${_totTReal.toFixed(0)} min`;
+  const infoProm = `T.Perdido: ${_totParo.toFixed(0)} min · Planeadas: ${Math.round(totUndTeo).toLocaleString()} · ${_woRd.length} máq.`;
   const elT = document.getElementById('rd-oee-tiempo');
   const elU = document.getElementById('rd-oee-unid');
-  if (elT) elT.innerHTML = _oeeCard('OEE Ponderado por Tiempo',    oee_t, disp_t, rend_t, cal_t, infoT);
-  if (elU) elU.innerHTML = _oeeCard('OEE Ponderado por Unidades',  oee_u, disp_u, rend_u, cal_u, infoU);
+  if (elT) elT.innerHTML = _oeeCard('OEE Global del Período', toF(_oGlob), toF(_dGlob), toF(_rGlob), toF(_cGlob), infoGlob);
+  if (elU) elU.innerHTML = _oeeCard('Prom. OEE por Máquina', _oeePromMaq, _dispProm, _rendProm, _calProm, infoProm);
 
   let totalProg = 0, totalProd = 0;
   const sortedKeys = Object.keys(groups).sort((a,b) => {
@@ -4375,11 +4382,11 @@ function renderReporteCompacto() {
     //    si corre más rápido que el ciclo estándar no puede superar el ideal)
     g.rend = g.undProg>0 ? Math.min(100, g.undProd/g.undProg*100) : null;
 
-    // #6 CALIDAD = producidas ÷ (producidas + NC). NC = el reportado por
-    //    ESTA máquina ese día (col B + fecha col A), respetando la máquina.
+    // #6 CALIDAD = (producidas − NC) ÷ producidas — misma fórmula que calcCalidad.
+    //    NC = el reportado por ESTA máquina ese día (respeta máquina, no orden).
     const nc = ncByMaqDia[g.maq] || 0;
     g.nc  = nc;
-    g.cal = (g.undProd+nc)>0 ? g.undProd/(g.undProd+nc)*100 : null;
+    g.cal = g.undProd>0 ? Math.min(100, Math.max(0, (g.undProd-nc)/g.undProd*100)) : null;
 
     // #7 OEE = Disponibilidad × Rendimiento × Calidad
     g.oee = (g.disp!=null && g.rend!=null && g.cal!=null) ? (g.disp*g.rend*g.cal)/10000 : null;
@@ -4392,11 +4399,16 @@ function renderReporteCompacto() {
   const cumpl   = totProg>0 ? totProd/totProg*100 : 0;
 
   const withOee = maqList.filter(g=>g.oee!=null);
-  // Promedios simples de los indicadores por máquina (metodología compacto gerencial)
+  // OEE Global del día = misma metodología que Resumen/OEE (todas las filas juntas)
+  const oeeGlobalDia  = calcOEEFromDRC(effRows);
+  const dispGlobalDia = calcDisponibilidad(effRows);
+  const rendGlobalDia = calcRendimiento(effRows);
+  const calGlobalDia  = calcCalidad(effRows);
+  // Promedios por máquina (vista alternativa)
   const promDisp = withOee.length ? withOee.reduce((s,g)=>s+g.disp,0)/withOee.length : null;
   const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
   const promCal  = withOee.length ? withOee.reduce((s,g)=>s+g.cal,0)/withOee.length : null;
-  // OEE por unidades = promedio simple de OEE por máquina
+  // OEE promedio simple por máquina
   const oeePondUnid = withOee.length ? withOee.reduce((s,g)=>s+g.oee,0)/withOee.length : null;
   // OEE por tiempo = ponderado por tiempo real trabajado (tReal)
   const sumTReal = withOee.reduce((s,g)=>s+(g.tReal||0),0);
@@ -4548,13 +4560,21 @@ function renderReporteCompacto() {
           </table>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
-          <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Unidades</div>
-            <div style="font-size:2.6rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
+          <div style="flex:1.2;min-width:220px;background:#EFF6FF;border-radius:10px;padding:14px;text-align:center;border:2px solid #3B82F6">
+            <div style="font-size:.75rem;color:#1D4ED8;text-transform:uppercase;letter-spacing:.06em;font-weight:700">OEE Global del Día</div>
+            <div style="font-size:.68rem;color:#3B82F6;margin-bottom:4px">D: ${pc(dispGlobalDia)} · R: ${pc(rendGlobalDia)} · C: ${pc(calGlobalDia)}</div>
+            <div style="font-size:2.8rem;font-weight:900;color:${oeeGlobalDia==null?'#6B7280':oeeGlobalDia>=70?'#059669':oeeGlobalDia>=50?'#D97706':'#DC2626'}">${pc(oeeGlobalDia)}</div>
+            <div style="font-size:.65rem;color:#6B7280;margin-top:4px">Mismo método que Resumen y OEE</div>
           </div>
-          <div style="flex:1;min-width:200px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
-            <div style="font-size:.88rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">OEE Ponderado por Tiempo</div>
-            <div style="font-size:2.6rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondTiempo)}</div>
+          <div style="flex:1;min-width:180px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
+            <div style="font-size:.75rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Prom. por Máquina</div>
+            <div style="font-size:.65rem;color:#9CA3AF;margin-bottom:4px">D: ${pc(promDisp)} · R: ${pc(promRend)} · C: ${pc(promCal)}</div>
+            <div style="font-size:2.3rem;font-weight:900;color:${oeePondUnid==null?'#6B7280':oeePondUnid>=70?'#059669':oeePondUnid>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondUnid)}</div>
+          </div>
+          <div style="flex:1;min-width:180px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
+            <div style="font-size:.75rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Pond. por Tiempo</div>
+            <div style="font-size:.65rem;color:#9CA3AF;margin-bottom:4px">Ponderado por t.real×máq</div>
+            <div style="font-size:2.3rem;font-weight:900;color:${oeePondTiempo==null?'#6B7280':oeePondTiempo>=70?'#059669':oeePondTiempo>=50?'#D97706':'#DC2626'};margin-top:4px">${pc(oeePondTiempo)}</div>
           </div>
         </div>
       </div>
