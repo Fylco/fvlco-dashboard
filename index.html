@@ -147,7 +147,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     </div>
     <div class="nav-group-items collapsed" id="group-ctrl-planta" style="max-height:1200px">
       <div class="nav-item active" onclick="showSection('resumen')" data-section="resumen" data-color="#6366F1">
-        <span class="nav-icon"><i class="fa-solid fa-gauge-high"></i></span> Resumen General
+        <span class="nav-icon"><i class="fa-solid fa-file-contract"></i></span> Informe de Cierre
       </div>
       <div class="nav-item" onclick="showSection('oee')" data-section="oee" data-color="#10B981">
         <span class="nav-icon"><i class="fa-solid fa-circle-nodes"></i></span> OEE
@@ -270,14 +270,28 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
     <!-- ======================================= RESUMEN == -->
     <div class="section active" id="sec-resumen">
+      <style>
+        #sec-resumen { background:#F8FAFC; }
+        #sec-resumen .kpi-card { background:#FFFFFF; border:1px solid #E5E7EB; }
+        #sec-resumen .kpi-card div[style*="9CA3AF"] { color:#6B7280 !important; }
+        #sec-resumen .chart-card { background:#FFFFFF; border:1px solid #E5E7EB; }
+        #sec-resumen .section-title { color:#374151; font-size:.8rem; font-weight:700; }
+        #sec-resumen .section-title::after { background:#D1D5DB; }
+      </style>
+      <div style="margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #E5E7EB">
+        <div style="font-size:1.45rem;font-weight:800;color:#111827"><i class="fa-solid fa-file-contract" style="color:#6366F1;margin-right:8px"></i>Informe de Cierre de Mes Global</div>
+        <div style="font-size:.9rem;color:#6B7280;margin-top:3px">Resumen ejecutivo · Conectado al filtro global de mes y turno</div>
+      </div>
       <div class="section-title">Indicadores Clave</div>
-      <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px"></div>
+      <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
+      <div id="resumen-alertas" style="margin-bottom:20px"></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:18px">
         <div class="chart-card"><div class="section-title">OEE por Máquina</div><div style="height:220px"><canvas id="r-oee-maq"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Plan vs Real Mensual</div><div style="height:220px"><canvas id="r-plan-mes"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Top No Conformes (Causa)</div><div style="height:220px"><canvas id="r-nc-causa"></canvas></div></div>
         <div class="chart-card"><div class="section-title">OTIF por Mes</div><div style="height:220px"><canvas id="r-otif-mes"></canvas></div></div>
       </div>
+      <div id="resumen-planref"></div>
     </div>
 
     <!-- ======================================= OEE == -->
@@ -2170,7 +2184,7 @@ function kpiCard(label, val, color, sub='', icon='') {
   </div>`;
 }
 
-// ── RESUMEN
+// ── RESUMEN / INFORME DE CIERRE
 function renderResumen() {
   const d    = filterProd();
   const vnts = filterVentas();
@@ -2181,17 +2195,102 @@ function renderResumen() {
   const cal  = calcCalidad(d);
   const otif = calcOTIF(vnts);
   const accDias = getAccDias();
-  const mesLabel = getVal('g-mes') ? ` (${cap(getVal('g-mes'))})` : '';
+  const mesSel  = getVal('g-mes');
+  const mesLabel = mesSel ? ` — ${cap(mesSel)}` : '';
 
   document.getElementById('resumen-kpis').innerHTML =
-    kpiCard('OEE Final', pct(oee), oee>=85?'#10B981':oee>=65?'#F59E0B':'#EF4444','','fa-solid fa-circle-nodes') +
-    kpiCard('Rendimiento', pct(rend),'#8B5CF6','','fa-solid fa-gauge-high') +
-    kpiCard('Disponibilidad', pct(disp),'#06B6D4','','fa-solid fa-power-off') +
-    kpiCard('Calidad', pct(cal),'#10B981','','fa-solid fa-star') +
+    kpiCard('OEE Final', pct(oee), oee>=85?'#10B981':oee>=65?'#F59E0B':'#EF4444','Meta ≥ 85%','fa-solid fa-circle-nodes') +
+    kpiCard('Rendimiento', pct(rend),'#8B5CF6','Meta ≥ 85%','fa-solid fa-gauge-high') +
+    kpiCard('Disponibilidad', pct(disp),'#06B6D4','Meta ≥ 90%','fa-solid fa-power-off') +
+    kpiCard('Calidad', pct(cal),'#10B981','Meta ≥ 99%','fa-solid fa-star') +
     kpiCard('OTIF', pct(otif),'#3B82F6','Entregas a tiempo','fa-solid fa-truck-fast') +
-    kpiCard('Días sin Accidente', accDias!==null?accDias:'—','#F59E0B','','fa-solid fa-helmet-safety') +
+    kpiCard('Días sin Accidente', accDias!==null?accDias:'—','#F59E0B','Seguridad laboral','fa-solid fa-helmet-safety') +
     kpiCard('Unidades Producidas', fmt(sum(d,'_cant')),'#A78BFA',`${d.length} registros${mesLabel}`,'fa-solid fa-industry') +
-    kpiCard('Tiempo Paro', fmt(sum(d,'_paro'))+' min','#EF4444',`${(sum(d,'_paro')/60).toFixed(0)} horas`,'fa-solid fa-clock');
+    kpiCard('Tiempo Paro', fmt(sum(d,'_paro'))+' min','#EF4444',`${(sum(d,'_paro')/60).toFixed(0)} horas perdidas`,'fa-solid fa-clock');
+
+  // ── Semáforo Plan vs Real + Clientes incumplidos ────────────────────────
+  const meses = mesSel ? [mesSel] : MESES_CAP;
+  const normRef = s => String(s||'').trim().toUpperCase().replace(/\s+/g,'');
+  const _rk = row => (row['REFERENCIA / PRODUCTO'] || row[''] || Object.values(row)[0] || '').toString().trim();
+
+  const planRows = [];
+  for (const row of DATA.planRef) {
+    const ref = _rk(row);
+    if (ref.toUpperCase()==='TOTAL') break;
+    if (!ref) continue;
+    planRows.push(row);
+  }
+  const planMap = {};
+  planRows.forEach(row => {
+    const ref = _rk(row);
+    const plan = meses.reduce((s,m)=>s+(pNum(row[m])||0),0);
+    if (plan>0) planMap[normRef(ref)] = {ref, plan};
+  });
+  const realMap = {};
+  d.forEach(r => {
+    const k = normRef(r._prod);
+    if (!k) return;
+    if (!realMap[k]) realMap[k] = {ref:r._prod, real:0};
+    realMap[k].real += r._cant;
+  });
+  const allKeys = new Set([...Object.keys(planMap), ...Object.keys(realMap)]);
+  const refs = [...allKeys].map(k=>({
+    ref:(planMap[k]||realMap[k]).ref,
+    plan:(planMap[k]||{plan:0}).plan,
+    real:(realMap[k]||{real:0}).real
+  })).filter(x=>x.plan>0||x.real>0).sort((a,b)=>b.plan-a.plan);
+
+  const refsCumpl = refs.filter(x=>x.plan>0).map(x=>({...x, p:x.real/x.plan*100}));
+  const refsOk   = refsCumpl.filter(x=>x.p>=95).length;
+  const refsRisk = refsCumpl.filter(x=>x.p>=80&&x.p<95).length;
+  const refsFail = refsCumpl.filter(x=>x.p<80).length;
+  const brechaTotal = refs.reduce((s,x)=>s+Math.max(0,x.plan-x.real),0);
+
+  // Clientes con pedidos tardíos
+  const byCliente = {};
+  vnts.forEach(r => {
+    const cli = (r['CLIENTE']||'').trim();
+    if (!cli) return;
+    if (!byCliente[cli]) byCliente[cli] = {total:0, late:0};
+    if (r['FECHA SOLICITADA']?.trim()) {
+      byCliente[cli].total++;
+      const lt = pNum(r['LEAD TIME PEDIDOS ']);
+      if (lt!==null && lt>0) byCliente[cli].late++;
+    }
+  });
+  const cliConDatos = Object.values(byCliente).filter(v=>v.total>0);
+  const clientesLate = cliConDatos.filter(v=>v.late>0).length;
+  const totalCli = cliConDatos.length;
+
+  const alertEl = document.getElementById('resumen-alertas');
+  if (alertEl) alertEl.innerHTML = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px;background:#F0FDF4;border:1px solid #86EFAC;border-left:4px solid #16A34A;border-radius:8px;padding:12px 16px">
+        <div style="font-size:.72rem;color:#15803D;text-transform:uppercase;font-weight:700;margin-bottom:4px">✅ Refs Cumplidas</div>
+        <div style="font-size:2rem;font-weight:800;color:#16A34A;line-height:1">${refsOk}</div>
+        <div style="font-size:.75rem;color:#15803D;margin-top:2px">≥ 95% del plan</div>
+      </div>
+      <div style="flex:1;min-width:160px;background:#FFFBEB;border:1px solid #FCD34D;border-left:4px solid #D97706;border-radius:8px;padding:12px 16px">
+        <div style="font-size:.72rem;color:#92400E;text-transform:uppercase;font-weight:700;margin-bottom:4px">⚠️ En Riesgo</div>
+        <div style="font-size:2rem;font-weight:800;color:#D97706;line-height:1">${refsRisk}</div>
+        <div style="font-size:.75rem;color:#92400E;margin-top:2px">80–94% del plan</div>
+      </div>
+      <div style="flex:1;min-width:160px;background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:8px;padding:12px 16px">
+        <div style="font-size:.72rem;color:#991B1B;text-transform:uppercase;font-weight:700;margin-bottom:4px">❌ Incumplidas</div>
+        <div style="font-size:2rem;font-weight:800;color:#DC2626;line-height:1">${refsFail}</div>
+        <div style="font-size:.75rem;color:#991B1B;margin-top:2px">< 80% del plan</div>
+      </div>
+      <div style="flex:1;min-width:160px;background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:8px;padding:12px 16px">
+        <div style="font-size:.72rem;color:#991B1B;text-transform:uppercase;font-weight:700;margin-bottom:4px">📦 Brecha Total</div>
+        <div style="font-size:2rem;font-weight:800;color:#DC2626;line-height:1">${fmt(brechaTotal)}</div>
+        <div style="font-size:.75rem;color:#991B1B;margin-top:2px">Unidades pendientes</div>
+      </div>
+      ${totalCli>0?`<div style="flex:1;min-width:160px;background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:8px;padding:12px 16px">
+        <div style="font-size:.72rem;color:#991B1B;text-transform:uppercase;font-weight:700;margin-bottom:4px">🚚 Clientes c/ Retraso</div>
+        <div style="font-size:2rem;font-weight:800;color:#DC2626;line-height:1">${clientesLate}</div>
+        <div style="font-size:.75rem;color:#991B1B;margin-top:2px">de ${totalCli} clientes${mesLabel}</div>
+      </div>`:''}
+    </div>`;
 
   // Mini chart: OEE por máquina
   const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
@@ -2205,18 +2304,56 @@ function renderResumen() {
     {label:'Real', data:planMes.map(x=>x.real), backgroundColor:'#06B6D444', borderColor:'#06B6D4', borderWidth:2}
   ]);
 
-  // Mini chart: NC por causa (filtrado)
+  // Mini chart: NC por causa
   const ncCausa = {};
   nc.forEach(r=>{ const k=r['CAUSA']||'Sin dato'; const v=pNum(r['CANTIDAD NC'])||0; if(v>0) ncCausa[k]=(ncCausa[k]||0)+v; });
   const topNC = Object.entries(ncCausa).sort((a,b)=>b[1]-a[1]).slice(0,6);
   makeChart('r-nc-causa','doughnut', topNC.map(x=>x[0].substring(0,25)),
     [{data:topNC.map(x=>x[1]), backgroundColor:PAL, borderWidth:0}]);
 
-  // Mini chart: OTIF mensual (filtrado)
+  // Mini chart: OTIF mensual
   const otifMes = calcOTIFMensual(vnts);
   makeChart('r-otif-mes','line', otifMes.map(x=>cap(x.mes)),
     [{label:'OTIF %', data:otifMes.map(x=>x.otif), borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.4, fill:true, pointRadius:3}]);
 
+  // ── Tabla compacta Plan vs Real Referencias ──────────────────────────────
+  const planrefEl = document.getElementById('resumen-planref');
+  if (planrefEl) {
+    const tblRows = refs.map(x => {
+      const p = x.plan>0 ? x.real/x.plan*100 : null;
+      const bg = p===null?'#F9FAFB':p>=95?'#F0FDF4':p>=80?'#FFFBEB':'#FEF2F2';
+      const fc = p===null?'#6B7280':p>=95?'#16A34A':p>=80?'#D97706':'#DC2626';
+      const ic = p===null?'—':p>=95?'✅':p>=80?'⚠️':'❌';
+      const brecha = x.plan>0&&x.real<x.plan ? `<span style="color:#DC2626">-${fmt(x.plan-x.real)}</span>` :
+                     x.real>x.plan ? `<span style="color:#16A34A">+${fmt(x.real-x.plan)}</span>` : '—';
+      return `<tr style="background:${bg};border-bottom:1px solid #E5E7EB">
+        <td style="padding:7px 12px;font-size:.88rem;font-weight:600;color:#111827;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ic} ${x.ref}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:.88rem;color:#374151">${fmt(x.plan)}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:.88rem;color:#374151">${fmt(x.real)}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:.95rem;font-weight:800;color:${fc}">${p!==null?p.toFixed(1)+'%':'—'}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:.85rem">${brecha}</td>
+      </tr>`;
+    }).join('');
+    planrefEl.innerHTML = `
+      <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;margin-top:24px">
+        <div style="background:#F3F4F6;padding:10px 16px;border-bottom:2px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div style="font-size:1rem;font-weight:700;color:#111827"><i class="fa-solid fa-boxes-stacked" style="color:#8B5CF6;margin-right:6px"></i>Plan vs Real por Referencia${mesLabel}</div>
+          <div style="font-size:.78rem;color:#6B7280;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:6px;padding:3px 10px">${refs.length} referencias · filtro global activo</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:#F9FAFB">
+              <th style="padding:8px 12px;text-align:left;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Referencia / Producto</th>
+              <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Planeado</th>
+              <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Real</th>
+              <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">% Cumpl.</th>
+              <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Brecha</th>
+            </tr></thead>
+            <tbody>${tblRows||'<tr><td colspan="5" style="text-align:center;padding:24px;color:#9CA3AF;font-size:.9rem">Sin datos de plan para el filtro seleccionado</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
 }
 
 // ── OEE
@@ -2322,7 +2459,7 @@ function renderOEE() {
 function calcPlanMensual() {
   const mesMap = {};
   DATA.planRef.forEach(row=>{
-    const ref = row['REFERENCIA / PRODUCTO'];
+    const ref = (row['REFERENCIA / PRODUCTO'] || row[''] || Object.values(row)[0] || '').toString();
     if (!ref || ref.trim()==='' || ref.trim().toUpperCase()==='TOTAL') return;
     MESES_CAP.forEach(m=>{
       const v = pNum(row[m]);
@@ -2365,10 +2502,13 @@ function renderPlanRef() {
   // Elimina TODOS los espacios para comparar: "38 MM" == "38MM", "CON LINER" == "CONLINER"
   const normRef = s => String(s||'').trim().toUpperCase().replace(/\s+/g,'');
 
+  // Helper: primera columna del plan (el sheet tiene header vacío en col 0)
+  const _rk = row => (row['REFERENCIA / PRODUCTO'] || row[''] || Object.values(row)[0] || '').toString().trim();
+
   // Solo leer hasta la fila TOTAL — después hay secciones de cavidades/costos con mismos nombres
   const planRows = [];
   for (const row of DATA.planRef) {
-    const ref = (row['REFERENCIA / PRODUCTO']||'').trim();
+    const ref = _rk(row);
     if (ref.toUpperCase()==='TOTAL') break;
     if (!ref) continue;
     planRows.push(row);
@@ -2377,7 +2517,7 @@ function renderPlanRef() {
   // Mapa plan por nombre normalizado
   const planMap = {};  // normRef → {ref, plan}
   planRows.forEach(row => {
-    const ref  = row['REFERENCIA / PRODUCTO'].trim();
+    const ref  = _rk(row);
     const plan = meses.reduce((s,m)=>s+(pNum(row[m])||0),0);
     planMap[normRef(ref)] = {ref, plan};
   });
