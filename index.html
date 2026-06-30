@@ -1450,17 +1450,18 @@ function loadCostosFabFromSheet() {
     }
     if (!ref) break; // fila vacía = fin de sección
     if (rn.includes('utilizacion') || rn.includes('utiliz') || rn.includes('maquina') || rn.includes('tarifa')) break;
-    // Buscar primer valor numérico: primero en columnas NO-mes, luego en mes
+    // Buscar primer valor numérico > 0: primero en columnas NO-mes, luego en mes
+    // No se aplica umbral mínimo — costos pueden ser pequeños (ej: 12 COP/unidad)
     let costoUnit = null;
     for (const [k, v] of Object.entries(row)) {
       if (SKIP_COLS.has(k)) continue;
       const n = parseCOP(v);
-      if (n && n > 100) { costoUnit = n; break; } // > 100 para evitar cavidades/ciclos
+      if (n && n > 0) { costoUnit = n; break; }
     }
     if (!costoUnit) {
       for (const m of MESES_CAP) {
         const n = parseCOP(row[m]);
-        if (n && n > 100) { costoUnit = n; break; }
+        if (n && n > 0) { costoUnit = n; break; }
       }
     }
     if (costoUnit && ref) COSTOS_FAB_MAP[_normK(ref)] = costoUnit;
@@ -1488,7 +1489,7 @@ function loadCostosFabFromSheet() {
         if (rn.includes('referencia') || rn.includes('mes') || rn.includes('costo') || rn.includes('valor')) continue;
         for (const col of costCols) {
           const n = parseCOP(row[col]);
-          if (n && n > 100) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
+          if (n && n > 0) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
         }
       }
     }
@@ -1504,7 +1505,7 @@ function loadCostosFabFromSheet() {
       for (const [k, v] of Object.entries(row)) {
         if (SKIP_COLS.has(k)) continue;
         const n = parseCOP(v);
-        if (n && n > 500) { COSTOS_FAB_MAP[_normK(ref)] = n; break; } // umbral 500 COP mín.
+        if (n && n > 0) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
       }
     }
   }
