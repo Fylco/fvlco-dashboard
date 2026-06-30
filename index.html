@@ -297,10 +297,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px"></div>
       <div id="resumen-alertas" style="margin-bottom:20px"></div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px">
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">OEE por Máquina</div><div style="height:250px;position:relative"><canvas id="r-oee-maq"></canvas></div></div>
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">Plan vs Real Mensual</div><div style="height:250px;position:relative"><canvas id="r-plan-mes"></canvas></div></div>
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">Top No Conformes (Causa)</div><div style="height:250px;position:relative"><canvas id="r-nc-causa"></canvas></div></div>
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">OTIF por Mes</div><div style="height:250px;position:relative"><canvas id="r-otif-mes"></canvas></div></div>
+        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">OEE por Máquina</div><div style="height:270px;position:relative"><canvas id="r-oee-maq"></canvas></div></div>
+        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">Plan vs Real Mensual</div><div style="height:270px;position:relative"><canvas id="r-plan-mes"></canvas></div></div>
+        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">Top No Conformes (Causa)</div><div style="height:270px;position:relative"><canvas id="r-nc-causa"></canvas></div></div>
+        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">OTIF por Mes</div><div style="height:270px;position:relative"><canvas id="r-otif-mes"></canvas></div></div>
       </div>
       <div class="chart-card" style="margin-top:18px">
         <div class="section-title">Pareto de Tiempos de Paro por Máquina — Causas que acumulan el 80%</div>
@@ -2397,9 +2397,9 @@ function renderResumen() {
 
   // Opciones de tema claro para todos los gráficos del informe
   const LO = {
-    xScale: {ticks:{color:'#374151',font:{size:12}}, grid:{color:'#E5E7EB'}},
-    yScale: {ticks:{color:'#374151',font:{size:12}}, grid:{color:'#E5E7EB'}},
-    extra:  {plugins:{legend:{labels:{color:'#374151',boxWidth:12,font:{size:13,family:'Tahoma'}}},tooltip:{mode:'index',intersect:false}}}
+    xScale: {ticks:{color:'#374151',font:{size:14}}, grid:{color:'#E5E7EB'}},
+    yScale: {ticks:{color:'#374151',font:{size:14}}, grid:{color:'#E5E7EB'}},
+    extra:  {plugins:{legend:{labels:{color:'#374151',boxWidth:13,font:{size:15,family:'Tahoma'}}},tooltip:{mode:'index',intersect:false}}}
   };
 
   // Mini chart: OEE por máquina
@@ -2410,9 +2410,9 @@ function renderResumen() {
     {...LO,
       yScale:{...LO.yScale, min:0, max:110, ticks:{...LO.yScale.ticks, callback:v=>v<=100?v+'%':''}},
       extra:{...LO.extra, plugins:{...LO.extra.plugins,
-        datalabels:{display:true, anchor:'end', align:'top',
+        datalabels:{display:true, anchor:'end', align:'top', clip:false,
           formatter:v=>v!=null?v.toFixed(1)+'%':'',
-          color:'#111827', font:{size:13, weight:'bold'}}
+          color:'#111827', font:{size:15, weight:'bold'}}
       }}
     });
 
@@ -2430,7 +2430,7 @@ function renderResumen() {
   makeChart('r-nc-causa','doughnut', topNC.map(x=>x[0].substring(0,22)),
     [{data:topNC.map(x=>x[1]), backgroundColor:PAL, borderWidth:2, borderColor:'#FFFFFF'}],
     {extra:{plugins:{
-      legend:{position:'bottom',labels:{color:'#374151',boxWidth:10,font:{size:10,family:'Tahoma'},padding:6}},
+      legend:{position:'bottom',labels:{color:'#374151',boxWidth:11,font:{size:12,family:'Tahoma'},padding:6}},
       tooltip:{mode:'index',intersect:false}
     },cutout:'62%'}});
 
@@ -2482,21 +2482,21 @@ function renderResumen() {
         [{label:'min', data: p80.map(x => x.min), backgroundColor: color+'CC', borderRadius:3}],
         {
           indexAxis: 'y',
-          xScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
-          yScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}},
+          xScale:{ticks:{color:'#374151',font:{size:12}},grid:{color:'#E5E7EB'}},
+          yScale:{ticks:{color:'#374151',font:{size:12}},grid:{color:'#F3F4F6'}},
           extra:{
             plugins:{
               legend:{display:false},
               tooltip:{callbacks:{label:c=>`${c.raw} min`}},
-              datalabels:{display:true, anchor:'end', align:'right',
+              datalabels:{display:true, anchor:'end', align:'right', clip:false,
                 formatter:v=>v!=null?Math.round(v)+' min':'',
-                color:'#374151', font:{size:11, weight:'bold'}}
+                color:'#374151', font:{size:13, weight:'bold'}}
             },
             scales:{
-              x:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
-              y:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}}
+              x:{ticks:{color:'#374151',font:{size:12}},grid:{color:'#E5E7EB'}},
+              y:{ticks:{color:'#374151',font:{size:12}},grid:{color:'#F3F4F6'}}
             },
-            layout:{padding:{right:55}}
+            layout:{padding:{right:70}}
           }
         }
       );
@@ -2731,26 +2731,67 @@ function renderResumen() {
   window._informeSnap = { oee, rend, disp, cal, refsOk, refsFail, clientesLate, totalCli, mesLabel };
 }
 
-// ── WhatsApp share para Informe de Cierre ──────────────────────────────────
-function compartirInformeWA() {
-  const s = window._informeSnap || {};
-  const pc = v => v!=null ? v.toFixed(1)+'%' : '—';
-  const mes = (document.getElementById('g-filter-mes')?.value||'').trim();
-  const periodoLabel = mes ? `Período: ${mes.charAt(0).toUpperCase()+mes.slice(1)}` : 'Período: (mes actual)';
-  let txt = `📊 *Informe de Cierre de Mes Global — FVLco*\n`;
-  txt += `${periodoLabel}\n\n`;
-  txt += `*OEE Global:* ${pc(s.oee)}\n`;
-  txt += `*Disponibilidad:* ${pc(s.disp)}\n`;
-  txt += `*Rendimiento:* ${pc(s.rend)}\n`;
-  txt += `*Calidad:* ${pc(s.cal)}\n\n`;
-  if (s.totalCli!=null && s.totalCli>0) {
-    txt += `*Cumplimiento pedidos:*\n`;
-    txt += `  ✅ Cumplidas: ${s.refsOk||0} refs\n`;
-    txt += `  ❌ Incumplidas: ${s.refsFail||0} refs\n`;
-    txt += `  🚚 Clientes con retraso: ${s.clientesLate||0} de ${s.totalCli}\n\n`;
+// ── WhatsApp share para Informe de Cierre — genera PDF y comparte ──────────
+async function compartirInformeWA() {
+  const btn = document.querySelector('[onclick="compartirInformeWA()"]');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando PDF...'; }
+  try {
+    const el = document.getElementById('sec-resumen');
+    if (!el) throw new Error('No se encontró la sección del informe');
+
+    // Captura la sección con fondo blanco para el PDF
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#F9FAFB',
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      width: el.scrollWidth,
+      height: el.scrollHeight,
+      windowWidth: el.scrollWidth
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const { jsPDF } = window.jspdf;
+    const mmPerPx = 25.4 / 96;
+    const imgWmm = canvas.width / 2 * mmPerPx;
+    const imgHmm = canvas.height / 2 * mmPerPx;
+    const pageW = 210;
+    const scale = pageW / imgWmm;
+    const pageH = Math.min(imgHmm * scale, 800);
+
+    const pdf = new jsPDF({ orientation: pageH > pageW ? 'portrait' : 'landscape', unit:'mm', format:[pageW, pageH] });
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH);
+
+    const mes = (document.getElementById('g-filter-mes')?.value||'').trim();
+    const fileName = `Informe-FVLco${mes?'-'+mes:''}.pdf`;
+    const pdfBlob = pdf.output('blob');
+    const pdfFile = new File([pdfBlob], fileName, { type:'application/pdf' });
+
+    // Intenta Web Share API (funciona en móvil y abre WhatsApp directamente)
+    if (navigator.canShare && navigator.canShare({ files:[pdfFile] })) {
+      await navigator.share({ files:[pdfFile], title:'Informe FVLco', text:'Informe de producción FVLco' });
+    } else {
+      // Fallback PC: descarga el PDF y abre WhatsApp Web
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName; a.click();
+      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        const s = window._informeSnap || {};
+        const pc = v => v!=null ? v.toFixed(1)+'%' : '—';
+        const txt = `📊 *Informe FVLco${mes?' - '+mes:''}*\nOEE: ${pc(s.oee)} | D: ${pc(s.disp)} | R: ${pc(s.rend)} | C: ${pc(s.cal)}\n\n📎 PDF descargado — adjúntalo en este chat.`;
+        window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
+      }, 800);
+    }
+  } catch(err) {
+    console.error('Error compartir PDF:', err);
+    alert('Error al generar el PDF: ' + (err.message||err));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
   }
-  txt += `🔗 Ver informe completo:\n${window.location.href}`;
-  window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
 }
 
 // ── OEE
