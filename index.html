@@ -3747,13 +3747,16 @@ function renderReporteCompacto() {
     if (t) g.turnos.add(t);
     const dia = String(r._diaTurno||'');
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia] ||= new Set()).add(t); }
-    if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0 };
+    if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0, razones:[] };
     g.porTurno[t].prod += pN(r._cant);
     g.porTurno[t].paro += pN(r._paro);
-    // Razones de paro: solo de filas con paro registrado, sin duplicar
+    // Razones de paro: por turno y a nivel máquina, sin duplicar
     if (pN(r._paro) > 0) {
       const rz = String(r['RAZON PARO'] || r['RAZÓN PARO'] || '').trim();
-      if (rz && !g.razones.includes(rz)) g.razones.push(rz);
+      if (rz) {
+        if (!g.porTurno[t].razones.includes(rz)) g.porTurno[t].razones.push(rz);
+        if (!g.razones.includes(rz)) g.razones.push(rz);
+      }
       if (esProgramado(rz)) g.paroProg += pN(r._paro);
       else g.paroNoProg += pN(r._paro);
     }
@@ -3903,7 +3906,7 @@ function renderReporteCompacto() {
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
     const turnoDet = `<table style="width:100%;border-collapse:collapse;font-size:.92rem">`
       + Object.keys(g.porTurno).sort()
-      .map(t=>`<tr style="border:1px solid #E5E7EB"><td style="padding:2px 6px;white-space:nowrap">Turno ${turnoNum(t)}</td><td style="padding:2px 6px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong></td><td style="padding:2px 6px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB;color:#DC2626;min-width:70px">${g.porTurno[t].paro>0?`paro ${ri(g.porTurno[t].paro)}m`:''}</td></tr>`)
+      .map(t=>`<tr style="border:1px solid #E5E7EB"><td style="padding:2px 6px;white-space:nowrap">Turno ${turnoNum(t)}</td><td style="padding:2px 6px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong></td><td style="padding:2px 8px;border-left:1px solid #E5E7EB;color:#DC2626;min-width:90px">${g.porTurno[t].paro>0?`<span style="white-space:nowrap;font-weight:600">paro ${ri(g.porTurno[t].paro)}m</span>${g.porTurno[t].razones.length?`<div style="font-size:.78rem;color:#B91C1C;margin-top:1px">${g.porTurno[t].razones.join(', ')}</div>`:''}`:''}</td></tr>`)
       .join('')
       + `<tr style="border:1px solid #D1D5DB;background:#F3F4F6"><td colspan="2" style="padding:2px 6px;font-weight:700;color:#111827">Total</td><td style="padding:2px 6px;text-align:right;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(g.undProd)}</td></tr></table>`;
     return `<tr>
