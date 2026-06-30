@@ -301,7 +301,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
       <div class="chart-card" style="margin-top:18px">
         <div class="section-title">Pareto de Tiempos de Paro — Causas que acumulan el 80%</div>
-        <div style="height:300px"><canvas id="r-pareto-paro"></canvas></div>
+        <div style="height:360px"><canvas id="r-pareto-paro"></canvas></div>
       </div>
       <div id="resumen-planref"></div>
       <div id="resumen-und-perdidas" style="margin-top:24px"></div>
@@ -2371,44 +2371,58 @@ function renderResumen() {
     [{label:'OTIF %', data:otifMes.map(x=>x.otif), borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.4, fill:true, pointRadius:4, pointBackgroundColor:'#3B82F6'}],
     LO);
 
-  // Pareto 80-20 de paros no programados
-  const _paretoMap = {};
+  // Pareto 80-20 de paros no programados — apilado por máquina
+  const _maqPal = ['#DC2626','#2563EB','#16A34A','#D97706','#7C3AED','#0891B2','#DB2777','#059669','#EA580C','#4F46E5','#0D9488'];
+  const _allMaqsP = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
+  const _paretoMaqMap = {}; // {reason: {maq: min}}
   d.forEach(r => {
     if (!(r._paro>0)) return;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim()||'Sin especificar';
-    if (!/programado/i.test(rz)) _paretoMap[rz] = (_paretoMap[rz]||0)+(r._paro||0);
+    if (/programado/i.test(rz)) return;
+    const maq = String(r._maq||'?');
+    if (!_paretoMaqMap[rz]) _paretoMaqMap[rz] = {};
+    _paretoMaqMap[rz][maq] = (_paretoMaqMap[rz][maq]||0) + (r._paro||0);
   });
-  const _paretoArr = Object.entries(_paretoMap).sort((a,b)=>b[1]-a[1]);
-  const _parTotal  = _paretoArr.reduce((s,[,v])=>s+v,0);
-  let _pcum=0;
-  const _pareto80 = [];
-  for (const [rz,min] of _paretoArr) {
-    _pcum += min;
-    _pareto80.push({rz, min, cum:_pcum/_parTotal*100});
-    if (_pcum/_parTotal>=0.80) break;
+  const _rzTotales = Object.entries(_paretoMaqMap)
+    .map(([rz, maqData]) => ({rz, total:Object.values(maqData).reduce((s,v)=>s+v,0), maqData}))
+    .sort((a,b)=>b.total-a.total);
+  const _parTotalM = _rzTotales.reduce((s,x)=>s+x.total,0);
+  let _pcumM=0;
+  const _pareto80M = [];
+  for (const x of _rzTotales) {
+    _pcumM += x.total;
+    _pareto80M.push({...x, cum:_pcumM/_parTotalM*100});
+    if (_pcumM/_parTotalM>=0.80) break;
   }
-  if (_pareto80.length>0) {
+  if (_pareto80M.length>0) {
+    const _maqDatasets = _allMaqsP.map((maq,i) => ({
+      label: `Maq ${maq}`,
+      data:  _pareto80M.map(x=>x.maqData[maq]||0),
+      backgroundColor: _maqPal[i%_maqPal.length]+'CC',
+      borderRadius: 2,
+    }));
     makeChart('r-pareto-paro','bar',
-      _pareto80.map(x=>x.rz.length>35?x.rz.substring(0,33)+'…':x.rz),
-      [{
-        label:'Minutos de paro',
-        data: _pareto80.map(x=>x.min),
-        backgroundColor: _pareto80.map(x=>x.cum<=40?'#DC2626':x.cum<=70?'#F59E0B':'#6366F1'),
-        borderRadius:4
-      }],
+      _pareto80M.map(x=>x.rz.length>38?x.rz.substring(0,36)+'…':x.rz),
+      _maqDatasets,
       {
         indexAxis:'y',
         xScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
         yScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}},
-        extra:{plugins:{
-          legend:{labels:{color:'#374151',font:{size:12,family:'Tahoma'}}},
-          tooltip:{callbacks:{label:c=>`${c.raw} min · ${(_pareto80[c.dataIndex]?.cum||0).toFixed(1)}% acumulado`}}
-        }}
+        extra:{
+          plugins:{
+            legend:{labels:{color:'#374151',font:{size:11,family:'Tahoma'},boxWidth:12}},
+            tooltip:{callbacks:{label:c=>`Maq ${c.dataset.label.replace('Maq ','')}: ${c.raw} min`}}
+          },
+          scales:{
+            x:{stacked:true,ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
+            y:{stacked:true,ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}}
+          }
+        }
       }
     );
   } else {
     const pc = document.getElementById('r-pareto-paro');
-    if (pc && pc.parentElement) pc.parentElement.innerHTML = '<div style="color:#6B7280;font-size:.88rem;padding:20px;text-align:center">Sin paros no programados en el período seleccionado</div>';
+    if (pc && pc.parentElement) pc.parentElement.innerHTML = '<div style="color:#6B7280;font-size:.92rem;padding:20px;text-align:center">Sin paros no programados en el período seleccionado</div>';
   }
 
   // ── Tabla compacta Plan vs Real Referencias ──────────────────────────────
@@ -4630,260 +4644,269 @@ function exportPDF() {
     const diasLabel = SEL_DIAS.size ? [...SEL_DIAS].sort((a,b)=>a-b).join(', ') : 'Todos los días';
     const fechaGen  = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 
-    // helpers
-    const newPage = (title) => {
-      pdf.addPage();
-      pdf.setFillColor(31,41,55); pdf.rect(0,0,pageW,14,'F');
-      pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(238,238,238);
-      pdf.text(title, ml, 9.5);
-      pdf.setFont('helvetica','normal'); pdf.setFontSize(7); pdf.setTextColor(107,114,128);
-      pdf.text(`${mesLabel} · Días: ${diasLabel} · ${fechaGen}`, pageW-mr, 9.5, {align:'right'});
-      y = 20;
+    // ── helpers fondo BLANCO ──────────────────────────────────────────────
+    const header = (title) => {
+      // banda superior azul marino
+      pdf.setFillColor(30,64,175); pdf.rect(0,0,pageW,16,'F');
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(10); pdf.setTextColor(255,255,255);
+      pdf.text(title, ml, 11);
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(7); pdf.setTextColor(219,234,254);
+      pdf.text(`${mesLabel} · ${fechaGen}`, pageW-mr, 11, {align:'right'});
+      // línea divisora
+      pdf.setDrawColor(219,234,254); pdf.setLineWidth(0.3);
+      pdf.line(ml,18,pageW-mr,18);
+      y = 24;
     };
+    const addPage = (title) => { pdf.addPage(); header(title); };
     const secTitle = (t) => {
-      if (y > pageH-30) { pdf.addPage(); y=14; }
-      pdf.setFillColor(55,65,81); pdf.rect(ml,y,usableW,7,'F');
-      pdf.setFont('helvetica','bold'); pdf.setFontSize(8); pdf.setTextColor(167,187,220);
-      pdf.text(t, ml+3, y+5); y+=10;
+      if (y > pageH-35) { addPage('Informe de Cierre de Mes Global — FVLco'); }
+      pdf.setFillColor(239,246,255); pdf.rect(ml,y,usableW,7,'F');
+      pdf.setDrawColor(147,197,253); pdf.setLineWidth(0.3);
+      pdf.rect(ml,y,usableW,7,'S');
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(8.5); pdf.setTextColor(30,64,175);
+      pdf.text(t.toUpperCase(), ml+3, y+5); y+=10;
     };
     const kpiRow = (items) => {
       const colW = usableW/items.length;
       items.forEach((kpi,i)=>{
-        const x = ml + i*colW;
-        pdf.setFillColor(17,24,39); pdf.rect(x,y,colW-2,14,'F');
-        pdf.setDrawColor(55,65,81); pdf.rect(x,y,colW-2,14,'S');
-        pdf.setFont('helvetica','normal'); pdf.setFontSize(6); pdf.setTextColor(107,114,128);
-        pdf.text(kpi.label||'', x+3, y+4, {maxWidth:colW-6});
-        pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(238,238,238);
-        pdf.text(String(kpi.value||'—'), x+3, y+11, {maxWidth:colW-6});
+        const x=ml+i*colW;
+        pdf.setFillColor(248,250,252); pdf.rect(x,y,colW-2,16,'F');
+        pdf.setDrawColor(226,232,240); pdf.setLineWidth(0.25); pdf.rect(x,y,colW-2,16,'S');
+        // color bar top
+        const [r2,g2,b2] = kpi.color||[30,64,175];
+        pdf.setFillColor(r2,g2,b2); pdf.rect(x,y,colW-2,1.5,'F');
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(6); pdf.setTextColor(100,116,139);
+        pdf.text(String(kpi.label||''), x+3, y+6, {maxWidth:colW-6});
+        pdf.setFont('helvetica','bold'); pdf.setFontSize(10); pdf.setTextColor(r2,g2,b2);
+        pdf.text(String(kpi.value||'—'), x+3, y+13, {maxWidth:colW-6});
       });
-      y+=17;
+      y+=20;
     };
-    const table = (headers, rows, colWidths) => {
-      if (!rows.length) return;
-      const rowH = 6;
-      // header
-      pdf.setFillColor(55,65,81);
-      let hx = ml;
-      headers.forEach((h,i)=>{ pdf.rect(hx,y,colWidths[i],rowH,'F'); hx+=colWidths[i]; });
-      pdf.setFont('helvetica','bold'); pdf.setFontSize(6.5); pdf.setTextColor(200,210,220);
-      hx = ml;
-      headers.forEach((h,i)=>{ pdf.text(h, hx+2, y+4, {maxWidth:colWidths[i]-3}); hx+=colWidths[i]; });
+    const table = (headers, rows, colWidths, opts={}) => {
+      if (!rows.length) { y+=4; return; }
+      const rowH=6.5;
+      // header row
+      pdf.setFillColor(30,64,175);
+      let hx=ml; headers.forEach((h,i)=>{ pdf.rect(hx,y,colWidths[i],rowH,'F'); hx+=colWidths[i]; });
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(6.5); pdf.setTextColor(255,255,255);
+      hx=ml; headers.forEach((h,i)=>{ pdf.text(h,hx+2,y+4.5,{maxWidth:colWidths[i]-3}); hx+=colWidths[i]; });
       y+=rowH;
-      // rows
       rows.forEach((row,ri)=>{
-        if (y > pageH-15) { pdf.addPage(); y=14; }
-        if(ri%2===0){pdf.setFillColor(24,33,46);}else{pdf.setFillColor(20,28,40);}
-        let rx=ml; colWidths.forEach(w=>{ pdf.rect(rx,y,w,rowH,'F'); rx+=w; });
-        pdf.setFont('helvetica','normal'); pdf.setFontSize(6); pdf.setTextColor(220,220,220);
-        rx=ml;
+        if (y>pageH-18) { addPage('Informe de Cierre de Mes Global — FVLco'); }
+        pdf.setFillColor(ri%2===0?255:248,ri%2===0?255:250,ri%2===0?255:252);
+        hx=ml; colWidths.forEach(w=>{ pdf.rect(hx,y,w,rowH,'F'); hx+=w; });
+        pdf.setDrawColor(226,232,240); pdf.setLineWidth(0.15);
+        hx=ml; colWidths.forEach(w=>{ pdf.rect(hx,y,w,rowH,'S'); hx+=w; });
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(6.5); pdf.setTextColor(30,41,59);
+        hx=ml;
         row.forEach((cell,ci)=>{
-          pdf.text(String(cell??''), rx+2, y+4, {maxWidth:colWidths[ci]-3});
-          rx+=colWidths[ci];
+          const txt = String(cell??'');
+          // color coding cumplimiento
+          if (opts.colorCol===ci) {
+            const n=parseFloat(txt);
+            if (!isNaN(n)) { pdf.setTextColor(n>=95?22:n>=80?180:185, n>=95?163:n>=80?83:28, n>=95?74:n>=80?32:28); }
+          }
+          pdf.text(txt, hx+2, y+4.5, {maxWidth:colWidths[ci]-3});
+          pdf.setTextColor(30,41,59);
+          hx+=colWidths[ci];
         });
         y+=rowH;
       });
-      y+=4;
+      y+=5;
     };
 
-    // ── PORTADA
-    pdf.setFillColor(11,15,25); pdf.rect(0,0,pageW,pageH,'F');
-    pdf.setDrawColor(59,130,246); pdf.setLineWidth(0.8);
-    pdf.line(ml,50,pageW-mr,50); pdf.line(ml,pageH-25,pageW-mr,pageH-25);
-    pdf.setFont('helvetica','bold'); pdf.setFontSize(32); pdf.setTextColor(238,238,238);
-    pdf.text('FVLco', pageW/2, 80, {align:'center'});
-    pdf.setFontSize(13); pdf.setTextColor(156,163,175);
-    pdf.text('Dashboard Operaciones', pageW/2, 92, {align:'center'});
-    pdf.setFontSize(10); pdf.setTextColor(96,165,250);
-    pdf.text(`Período: ${mesLabel}`, pageW/2, 108, {align:'center'});
-    pdf.text(`Días: ${diasLabel}`, pageW/2, 116, {align:'center'});
-    pdf.setFontSize(8); pdf.setTextColor(75,85,99);
-    pdf.text(`Generado: ${fechaGen}`, pageW/2, 130, {align:'center'});
+    // ── PORTADA ───────────────────────────────────────────────────────────
+    pdf.setFillColor(255,255,255); pdf.rect(0,0,pageW,pageH,'F');
+    // banda superior decorativa
+    pdf.setFillColor(30,64,175); pdf.rect(0,0,pageW,55,'F');
+    pdf.setFillColor(37,99,235); pdf.rect(0,45,pageW,25,'F');
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(28); pdf.setTextColor(255,255,255);
+    pdf.text('FVLco', pageW/2, 28, {align:'center'});
+    pdf.setFontSize(12); pdf.setTextColor(219,234,254);
+    pdf.text('Informe de Cierre de Mes Global', pageW/2, 41, {align:'center'});
+    // cuerpo portada
+    pdf.setFillColor(248,250,252); pdf.rect(ml,72,usableW,60,'F');
+    pdf.setDrawColor(147,197,253); pdf.setLineWidth(0.5); pdf.rect(ml,72,usableW,60,'S');
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(11); pdf.setTextColor(30,64,175);
+    pdf.text('Período', pageW/2, 87, {align:'center'});
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(16); pdf.setTextColor(15,23,42);
+    pdf.text(mesLabel, pageW/2, 100, {align:'center'});
+    pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.setTextColor(100,116,139);
+    pdf.text(`Días: ${diasLabel}`, pageW/2, 112, {align:'center'});
+    pdf.text(`Generado: ${fechaGen}`, pageW/2, 122, {align:'center'});
+    // firma footer
+    pdf.setFillColor(30,64,175); pdf.rect(0,pageH-12,pageW,12,'F');
+    pdf.setFont('helvetica','normal'); pdf.setFontSize(7); pdf.setTextColor(219,234,254);
+    pdf.text('FVLco · Dashboard de Producción · Confidencial', pageW/2, pageH-4, {align:'center'});
 
-    // ── RESUMEN GENERAL
-    newPage('Resumen General');
+    // ── PÁGINA 1: KPIs OEE ───────────────────────────────────────────────
+    addPage('Informe de Cierre de Mes Global — FVLco');
     const dProd = filterProd();
+    const oeeVal  = avg(dProd,'_oee');
+    const rendVal = calcRendimiento(dProd);
+    const dispVal = calcDisponibilidad(dProd);
+    const calVal  = calcCalidad(dProd);
     const totalUnid = sum(dProd,'_cant');
-    const totalOrd  = new Set(dProd.map(r=>r._orden)).size;
     const dNC = filterNC();
     const totalNC = dNC.reduce((s,r)=>s+(pNum(r['CANTIDAD NC'])||0),0);
-    const pctNC = totalUnid>0?(totalNC/totalUnid*100):0;
-    const dVentas = filterVentas();
-    const ontime = dVentas.filter(r=>(pNum(r['LEAD TIME PEDIDOS '])||pNum(r['LEAD TIME PEDIDOS'])||0)<=0);
-    const otif = dVentas.length>0?(ontime.length/dVentas.length*100):null;
-    const oeeRows = dProd.filter(r=>r._oee>0&&r._oee<=100);
-    const oeeAvg = oeeRows.length?oeeRows.reduce((s,r)=>s+r._oee,0)/oeeRows.length:null;
+
+    secTitle('Indicadores OEE Globales');
     kpiRow([
-      {label:'Unidades Producidas', value:fmt(totalUnid)},
-      {label:'Órdenes',             value:fmt(totalOrd)},
-      {label:'OEE Promedio',        value:oeeAvg?pct(oeeAvg):'—'},
-      {label:'OTIF',                value:otif!=null?pct(otif):'—'},
+      {label:'OEE Global',          value:oeeVal !=null?pct(oeeVal) :'—', color:[99,102,241]},
+      {label:'Disponibilidad',      value:dispVal!=null?pct(dispVal):'—', color:[245,158,11]},
+      {label:'Rendimiento',         value:rendVal!=null?pct(rendVal):'—', color:[59,130,246]},
+      {label:'Calidad',             value:calVal !=null?pct(calVal) :'—', color:[34,197,94]},
     ]);
     kpiRow([
-      {label:'Total NC',            value:fmt(totalNC)},
-      {label:'% NC / Producción',   value:pct(pctNC)},
-      {label:'Registros NC',        value:fmt(dNC.length)},
-      {label:'Pedidos Ventas',      value:fmt(dVentas.length)},
+      {label:'Unidades Producidas', value:fmt(totalUnid),                    color:[79,70,229]},
+      {label:'Órdenes',             value:fmt(new Set(dProd.map(r=>r._orden)).size), color:[20,184,166]},
+      {label:'Total NC',            value:fmt(totalNC),                      color:[239,68,68]},
+      {label:'% NC / Producción',   value:totalUnid>0?pct(totalNC/totalUnid*100):'—', color:[249,115,22]},
     ]);
 
-    // plan mensual resumen
-    secTitle('Plan vs Real Mensual');
-    const pmData = calcPlanMensual();
-    table(
-      ['Mes','Planeado','Real','Cumplimiento'],
-      pmData.map(x=>[x.mes, fmt(x.plan), fmt(x.real), x.plan>0?pct(x.real/x.plan*100):'—']),
-      [40,50,50,50]
-    );
-
-    // ── OEE
-    newPage('OEE — Eficiencia Global');
     secTitle('OEE por Máquina');
-    const oeeMaqRows = {};
-    dProd.forEach(r=>{
-      const m='Máq '+(r._maq||'?');
-      if(!oeeMaqRows[m]) oeeMaqRows[m]=[];
-      oeeMaqRows[m].push(r);
-    });
+    const maqsP = [...new Set(dProd.map(r=>r._maq).filter(Boolean))].sort();
     table(
-      ['Máquina','OEE Prom.','Rendimiento','Disponibilidad','Unidades'],
-      Object.entries(oeeMaqRows).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,rows])=>{
-        const oeeVal  = avg(rows,'_oee');
-        const rendVal = calcRendimiento(rows);
-        const dispVal = calcDisponibilidad(rows);
-        const cantVal = rows.reduce((s,r)=>s+(r._cant||0),0);
-        return [m, oeeVal?pct(oeeVal):'—', rendVal?pct(rendVal):'—', dispVal?pct(dispVal):'—', fmt(cantVal)];
+      ['Máquina','Unidades','OEE %','Disponib.','Rendim.','Calidad','Paro (min)'],
+      maqsP.map(m => {
+        const s=dProd.filter(r=>r._maq==m);
+        return ['Máq '+m, fmt(sum(s,'_cant')),
+          oeeStr(avg(s,'_oee')), oeeStr(calcDisponibilidad(s)),
+          oeeStr(calcRendimiento(s)), oeeStr(calcCalidad(s)), fmt(sum(s,'_paro'))];
       }),
-      [30,35,35,40,40]
+      [22,28,22,24,22,22,22]
     );
 
-    // ── PLAN REFERENCIAS
-    newPage('Plan vs Real Referencias');
-    secTitle('Cumplimiento por Referencia');
-    const mesSel2 = getVal('pref-f-mes')||getVal('g-mes');
-    const mesesR  = mesSel2?[cap(mesSel2)]:MESES_CAP;
-    const planRows2=[];
-    for(const row of DATA.planRef){
-      const ref=(row['REFERENCIA / PRODUCTO']||'').trim();
-      if(ref.toUpperCase()==='TOTAL') break;
-      if(!ref) continue; planRows2.push(row);
-    }
-    const refsData = planRows2.map(row=>{
-      const ref=row['REFERENCIA / PRODUCTO'].trim();
-      const plan=mesesR.reduce((s,m)=>s+(pNum(row[m])||0),0);
+    // ── PLAN VS REAL ─────────────────────────────────────────────────────
+    secTitle('Plan vs Real — Cumplimiento por Referencia');
+    const mesSel2  = getVal('pref-f-mes')||getVal('g-mes');
+    const mesesR2  = mesSel2 ? [cap(mesSel2)] : MESES_CAP;
+    const _rk2 = row => (row['REFERENCIA / PRODUCTO']||row['']||Object.values(row)[0]||'').toString().trim();
+    const planRows2 = DATA.planRef.filter(row=>{ const r=_rk2(row); return r && r.toUpperCase()!=='TOTAL'; });
+    const refsData2 = planRows2.map(row => {
+      const ref=_rk2(row);
+      const plan=mesesR2.reduce((s,m)=>s+(pNum(row[m])||0),0);
       const real=dProd.filter(r=>r._prod===ref).reduce((s,r)=>s+r._cant,0);
-      return {ref,plan,real};
-    }).filter(x=>x.plan>0||x.real>0).sort((a,b)=>b.plan-a.plan);
-    table(
-      ['Referencia','Planeado','Real','Cumplimiento'],
-      refsData.map(x=>[x.ref.substring(0,35),fmt(x.plan),fmt(x.real),x.plan>0?pct(x.real/x.plan*100):'—']),
-      [75,35,35,35]
-    );
+      const cumpl=plan>0?(real/plan*100):null;
+      return [ref.substring(0,40), fmt(plan), fmt(real), cumpl!=null?cumpl.toFixed(1)+'%':'—'];
+    }).filter((_,i)=>{ const row=planRows2[i]; return (pNum(_rk2(row))||1) && (planRows2[i]); });
+    table(['Referencia / Producto','Planeado','Real','Cumpl. %'],
+      refsData2.filter(x=>x[1]!=='0'||x[2]!=='0'),
+      [84,28,28,28], {colorCol:3});
 
-    // ── NO CONFORMES
-    newPage('No Conformes');
-    const totalNCp = dNC.reduce((s,r)=>s+(pNum(r['CANTIDAD NC'])||0),0);
-    kpiRow([
-      {label:'Total NC',value:fmt(totalNCp)},
-      {label:'Registros',value:fmt(dNC.length)},
-      {label:'% NC / Prod.',value:pct(pctNC)},
-      {label:'Kg NC',value:fmt(dNC.reduce((s,r)=>s+(pNum(r['PESO TOTAL'])||0),0),1)},
-    ]);
-    secTitle('NC por Causa');
-    const causasMap={};
-    dNC.forEach(r=>{const k=r['CAUSA']||'Sin dato';causasMap[k]=(causasMap[k]||0)+(pNum(r['CANTIDAD NC'])||0);});
-    table(
-      ['Causa','Cantidad NC','% del Total'],
-      Object.entries(causasMap).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([c,v])=>[
-        c.substring(0,40), fmt(v), totalNCp>0?pct(v/totalNCp*100):'—'
-      ]),
-      [90,35,35]
-    );
-
-    // ── OTIF
-    newPage('OTIF — Entregas');
-    const pedidos = dVentas.length;
-    const onT = dVentas.filter(r=>(pNum(r['LEAD TIME PEDIDOS '])||pNum(r['LEAD TIME PEDIDOS'])||0)<=0).length;
-    const otifVal = pedidos>0?onT/pedidos*100:null;
-    kpiRow([
-      {label:'Total Pedidos',value:fmt(pedidos)},
-      {label:'A Tiempo',value:fmt(onT)},
-      {label:'Con Retraso',value:fmt(pedidos-onT)},
-      {label:'OTIF',value:otifVal!=null?pct(otifVal):'—'},
-    ]);
-    secTitle('Detalle por Cliente');
-    const clientMap={};
-    dVentas.forEach(r=>{
-      const c=(r['Nombre tercero']||'Sin dato').trim();
-      if(!clientMap[c]) clientMap[c]={total:0,ontime:0};
-      clientMap[c].total++;
-      if((pNum(r['LEAD TIME PEDIDOS '])||pNum(r['LEAD TIME PEDIDOS'])||0)<=0) clientMap[c].ontime++;
+    // ── TIEMPOS DE PARO / PARETO ─────────────────────────────────────────
+    if (y > pageH-80) addPage('Informe de Cierre de Mes Global — FVLco');
+    secTitle('Pareto 80-20 — Causas de Paro No Programado por Máquina');
+    const _paroMap2={};
+    dProd.forEach(r=>{
+      if(!(r._paro>0)) return;
+      const rz=String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim()||'Sin especificar';
+      if(/programado/i.test(rz)) return;
+      const maq='Maq '+(r._maq||'?');
+      const key=`${rz}|||${maq}`;
+      _paroMap2[key]=(_paroMap2[key]||0)+(r._paro||0);
     });
-    table(
-      ['Cliente','Pedidos','A Tiempo','OTIF %'],
-      Object.entries(clientMap).sort((a,b)=>b[1].total-a[1].total).slice(0,15).map(([c,v])=>[
-        c.substring(0,45), fmt(v.total), fmt(v.ontime), pct(v.total>0?v.ontime/v.total*100:null)
-      ]),
-      [75,25,25,35]
-    );
-
-    // ── TIEMPOS DE PARO
-    newPage('Tiempos de Paro');
-    const dParo = filterParo();
-    const totalMinParo = sum(dParo,'_paro');
-    kpiRow([
-      {label:'Registros Paro',value:fmt(dParo.length)},
-      {label:'Min. Totales Paro',value:fmt(totalMinParo)},
-      {label:'Horas Paro',value:`${(totalMinParo/60).toFixed(1)} h`},
-      {label:'Promedio/Registro',value:dParo.length?`${(totalMinParo/dParo.length).toFixed(0)} min`:'—'},
-    ]);
-    secTitle('Paro por Razón');
-    const razonMap={};
-    dParo.forEach(r=>{const k=String(r['RAZON PARO']||r['RAZÓN PARO']||'Sin dato').trim();razonMap[k]=(razonMap[k]||0)+(r._paro||0);});
-    table(
-      ['Razón de Paro','Minutos','Horas','% del Total'],
-      Object.entries(razonMap).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([rz,v])=>[
-        rz.substring(0,45), fmt(v), (v/60).toFixed(1), totalMinParo>0?pct(v/totalMinParo*100):'—'
-      ]),
-      [75,25,20,30]
-    );
-
-    // ── COSTOS
-    newPage('Costos de Producción');
-    const dC = filterCostos();
-    let totFab=0,totParo2=0,totTeor=0,totReal2=0,totPerd=0,totLucro=0;
-    const maqCostos={};
-    dC.forEach(r=>{
-      const m=r._maq||'?'; const tarifa=TARIFAS_MAQ[m]||25000;
-      const est=pNum(r['T. CICLO EST'])||0; const real2=pNum(r['T. CICLO REAL']||r['T.CICLO REAL']||r['CICLO REAL'])||0;
-      const minFab=est>0?(r._cant||0)*est/60:0;
-      const costoFab=(minFab/60)*tarifa; const costoParo=(r._paro||0)/60*tarifa;
-      totFab+=costoFab; totParo2+=costoParo;
-      const unidTeor=est>0&&real2>0?Math.round((r._cant||0)*(real2/est)):(r._cant||0);
-      const perd=Math.max(0,unidTeor-(r._cant||0));
-      const lucro=perd*(est>0?tarifa/3600*est:0);
-      totTeor+=unidTeor; totReal2+=r._cant||0; totPerd+=perd; totLucro+=lucro;
-      if(!maqCostos[m]) maqCostos[m]={fab:0,paro:0,unid:0};
-      maqCostos[m].fab+=costoFab; maqCostos[m].paro+=costoParo; maqCostos[m].unid+=r._cant||0;
+    const _rzMap2={};
+    Object.entries(_paroMap2).forEach(([k,v])=>{
+      const [rz,maq]=k.split('|||');
+      if(!_rzMap2[rz]) _rzMap2[rz]={total:0,detalle:[]};
+      _rzMap2[rz].total+=v; _rzMap2[rz].detalle.push({maq,min:v});
     });
-    kpiRow([
-      {label:'Costo Fabricación',value:fmtCOP(totFab)},
-      {label:'Costo Paros',value:fmtCOP(totParo2)},
-      {label:'Lucro Cesante',value:fmtCOP(totLucro)},
-      {label:'Efic. Ciclo',value:totTeor>0?pct(totReal2/totTeor*100):'—'},
-    ]);
-    secTitle('Costo por Máquina');
-    table(
-      ['Máquina','Tarifa/h','Costo Fab.','Costo Paros','Unidades','Costo/Unid'],
-      Object.entries(maqCostos).sort((a,b)=>b[1].fab-a[1].fab).map(([m,v])=>[
-        'Máq '+m, fmtCOP(TARIFAS_MAQ[m]||25000),
-        fmtCOP(v.fab), fmtCOP(v.paro), fmt(v.unid),
-        v.unid>0?fmtCOP(v.fab/v.unid):'—'
-      ]),
-      [20,28,32,32,28,30]
-    );
+    const _paroTotal2=Object.values(_rzMap2).reduce((s,x)=>s+x.total,0);
+    let _pCum2=0;
+    const _paretoRows2=[];
+    for(const [rz,x] of Object.entries(_rzMap2).sort((a,b)=>b[1].total-a[1].total)){
+      _pCum2+=x.total;
+      const detalle=x.detalle.sort((a,b)=>b.min-a.min).slice(0,4).map(d=>`${d.maq}:${d.min}m`).join(' · ');
+      _paretoRows2.push([rz.substring(0,38),fmt(x.total),(_paroTotal2>0?(_pCum2/_paroTotal2*100).toFixed(1)+'%':'—'),detalle]);
+      if(_pCum2/_paroTotal2>=0.80) break;
+    }
+    table(['Razón de Paro','Minutos','% Acumulado','Detalle por Máquina'],
+      _paretoRows2, [64,22,24,58]);
 
-    // guardar
-    const filename = `FVLco_${mesLabel}_${fechaGen}.pdf`.replace(/[: ]/g,'_');
+    // ── UNIDADES PERDIDAS ─────────────────────────────────────────────────
+    if (y > pageH-60) addPage('Informe de Cierre de Mes Global — FVLco');
+    secTitle('Unidades Dejadas de Fabricar');
+    const _TSEG_P={'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
+    const _upSlotsP={};
+    dProd.forEach(r=>{
+      const sk=`${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+      if(!_upSlotsP[sk]) _upSlotsP[sk]={maq:String(r._maq||'?'),turno:String(r._turno||''),undProd:0,undProg:0,cicloEst:0,cavTeor:0,paroProgSeg:0,prods:{}};
+      const s=_upSlotsP[sk];
+      s.undProd+=r._cant||0;
+      const rz=String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
+      if(/programado/i.test(rz)) s.paroProgSeg+=(r._paro||0)*60;
+      if(!s.cicloEst) s.cicloEst=pNum(r['T. CICLO EST'])||0;
+      if(!s.cavTeor) s.cavTeor=(typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
+      const prod=r._prod||'Sin producto';
+      s.prods[prod]=(s.prods[prod]||0)+(r._cant||0);
+    });
+    const _byProdP={};
+    Object.values(_upSlotsP).forEach(s=>{
+      if(s.cicloEst>0&&s.cavTeor>0){
+        const tEf=Math.max(0,(_TSEG_P[s.turno]||28800)-s.paroProgSeg);
+        s.undProg=Math.round((tEf/s.cicloEst)*s.cavTeor);
+      } else { s.undProg=s.undProd; }
+      const lost=Math.max(0,s.undProg-s.undProd); if(lost<=0) return;
+      const tot=Object.values(s.prods).reduce((a,b)=>a+b,0)||1;
+      const tarifa=(typeof TARIFAS_MAQ!=='undefined'?TARIFAS_MAQ[parseInt(s.maq)]:0)||25000;
+      const lostH=s.cicloEst>0&&s.cavTeor>0?lost*s.cicloEst/s.cavTeor/3600:0;
+      Object.entries(s.prods).forEach(([prod,cant])=>{
+        const f=cant/tot, lp=Math.round(lost*f), vp=Math.round(lostH*f*tarifa);
+        if(!_byProdP[prod]) _byProdP[prod]={lost:0,value:0,maqs:{}};
+        _byProdP[prod].lost+=lp; _byProdP[prod].value+=vp;
+        _byProdP[prod].maqs[s.maq]=(_byProdP[prod].maqs[s.maq]||0)+lp;
+      });
+    });
+    const _upRowsP=Object.entries(_byProdP)
+      .filter(([,x])=>x.lost>0).sort((a,b)=>b[1].lost-a[1].lost)
+      .map(([prod,x])=>{
+        const detMaq=Object.entries(x.maqs).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([m,l])=>`Maq ${m}:${fmt(l)}`).join(' · ');
+        return [prod.substring(0,32), fmt(x.lost), '$'+Math.round(x.value).toLocaleString('es-CO'), detMaq];
+      });
+    if(_upRowsP.length) {
+      table(['Producto','Und. No Producidas','Valor Est. (Costo Máq)','Máquinas'],
+        _upRowsP, [55,30,38,45]);
+    } else {
+      pdf.setFont('helvetica','italic'); pdf.setFontSize(8); pdf.setTextColor(34,197,94);
+      pdf.text('Sin unidades perdidas en el período seleccionado', ml+3, y); y+=8;
+    }
+
+    // ── PLANES DE ACCIÓN ─────────────────────────────────────────────────
+    const planesData = (typeof DATA.planesAccion!=='undefined'&&Array.isArray(DATA.planesAccion)&&DATA.planesAccion.length>0) ? DATA.planesAccion : [];
+    if (planesData.length>0) {
+      if (y > pageH-50) addPage('Informe de Cierre de Mes Global — FVLco');
+      secTitle('Planes de Acción');
+      const _nc2=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+      const _cP=(r,...keys)=>{
+        for(const k of keys){const v=r[k];if(v!==undefined&&v!==null&&v!=='')return v;}
+        for(const k of keys){const nk=_nc2(k);const f=Object.keys(r).find(rk=>_nc2(rk)===nk);if(f&&r[f]!==undefined&&r[f]!==null&&r[f]!=='')return r[f];}
+        return '—';
+      };
+      table(
+        ['Plan de Acción','F. Acción','F. Cierre','Responsable','Estado'],
+        planesData.map(r=>[
+          String(_cP(r,'PLAN DE ACCION','PLAN DE ACCIÓN','PLAN')).substring(0,42),
+          String(_cP(r,'FECHA DE ACCION','FECHA DE ACCIÓN')),
+          String(_cP(r,'FECHA DE CIERRE','FECHA CIERRE')),
+          String(_cP(r,'RESPONSABLE')).substring(0,18),
+          String(_cP(r,'ESTADO')||'Pendiente'),
+        ]),
+        [60,22,22,30,22]
+      );
+    }
+
+    // ── PIE DE PÁGINA en todas las páginas ───────────────────────────────
+    const totalPages = pdf.getNumberOfPages();
+    for(let i=1;i<=totalPages;i++){
+      pdf.setPage(i);
+      pdf.setFillColor(30,64,175); pdf.rect(0,pageH-10,pageW,10,'F');
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(6.5); pdf.setTextColor(219,234,254);
+      pdf.text(`FVLco · Informe de Cierre ${mesLabel} · Confidencial`, ml, pageH-3.5);
+      pdf.text(`Página ${i} de ${totalPages}`, pageW-mr, pageH-3.5, {align:'right'});
+    }
+
+    const filename = `FVLco_Informe_${mesLabel}_${fechaGen}.pdf`.replace(/[:\s]/g,'_');
     pdf.save(filename);
 
   } catch(err) {
@@ -4894,6 +4917,8 @@ function exportPDF() {
   btn.disabled = false;
   btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Descargar PDF';
 }
+// función helper para mostrar valor OEE en PDF
+function oeeStr(v) { return v!=null ? v.toFixed(1)+'%' : '—'; }
 
 // =======================================================
 // FORECAST
