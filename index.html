@@ -3901,9 +3901,11 @@ function renderReporteCompacto() {
 
   const oeeRows = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
-    const turnoDet = Object.keys(g.porTurno).sort()
-      .map(t=>`<div style="white-space:nowrap">Turno ${turnoNum(t)}: <strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong>${g.porTurno[t].paro>0?` <span style="color:#DC2626">(paro ${ri(g.porTurno[t].paro)}m)</span>`:''}</div>`)
-      .join('') + `<div style="white-space:nowrap;border-top:1px solid #E5E7EB;margin-top:2px;padding-top:2px">Total: <strong style="color:#111827">${ri(g.undProd)}</strong></div>`;
+    const turnoDet = `<table style="width:100%;border-collapse:collapse;font-size:.92rem">`
+      + Object.keys(g.porTurno).sort()
+      .map(t=>`<tr style="border:1px solid #E5E7EB"><td style="padding:2px 6px;white-space:nowrap">Turno ${turnoNum(t)}</td><td style="padding:2px 6px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong></td><td style="padding:2px 6px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB;color:#DC2626;min-width:70px">${g.porTurno[t].paro>0?`paro ${ri(g.porTurno[t].paro)}m`:''}</td></tr>`)
+      .join('')
+      + `<tr style="border:1px solid #D1D5DB;background:#F3F4F6"><td colspan="2" style="padding:2px 6px;font-weight:700;color:#111827">Total</td><td style="padding:2px 6px;text-align:right;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(g.undProd)}</td></tr></table>`;
     return `<tr>
       <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
       <td><span style="font-weight:700;color:#111827">${g.prod}</span><div style="font-size:.92rem;color:#374151;margin-top:4px">${turnoDet}</div></td>
