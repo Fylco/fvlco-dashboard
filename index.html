@@ -7,6 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -2241,17 +2242,24 @@ function applyGlobalFilter() {
 function makeChart(id, type, labels, datasets, opts={}) {
   destroyChart(id);
   const ctx = document.getElementById(id); if(!ctx) return;
+  const extraPlugins = (opts.extra && opts.extra.plugins) || {};
+  const {plugins: _p, ...restExtra} = opts.extra || {};
   CHARTS[id] = new Chart(ctx, {
     type, data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{labels:{color:'#9CA3AF',boxWidth:11,font:{size:10,family:'Tahoma'}}}, tooltip:{mode:'index',intersect:false} },
+      plugins:{
+        legend:{labels:{color:'#9CA3AF',boxWidth:11,font:{size:11,family:'Tahoma'}}},
+        tooltip:{mode:'index',intersect:false},
+        datalabels:{display:false},
+        ...extraPlugins
+      },
       scales: type==='doughnut'||type==='pie' ? {} : {
-        x:{ticks:{color:'#6B7280',font:{size:10}},grid:{color:'#1F2937'},...(opts.xScale||{})},
-        y:{ticks:{color:'#6B7280',font:{size:10}},grid:{color:'#374151'},...(opts.yScale||{})}
+        x:{ticks:{color:'#6B7280',font:{size:11}},grid:{color:'#1F2937'},...(opts.xScale||{})},
+        y:{ticks:{color:'#6B7280',font:{size:11}},grid:{color:'#374151'},...(opts.yScale||{})}
       },
       indexAxis: opts.indexAxis,
-      ...opts.extra
+      ...restExtra
     }
   });
 }
@@ -2389,9 +2397,9 @@ function renderResumen() {
 
   // Opciones de tema claro para todos los gráficos del informe
   const LO = {
-    xScale: {ticks:{color:'#374151',font:{size:11}}, grid:{color:'#E5E7EB'}},
-    yScale: {ticks:{color:'#374151',font:{size:11}}, grid:{color:'#E5E7EB'}},
-    extra:  {plugins:{legend:{labels:{color:'#374151',boxWidth:12,font:{size:12,family:'Tahoma'}}},tooltip:{mode:'index',intersect:false}}}
+    xScale: {ticks:{color:'#374151',font:{size:12}}, grid:{color:'#E5E7EB'}},
+    yScale: {ticks:{color:'#374151',font:{size:12}}, grid:{color:'#E5E7EB'}},
+    extra:  {plugins:{legend:{labels:{color:'#374151',boxWidth:12,font:{size:13,family:'Tahoma'}}},tooltip:{mode:'index',intersect:false}}}
   };
 
   // Mini chart: OEE por máquina
@@ -2399,7 +2407,14 @@ function renderResumen() {
   const oeeByMaqVal = maqs.map(m => calcOEEFromDRC(d.filter(r=>r._maq==m)));
   makeChart('r-oee-maq','bar', maqs.map(m=>'Maq '+m),
     [{label:'OEE %', data:oeeByMaqVal, backgroundColor:oeeByMaqVal.map(v=>v==null?'#D1D5DB':v>=65?'#22C55E':v>=50?'#F59E0B':'#EF4444'), borderRadius:5}],
-    {...LO, yScale:{...LO.yScale, min:0, max:100, ticks:{...LO.yScale.ticks, callback:v=>v+'%'}}});
+    {...LO,
+      yScale:{...LO.yScale, min:0, max:110, ticks:{...LO.yScale.ticks, callback:v=>v<=100?v+'%':''}},
+      extra:{...LO.extra, plugins:{...LO.extra.plugins,
+        datalabels:{display:true, anchor:'end', align:'top',
+          formatter:v=>v!=null?v.toFixed(1)+'%':'',
+          color:'#111827', font:{size:13, weight:'bold'}}
+      }}
+    });
 
   // Mini chart: Plan vs Real mensual
   const planMes = calcPlanMensual();
@@ -2463,21 +2478,25 @@ function renderResumen() {
       `;
       _paretoContainer.appendChild(card);
       makeChart(chartId, 'bar',
-        p80.map(x => x.rz.length > 35 ? x.rz.substring(0,33)+'…' : x.rz),
+        p80.map(x => x.rz.length > 38 ? x.rz.substring(0,36)+'…' : x.rz),
         [{label:'min', data: p80.map(x => x.min), backgroundColor: color+'CC', borderRadius:3}],
         {
           indexAxis: 'y',
-          xScale:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#E5E7EB'}},
-          yScale:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#F3F4F6'}},
+          xScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
+          yScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}},
           extra:{
             plugins:{
               legend:{display:false},
-              tooltip:{callbacks:{label:c=>`${c.raw} min`}}
+              tooltip:{callbacks:{label:c=>`${c.raw} min`}},
+              datalabels:{display:true, anchor:'end', align:'right',
+                formatter:v=>v!=null?Math.round(v)+' min':'',
+                color:'#374151', font:{size:11, weight:'bold'}}
             },
             scales:{
-              x:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#E5E7EB'}},
-              y:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#F3F4F6'}}
-            }
+              x:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
+              y:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}}
+            },
+            layout:{padding:{right:55}}
           }
         }
       );
@@ -2811,7 +2830,11 @@ function renderOEE() {
   const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
   makeChart('oee-maq','bar',maqs.map(m=>'Maq '+m),
     [{label:'OEE %',data:maqs.map(m=>calcOEEFromDRC(d.filter(r=>r._maq==m))),
-      backgroundColor:maqs.map((_,i)=>PAL[i%PAL.length]+'bb'),borderRadius:5}]);
+      backgroundColor:maqs.map((_,i)=>PAL[i%PAL.length]+'bb'),borderRadius:5}],
+    {yScale:{max:110, ticks:{callback:v=>v<=100?v+'%':''}},
+     extra:{plugins:{datalabels:{display:true, anchor:'end', align:'top',
+       formatter:v=>v!=null?v.toFixed(1)+'%':'',
+       color:'#E5E7EB', font:{size:13, weight:'bold'}}}}});
 
   // Table
   const rows = maqs.map(m=>{
