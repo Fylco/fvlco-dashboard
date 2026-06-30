@@ -1426,67 +1426,59 @@ function buildCavTeorMap() {
 }
 
 // Lee costos unitarios por producto del planRef.
-// Estrategia 1: busca una sección encabezada con "costo", "valor" o "precio" en la primera columna.
-// Estrategia 2: si no hay sección, busca columnas cuyo NOMBRE contenga "costo", "valor" o "precio"
-//               en las filas del plan principal (antes del TOTAL).
+// 4 estrategias en cascada; la primera que encuentre datos se usa.
 function loadCostosFabFromSheet() {
   COSTOS_FAB_MAP = {};
   const _norm  = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
   const _normK = s => s.toUpperCase().replace(/\s+/g,'');
-  const _rk    = row => (row['REFERENCIA / PRODUCTO']||row['']||Object.values(row)[0]||'').toString().trim();
-  const SKIP_COLS = new Set(['REFERENCIA / PRODUCTO', ''].concat(MESES_CAP));
+  // Primera columna: intenta varias claves habituales al exportar el sheet
+  const _rk = row => {
+    const keys = Object.keys(row);
+    // Busca columna cuyo nombre contenga "referencia" o "producto"
+    for (const k of keys) { if (_norm(k).includes('referencia') || _norm(k).includes('producto')) return String(row[k]||'').trim(); }
+    // Fallback: primera columna del objeto
+    return String(Object.values(row)[0]||'').trim();
+  };
+  // Primer valor numérico > 0 de una fila, omitiendo el nombre del producto
+  const _firstNum = (row, skipVal) => {
+    for (const v of Object.values(row)) {
+      const s = String(v||'').trim();
+      if (s === skipVal) continue;
+      const n = parseCOP(s);
+      if (n && n > 0) return n;
+    }
+    return null;
+  };
+  const MESES_SET = new Set(MESES_CAP.map(m => m.toLowerCase()));
 
-  // ── Estrategia 1: buscar sección dedicada ──────────────────────────────
+  // ── Estrategia 1: sección dedicada con header "costo"/"valor"/"precio" ──
   let inSec = false;
   for (const row of DATA.planRef) {
     const ref = _rk(row);
     const rn  = _norm(ref);
     if (!inSec) {
-      // Acepta: "costo de fabricacion", "costo unitario", "costos", "valor unitario", "precio"
-      if (rn.includes('costo') || (rn.includes('valor') && (rn.includes('unit') || rn.includes('fab'))) || rn.includes('precio unit')) {
-        inSec = true;
-      }
-      continue;
+      if (rn.includes('costo') || rn.includes('valor') || rn.includes('precio')) inSec = true;
+      continue; // siempre salta el encabezado
     }
     if (!ref) break; // fila vacía = fin de sección
-    if (rn.includes('utilizacion') || rn.includes('utiliz') || rn.includes('maquina') || rn.includes('tarifa')) break;
-    // Buscar primer valor numérico > 0: primero en columnas NO-mes, luego en mes
-    // No se aplica umbral mínimo — costos pueden ser pequeños (ej: 12 COP/unidad)
-    let costoUnit = null;
-    for (const [k, v] of Object.entries(row)) {
-      if (SKIP_COLS.has(k)) continue;
-      const n = parseCOP(v);
-      if (n && n > 0) { costoUnit = n; break; }
-    }
-    if (!costoUnit) {
-      for (const m of MESES_CAP) {
-        const n = parseCOP(row[m]);
-        if (n && n > 0) { costoUnit = n; break; }
-      }
-    }
-    if (costoUnit && ref) COSTOS_FAB_MAP[_normK(ref)] = costoUnit;
+    if (rn.includes('utilizacion') || rn.includes('maquina') || rn.includes('tarifa')) break;
+    // Dentro de la sección: toma el primer número de CUALQUIER columna
+    const n = _firstNum(row, ref);
+    if (n && ref) COSTOS_FAB_MAP[_normK(ref)] = n;
   }
 
-  // ── Estrategia 2: columnas con nombre "costo"/"valor"/"precio" en filas del plan ──
-  if (Object.keys(COSTOS_FAB_MAP).length === 0) {
-    // Detectar columnas con nombres que parezcan de costo
-    const costCols = [];
-    for (const row of DATA.planRef) {
-      for (const k of Object.keys(row)) {
-        if (SKIP_COLS.has(k)) continue;
-        const kn = _norm(k);
-        if ((kn.includes('costo') || kn.includes('valor') || kn.includes('precio')) && !costCols.includes(k)) {
-          costCols.push(k);
-        }
-      }
-    }
-    if (costCols.length > 0) {
-      // Leer las filas del plan principal (hasta TOTAL)
+  // ── Estrategia 2: columnas cuyo NOMBRE contenga "costo"/"valor"/"precio" ──
+  if (!Object.keys(COSTOS_FAB_MAP).length) {
+    const costCols = Object.keys(DATA.planRef[0]||{}).filter(k => {
+      const kn = _norm(k);
+      return kn.includes('costo') || kn.includes('valor') || kn.includes('precio');
+    });
+    if (costCols.length) {
       for (const row of DATA.planRef) {
         const ref = _rk(row);
-        if (!ref || ref.toUpperCase() === 'TOTAL') break;
+        if (!ref || _normK(ref) === 'TOTAL') break;
         const rn = _norm(ref);
-        if (rn.includes('referencia') || rn.includes('mes') || rn.includes('costo') || rn.includes('valor')) continue;
+        if (rn.includes('referencia') || rn.includes('producto') || rn.includes('costo') || rn.includes('mes')) continue;
         for (const col of costCols) {
           const n = parseCOP(row[col]);
           if (n && n > 0) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
@@ -1495,22 +1487,39 @@ function loadCostosFabFromSheet() {
     }
   }
 
-  // ── Estrategia 3: cualquier columna no-mes con valor alto en filas de plan ──
-  if (Object.keys(COSTOS_FAB_MAP).length === 0) {
+  // ── Estrategia 3: filas del plan principal con columnas no-mes que tengan valor numérico ──
+  if (!Object.keys(COSTOS_FAB_MAP).length) {
     for (const row of DATA.planRef) {
       const ref = _rk(row);
-      if (!ref || ref.toUpperCase() === 'TOTAL') break;
+      if (!ref || _normK(ref) === 'TOTAL') break;
       const rn = _norm(ref);
-      if (rn.includes('referencia') || rn.includes('mes') || rn.includes('costo') || rn.includes('valor')) continue;
+      if (rn.includes('referencia') || rn.includes('producto') || rn.includes('costo')) continue;
       for (const [k, v] of Object.entries(row)) {
-        if (SKIP_COLS.has(k)) continue;
+        if (MESES_SET.has(_norm(k)) || _norm(k).includes('referencia') || _norm(k).includes('producto')) continue;
         const n = parseCOP(v);
         if (n && n > 0) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
       }
     }
   }
 
-  console.log('[FVLco] COSTOS_FAB_MAP cargado:', Object.keys(COSTOS_FAB_MAP).length, 'productos', COSTOS_FAB_MAP);
+  // ── Estrategia 4: cruzar nombres de producción contra TODAS las filas del planRef ──
+  if (!Object.keys(COSTOS_FAB_MAP).length && DATA.prod.length) {
+    const prodKeys = new Set(DATA.prod.map(r => r._prod ? _normK(r._prod) : null).filter(Boolean));
+    for (const row of DATA.planRef) {
+      const ref = _rk(row);
+      if (!ref) continue;
+      const rk = _normK(ref);
+      if (!prodKeys.has(rk)) continue; // solo filas cuyo nombre coincide con un producto real
+      const n = _firstNum(row, ref);
+      if (n) COSTOS_FAB_MAP[rk] = n;
+    }
+  }
+
+  // ── Debug: muestra siempre la estructura del planRef en consola para diagnóstico ──
+  const cols = Object.keys(DATA.planRef[0]||{});
+  console.log('[FVLco] planRef columnas:', cols);
+  console.log('[FVLco] planRef primeras 5 filas:', DATA.planRef.slice(0,5));
+  console.log('[FVLco] COSTOS_FAB_MAP:', Object.keys(COSTOS_FAB_MAP).length, 'productos →', COSTOS_FAB_MAP);
 }
 
 function loadTarifasFromSheet() {
@@ -1991,23 +2000,25 @@ function calcRendimiento(rows) {
     s.undProd += r._cant||0;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
     if (_esProg(rz)) s.paroProgSeg += (r._paro||0)*60;
-    // Tomar el MÁXIMO cicloEst válido de todas las filas del slot (no solo la primera)
-    const ce = pNum(r['T. CICLO EST'])||0;
-    if (ce >= 5 && ce > s.cicloEst) s.cicloEst = ce;
-    // Tomar el MÁXIMO cavTeor válido (ídem)
+    // Ciclo estimado: T.CICLO EST preferido; si no existe/es 0, usa T.CICLO REAL como proxy
+    const ce  = pNum(r['T. CICLO EST'])||0;
+    const cr  = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||0;
+    const cic = ce > 0 ? ce : cr;
+    if (cic > 0 && cic > s.cicloEst) s.cicloEst = cic;
+    // Cavidades teóricas: múltiples fuentes
     const cv = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
     if (cv > 0 && cv > s.cavTeor) s.cavTeor = cv;
   });
   let totProd=0, totTeo=0;
   Object.values(slots).forEach(s => {
-    if (s.cicloEst >= 5 && s.cavTeor > 0) {
-      // Solo incluir slots con datos válidos de ciclo y cavidades
+    if (s.cicloEst > 0) {
       totProd += s.undProd;
+      // Si no hay dato de cavidades, usar 1 como mínimo (una pieza por ciclo)
+      const cavEff = s.cavTeor > 0 ? s.cavTeor : 1;
       const tEfSeg = Math.max(0, (_TSEG[s.turno]||28800) - s.paroProgSeg);
-      totTeo += Math.round((tEfSeg / s.cicloEst) * s.cavTeor);
+      totTeo += Math.round((tEfSeg / s.cicloEst) * cavEff);
     }
-    // Slots sin cicloEst o cavTeor válidos: se excluyen de ambos lados.
-    // Asumir 100% (totTeo += undProd) inflaría el rendimiento artificialmente.
+    // Slots sin cicloEst → excluidos (no asumimos 100%)
   });
   if (totTeo<=0) return null;
   return Math.min(100, Math.max(0, (totProd/totTeo)*100));
