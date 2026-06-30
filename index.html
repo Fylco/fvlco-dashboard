@@ -3814,11 +3814,11 @@ function renderReporteCompacto() {
     const cavT = g.cavTeor || cavR || 0;        // cavidades teóricas
     const cEst = g.cicloEst || g.cicloReal || 0;// ciclo estándar
     const cReal= g.cicloReal || g.cicloEst || 0;// ciclo real
-    const horasSeg = g.horas*3600;              // tiempo programado real (seg)
-
-    // #3 UNIDADES TEÓRICAS = (tiempo nominal del turno ÷ ciclo estándar) × cav teóricas
-    //    tiempo nominal = horas del turno × 3600 seg
-    g.undProg = (cEst>0 && g.horas>0) ? Math.round((horasSeg/cEst)*cavT) : g.undProd;
+    // #3 UNIDADES TEÓRICAS = (tiempo efectivo ÷ ciclo estándar) × cav teóricas
+    //    tiempo efectivo = horas turno − paros programados (mantenimiento, cambio molde
+    //    planificado, etc.). Los paros NO programados no reducen el objetivo teórico.
+    const horasEfectivasSeg = Math.max(0, g.horas*3600 - (g.paroProg||0)*60);
+    g.undProg = (cEst>0 && horasEfectivasSeg>0) ? Math.round((horasEfectivasSeg/cEst)*cavT) : g.undProd;
     g.falt    = g.undProg - g.undProd;
 
     // #2 TIEMPO REAL TRABAJADO (min) = (producción ÷ cav reales × ciclo real) ÷ 60
@@ -3906,7 +3906,7 @@ function renderReporteCompacto() {
 
   const oeeRows = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
-    const turnoDet = `<table style="width:100%;border-collapse:collapse;font-size:1.05rem">`
+    const turnoDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">`
       + Object.keys(g.porTurno).sort()
       .map(t=>`<tr style="border:1px solid #E5E7EB"><td style="padding:4px 8px;white-space:nowrap">Turno ${turnoNum(t)}</td><td style="padding:4px 8px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong></td><td style="padding:4px 8px;border-left:1px solid #E5E7EB;color:#DC2626;min-width:100px">${g.porTurno[t].paro>0?`<span style="white-space:nowrap;font-weight:600">paro ${ri(g.porTurno[t].paro)}m</span>${g.porTurno[t].razones.length?`<div style="font-size:.88rem;color:#B91C1C;margin-top:2px">${g.porTurno[t].razones.join(', ')}</div>`:''}`:''}</td></tr>`)
       .join('')
@@ -3915,10 +3915,10 @@ function renderReporteCompacto() {
       <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
       <td><span style="font-weight:700;color:#111827">${g.prod}</span><div style="font-size:.92rem;color:#374151;margin-top:4px">${turnoDet}</div></td>
       <td style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700">${ri(g.paro)} min</td>
-      <td style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.5rem;font-weight:800">${pc(g.disp)}</td>
-      <td style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.5rem;font-weight:800">${pc(g.rend)}</td>
-      <td style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.5rem;font-weight:800">${pc(g.cal)}</td>
-      <td style="text-align:right;font-size:1.7rem;font-weight:800;color:${oc}">${pc(g.oee)}</td>
+      <td style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.8rem;font-weight:800">${pc(g.disp)}</td>
+      <td style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.8rem;font-weight:800">${pc(g.rend)}</td>
+      <td style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.8rem;font-weight:800">${pc(g.cal)}</td>
+      <td style="text-align:right;font-size:2rem;font-weight:800;color:${oc}">${pc(g.oee)}</td>
     </tr>`;
   }).join('');
 
@@ -3933,8 +3933,8 @@ function renderReporteCompacto() {
   contentEl.innerHTML = `
     <style>
       #rc-paper { color:#1F2937; }
-      #rc-paper .tbl th { color:#1F2937; font-weight:700; border-bottom:1px solid #D1D5DB; font-size:1.05rem; padding:7px 12px; }
-      #rc-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#111827; font-size:1.18rem; padding:6px 10px; vertical-align:middle; }
+      #rc-paper .tbl th { color:#1F2937; font-weight:700; border-bottom:1px solid #D1D5DB; font-size:1.1rem; padding:7px 12px; }
+      #rc-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#111827; font-size:1.25rem; padding:6px 10px; vertical-align:middle; }
       #rc-paper .tbl tr:hover td { background:#F3F4F6; }
       #rc-paper .section-title { color:#6B7280; font-size:.85rem; }
       #rc-paper .section-title::after { background:#D1D5DB; }
