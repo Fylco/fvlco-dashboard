@@ -1990,18 +1990,23 @@ function calcRendimiento(rows) {
     s.undProd += r._cant||0;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
     if (_esProg(rz)) s.paroProgSeg += (r._paro||0)*60;
-    if (!s.cicloEst) s.cicloEst = pNum(r['T. CICLO EST'])||0;
-    if (!s.cavTeor)  s.cavTeor  = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
+    // Tomar el MÁXIMO cicloEst válido de todas las filas del slot (no solo la primera)
+    const ce = pNum(r['T. CICLO EST'])||0;
+    if (ce >= 5 && ce > s.cicloEst) s.cicloEst = ce;
+    // Tomar el MÁXIMO cavTeor válido (ídem)
+    const cv = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
+    if (cv > 0 && cv > s.cavTeor) s.cavTeor = cv;
   });
   let totProd=0, totTeo=0;
   Object.values(slots).forEach(s => {
-    totProd += s.undProd;
-    if (s.cicloEst >= 5 && s.cavTeor>0) {
+    if (s.cicloEst >= 5 && s.cavTeor > 0) {
+      // Solo incluir slots con datos válidos de ciclo y cavidades
+      totProd += s.undProd;
       const tEfSeg = Math.max(0, (_TSEG[s.turno]||28800) - s.paroProgSeg);
-      totTeo += Math.round((tEfSeg/s.cicloEst)*s.cavTeor);
-    } else {
-      totTeo += s.undProd; // sin datos de ciclo válidos → asumir 100% para ese slot
+      totTeo += Math.round((tEfSeg / s.cicloEst) * s.cavTeor);
     }
+    // Slots sin cicloEst o cavTeor válidos: se excluyen de ambos lados.
+    // Asumir 100% (totTeo += undProd) inflaría el rendimiento artificialmente.
   });
   if (totTeo<=0) return null;
   return Math.min(100, Math.max(0, (totProd/totTeo)*100));
