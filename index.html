@@ -275,7 +275,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         #sec-resumen .kpi-card { background:#FFFFFF; border:1px solid #E5E7EB; }
         #sec-resumen .kpi-card div[style*="9CA3AF"] { color:#6B7280 !important; }
         #sec-resumen .chart-card { background:#FFFFFF; border:1px solid #E5E7EB; }
-        #sec-resumen .section-title { color:#374151; font-size:.8rem; font-weight:700; }
+        #sec-resumen .section-title { color:#374151; font-size:.95rem; font-weight:700; }
+        #sec-resumen table td, #sec-resumen table th { font-size:.95rem !important; }
+        #sec-resumen .kpi-card > div:first-child { font-size:.75rem !important; }
+        #sec-resumen .kpi-card > div:nth-child(2) { font-size:2rem !important; }
         #sec-resumen .section-title::after { background:#D1D5DB; }
       </style>
       <div style="margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #E5E7EB;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
@@ -301,6 +304,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div style="height:300px"><canvas id="r-pareto-paro"></canvas></div>
       </div>
       <div id="resumen-planref"></div>
+      <div id="resumen-und-perdidas" style="margin-top:24px"></div>
       <div id="resumen-planes" style="margin-top:24px"></div>
     </div>
 
@@ -2446,9 +2450,118 @@ function renderResumen() {
       </div>`;
   }
 
+  // ── Unidades Dejadas de Fabricar ────────────────────────────────────────
+  const undPerdEl = document.getElementById('resumen-und-perdidas');
+  if (undPerdEl) {
+    const _TSEG3 = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
+    // Acumular por slot
+    const _upSlots = {};
+    d.forEach(r => {
+      const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+      if (!_upSlots[sk]) _upSlots[sk] = {maq:String(r._maq||'?'), turno:String(r._turno||''), undProd:0, undProg:0, cicloEst:0, cavTeor:0, paroProgSeg:0, prods:{}};
+      const s = _upSlots[sk];
+      s.undProd += r._cant||0;
+      const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
+      if (/programado/i.test(rz)) s.paroProgSeg += (r._paro||0)*60;
+      if (!s.cicloEst) s.cicloEst = pNum(r['T. CICLO EST'])||0;
+      if (!s.cavTeor)  s.cavTeor  = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
+      const prod = r._prod||'Sin producto';
+      s.prods[prod] = (s.prods[prod]||0) + (r._cant||0);
+    });
+    // Calcular undProg y pérdidas por slot, luego agrupar por producto+máquina
+    const _byProdMaq = {}; // {prod: {maq: {lost,value}}}
+    Object.values(_upSlots).forEach(s => {
+      if (s.cicloEst>0 && s.cavTeor>0) {
+        const tEfSeg = Math.max(0, (_TSEG3[s.turno]||28800) - s.paroProgSeg);
+        s.undProg = Math.round((tEfSeg/s.cicloEst)*s.cavTeor);
+      } else { s.undProg = s.undProd; }
+      const lost = Math.max(0, s.undProg - s.undProd);
+      if (lost <= 0) return;
+      // Atribuir pérdida proporcionalmente a cada producto del slot
+      const totalSlotProd = Object.values(s.prods).reduce((a,b)=>a+b,0)||1;
+      const tarifa = (typeof TARIFAS_MAQ !== 'undefined' ? TARIFAS_MAQ[parseInt(s.maq)] : 0) || 25000;
+      const lostHoras = s.cicloEst>0 && s.cavTeor>0 ? lost*s.cicloEst/s.cavTeor/3600 : 0;
+      Object.entries(s.prods).forEach(([prod, prodCant]) => {
+        const fraccion = prodCant/totalSlotProd;
+        const lostProd = Math.round(lost*fraccion);
+        const valueProd = Math.round(lostHoras*fraccion*tarifa);
+        if (!_byProdMaq[prod]) _byProdMaq[prod] = {};
+        if (!_byProdMaq[prod][s.maq]) _byProdMaq[prod][s.maq] = {lost:0, value:0};
+        _byProdMaq[prod][s.maq].lost  += lostProd;
+        _byProdMaq[prod][s.maq].value += valueProd;
+      });
+    });
+    // Agregar totales por producto
+    const _upProds = Object.entries(_byProdMaq).map(([prod, maqMap]) => {
+      const totalLost  = Object.values(maqMap).reduce((s,v)=>s+v.lost,0);
+      const totalValue = Object.values(maqMap).reduce((s,v)=>s+v.value,0);
+      return {prod, totalLost, totalValue, maqMap};
+    }).filter(x=>x.totalLost>0).sort((a,b)=>b.totalLost-a.totalLost);
+
+    const _copFmt = v => '$'+Math.round(v).toLocaleString('es-CO');
+    const _upTotal = _upProds.reduce((s,x)=>s+x.totalLost,0);
+    const _upValue = _upProds.reduce((s,x)=>s+x.totalValue,0);
+
+    const _upRows = _upProds.map(x => {
+      const detalle = Object.entries(x.maqMap)
+        .filter(([,v])=>v.lost>0)
+        .sort((a,b)=>b[1].lost-a[1].lost)
+        .map(([maq,v])=>`<span style="font-size:.78rem;color:#6B7280;margin-right:10px">Maq ${maq}: ${fmt(v.lost)} und · ${_copFmt(v.value)}</span>`)
+        .join('');
+      return `<tr style="border-bottom:1px solid #E5E7EB">
+        <td style="padding:9px 14px;font-size:.95rem;color:#111827;font-weight:600">${x.prod}</td>
+        <td style="padding:9px 14px;text-align:right;font-size:1rem;font-weight:800;color:#DC2626">${fmt(x.totalLost)}</td>
+        <td style="padding:9px 14px;text-align:right;font-size:.95rem;font-weight:700;color:#B91C1C">${_copFmt(x.totalValue)}</td>
+        <td style="padding:9px 14px;font-size:.82rem;color:#6B7280">${detalle}</td>
+      </tr>`;
+    }).join('');
+
+    undPerdEl.innerHTML = `
+      <div style="background:#FFFFFF;border:1px solid #FECACA;border-radius:10px;overflow:hidden">
+        <div style="background:#FEF2F2;padding:12px 18px;border-bottom:2px solid #FECACA;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div style="font-size:1.05rem;font-weight:800;color:#991B1B"><i class="fa-solid fa-circle-minus" style="color:#DC2626;margin-right:8px"></i>Unidades Dejadas de Fabricar${mesLabel}</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <div style="text-align:right"><div style="font-size:.72rem;color:#B91C1C;font-weight:700;text-transform:uppercase">Total unidades perdidas</div><div style="font-size:1.3rem;font-weight:800;color:#DC2626">${fmt(_upTotal)}</div></div>
+            <div style="text-align:right"><div style="font-size:.72rem;color:#B91C1C;font-weight:700;text-transform:uppercase">Costo de máquina estimado</div><div style="font-size:1.3rem;font-weight:800;color:#DC2626">${_copFmt(_upValue)}</div></div>
+          </div>
+        </div>
+        ${_upProds.length>0?`
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;min-width:700px">
+            <thead><tr style="background:#FEF9F9">
+              <th style="padding:9px 14px;text-align:left;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Producto</th>
+              <th style="padding:9px 14px;text-align:right;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Und. No Producidas</th>
+              <th style="padding:9px 14px;text-align:right;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Valor Est. (Costo Máq)</th>
+              <th style="padding:9px 14px;text-align:left;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Detalle por Máquina</th>
+            </tr></thead>
+            <tbody>${_upRows}</tbody>
+            <tfoot><tr style="background:#FEF2F2;border-top:2px solid #FECACA">
+              <td style="padding:9px 14px;font-size:.95rem;font-weight:800;color:#991B1B">TOTAL</td>
+              <td style="padding:9px 14px;text-align:right;font-size:1.05rem;font-weight:800;color:#DC2626">${fmt(_upTotal)}</td>
+              <td style="padding:9px 14px;text-align:right;font-size:1.05rem;font-weight:800;color:#DC2626">${_copFmt(_upValue)}</td>
+              <td style="padding:9px 14px;font-size:.78rem;color:#9CA3AF">Estimado basado en tarifa/hora de máquina</td>
+            </tr></tfoot>
+          </table>
+        </div>`:'<div style="padding:20px;text-align:center;color:#16A34A;font-size:.95rem;font-weight:600">✅ Sin pérdidas de producción en el período seleccionado</div>'}
+      </div>`;
+  }
+
   // ── Planes de Acción ─────────────────────────────────────────────────────
   const planesEl = document.getElementById('resumen-planes');
   if (planesEl) {
+    // Búsqueda de columna tolerante a mayúsculas/minúsculas y acentos
+    const _nc = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+    const _colP = (r, ...keys) => {
+      for (const k of keys) { const v=r[k]; if (v!==undefined&&v!==null&&v!=='') return v; }
+      const rKeys = Object.keys(r);
+      for (const k of keys) {
+        const nk = _nc(k);
+        const found = rKeys.find(rk => _nc(rk)===nk);
+        if (found && r[found]!==undefined && r[found]!==null && r[found]!=='') return r[found];
+      }
+      return '—';
+    };
+
     const hasPlanesData = typeof DATA.planesAccion !== 'undefined' && Array.isArray(DATA.planesAccion) && DATA.planesAccion.length > 0;
     const _estadoStyle = estado => {
       const e = String(estado||'').toUpperCase().trim();
@@ -2458,58 +2571,58 @@ function renderResumen() {
     };
     const planesBody = hasPlanesData
       ? DATA.planesAccion.map(r => {
-          const fAccion  = r['FECHA DE ACCION']||r['FECHA ACCION']||'—';
-          const fCierre  = r['FECHA DE CIERRE']||r['FECHA CIERRE']||'—';
-          const plan     = r['PLAN DE ACCION']||r['PLAN ACCION']||r['PLAN']||'—';
-          const resp     = r['RESPONSABLE']||'—';
-          const seg      = r['SEGUIMIENTO']||'—';
-          const valor    = r['VALOR DE LA ACCION']||r['VALOR']||'—';
-          const estado   = r['ESTADO']||'PENDIENTE';
-          const hoy      = new Date().toISOString().slice(0,10);
-          const atrasado = fCierre && fCierre!=='—' && fCierre < hoy && !String(estado).toUpperCase().includes('CERRAD');
+          const plan    = _colP(r,'PLAN DE ACCION','PLAN ACCION','PLAN DE ACCIÓN','PLAN');
+          const fAccion = _colP(r,'FECHA DE ACCION','FECHA ACCION','FECHA DE ACCIÓN');
+          const fCierre = _colP(r,'FECHA DE CIERRE','FECHA CIERRE');
+          const resp    = _colP(r,'RESPONSABLE');
+          const seg     = _colP(r,'SEGUIMIENTO');
+          const valor   = _colP(r,'VALOR DE LA ACCION','VALOR DE LA ACCIÓN','VALOR ACCION','VALOR');
+          const estado  = _colP(r,'ESTADO')||'PENDIENTE';
+          const hoy     = new Date().toISOString().slice(0,10);
+          const fCStr   = String(fCierre).trim();
+          const atrasado = fCStr && fCStr!=='—' && fCStr < hoy && !String(estado).toUpperCase().includes('CERRAD');
           const es = _estadoStyle(estado);
           return `<tr style="border-bottom:1px solid #E5E7EB;${atrasado?'background:#FEF9F9':''}">
-            <td style="padding:8px 12px;font-size:.85rem;color:#111827;font-weight:500;max-width:260px">${plan}</td>
-            <td style="padding:8px 12px;font-size:.85rem;color:#374151;white-space:nowrap">${fAccion}</td>
-            <td style="padding:8px 12px;font-size:.85rem;white-space:nowrap;color:${atrasado?'#DC2626':'#374151'};font-weight:${atrasado?700:400}">${fCierre}${atrasado?' ⚠️':''}</td>
-            <td style="padding:8px 12px;font-size:.85rem;color:#374151">${resp}</td>
-            <td style="padding:8px 12px;font-size:.82rem;color:#374151;max-width:200px">${seg}</td>
-            <td style="padding:8px 12px;font-size:.85rem;color:#374151;text-align:right;white-space:nowrap">${valor}</td>
-            <td style="padding:8px 12px;text-align:center">
-              <span style="font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;background:${es.bg};color:${es.color};border:1px solid ${es.border};white-space:nowrap">${es.label}</span>
+            <td style="padding:9px 14px;font-size:.95rem;color:#111827;font-weight:600;max-width:280px">${plan}</td>
+            <td style="padding:9px 14px;font-size:.92rem;color:#374151;white-space:nowrap">${fAccion}</td>
+            <td style="padding:9px 14px;font-size:.92rem;white-space:nowrap;color:${atrasado?'#DC2626':'#374151'};font-weight:${atrasado?700:400}">${fCierre}${atrasado?' ⚠️':''}</td>
+            <td style="padding:9px 14px;font-size:.92rem;color:#374151">${resp}</td>
+            <td style="padding:9px 14px;font-size:.88rem;color:#374151;max-width:220px">${seg}</td>
+            <td style="padding:9px 14px;font-size:.92rem;color:#374151;text-align:right;white-space:nowrap">${valor}</td>
+            <td style="padding:9px 14px;text-align:center">
+              <span style="font-size:.78rem;font-weight:700;padding:4px 12px;border-radius:20px;background:${es.bg};color:${es.color};border:1px solid ${es.border};white-space:nowrap">${es.label}</span>
             </td>
           </tr>`;
         }).join('')
-      : `<tr><td colspan="7" style="padding:28px 20px;text-align:center;color:#9CA3AF;font-size:.88rem">Sin planes de acción registrados</td></tr>`;
+      : `<tr><td colspan="7" style="padding:28px 20px;text-align:center;color:#9CA3AF;font-size:.92rem">Sin planes de acción registrados</td></tr>`;
 
-    // Contadores de estado para el header
     const _tot = hasPlanesData ? DATA.planesAccion.length : 0;
-    const _cerradas   = hasPlanesData ? DATA.planesAccion.filter(r=>String(r['ESTADO']||'').toUpperCase().includes('CERRAD')).length : 0;
-    const _enProceso  = hasPlanesData ? DATA.planesAccion.filter(r=>{const e=String(r['ESTADO']||'').toUpperCase();return e.includes('PROCESO')||e.includes('PROGRESO');}).length : 0;
+    const _cerradas  = hasPlanesData ? DATA.planesAccion.filter(r=>String(_colP(r,'ESTADO')||'').toUpperCase().includes('CERRAD')).length : 0;
+    const _enProceso = hasPlanesData ? DATA.planesAccion.filter(r=>{const e=String(_colP(r,'ESTADO')||'').toUpperCase();return e.includes('PROCESO')||e.includes('PROGRESO');}).length : 0;
     const _pendientes = _tot - _cerradas - _enProceso;
 
     planesEl.innerHTML = `
       <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden">
-        <div style="background:#F0F9FF;padding:10px 16px;border-bottom:2px solid #BAE6FD;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-          <div style="font-size:1rem;font-weight:700;color:#111827"><i class="fa-solid fa-list-check" style="color:#0EA5E9;margin-right:6px"></i>Planes de Acción</div>
+        <div style="background:#F0F9FF;padding:12px 18px;border-bottom:2px solid #BAE6FD;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div style="font-size:1.05rem;font-weight:800;color:#111827"><i class="fa-solid fa-list-check" style="color:#0EA5E9;margin-right:8px"></i>Planes de Acción</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             ${_tot>0?`
-              <span style="font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:20px;background:#F0FDF4;color:#15803D;border:1px solid #86EFAC">${_cerradas} Cerradas</span>
-              <span style="font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:1px solid #93C5FD">${_enProceso} En Proceso</span>
-              <span style="font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:20px;background:#FFFBEB;color:#B45309;border:1px solid #FCD34D">${_pendientes} Pendientes</span>
-            `:'<span style="font-size:.78rem;color:#6B7280">Sin registros</span>'}
+              <span style="font-size:.8rem;font-weight:700;padding:3px 11px;border-radius:20px;background:#F0FDF4;color:#15803D;border:1px solid #86EFAC">${_cerradas} Cerradas</span>
+              <span style="font-size:.8rem;font-weight:700;padding:3px 11px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:1px solid #93C5FD">${_enProceso} En Proceso</span>
+              <span style="font-size:.8rem;font-weight:700;padding:3px 11px;border-radius:20px;background:#FFFBEB;color:#B45309;border:1px solid #FCD34D">${_pendientes} Pendientes</span>
+            `:'<span style="font-size:.82rem;color:#6B7280">Sin registros</span>'}
           </div>
         </div>
         <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;min-width:750px">
+          <table style="width:100%;border-collapse:collapse;min-width:780px">
             <thead><tr style="background:#F9FAFB">
-              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Plan de Acción</th>
-              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Fecha Acción</th>
-              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Fecha Cierre</th>
-              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Responsable</th>
-              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Seguimiento</th>
-              <th style="padding:9px 12px;text-align:right;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Valor Acción</th>
-              <th style="padding:9px 12px;text-align:center;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Estado</th>
+              <th style="padding:9px 14px;text-align:left;font-size:.82rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Plan de Acción</th>
+              <th style="padding:9px 14px;text-align:left;font-size:.82rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Fecha Acción</th>
+              <th style="padding:9px 14px;text-align:left;font-size:.82rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Fecha Cierre</th>
+              <th style="padding:9px 14px;text-align:left;font-size:.82rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Responsable</th>
+              <th style="padding:9px 14px;text-align:left;font-size:.82rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Seguimiento</th>
+              <th style="padding:9px 14px;text-align:right;font-size:.82rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Valor Acción</th>
+              <th style="padding:9px 14px;text-align:center;font-size:.82rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Estado</th>
             </tr></thead>
             <tbody>${planesBody}</tbody>
           </table>
@@ -2566,45 +2679,44 @@ function renderOEE() {
     </div>`).join('');
   gData.forEach(g=>makeGauge(g.id,g.val,g.col));
 
-  // Trend — aggregate by mes+dia to avoid thousands of points
+  // Trend — aggregate by mes+dia, usando cálculo corregido de Rend y Disp
   const avgArr = arr => { const v=arr.filter(x=>x>0&&x<=100); return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
   const byDay = {};
   d.forEach(r => {
     const key = (r._mes||'')+'_'+(r['DIA']||'?');
-    if (!byDay[key]) byDay[key] = {label: r['DIA']||'?', oee:[],rendW:0,rendCant:0,dispW:0,dispTP:0,prodByOrden:{}};
-    if (r._oee  > 0 && r._oee  <= 100) byDay[key].oee.push(r._oee);
-    if (r._rend > 0 && r._rend <= 100 && r._cant > 0) { byDay[key].rendW += r._rend * r._cant; byDay[key].rendCant += r._cant; }
-    const tp = pNum(r['Tiempo Programado']) || pNum(r['TIEMPO PROGRAMADO']) || 0;
-    if (r._disp > 0 && r._disp <= 100 && tp > 0) { byDay[key].dispW += r._disp * tp; byDay[key].dispTP += tp; }
-    // Acumular producción por orden (para calidad por día)
+    if (!byDay[key]) byDay[key] = {label: r['DIA']||'?', oee:[], rows:[], prodByOrden:{}};
+    if (r._oee > 0 && r._oee <= 100) byDay[key].oee.push(r._oee);
+    byDay[key].rows.push(r);
     if (r._orden) byDay[key].prodByOrden[r._orden] = (byDay[key].prodByOrden[r._orden]||0) + r._cant;
   });
-  // Calidad diaria: NC del mismo día vs. producción del mismo día (evita NC total > prod diaria)
+  // Calidad diaria + Rendimiento/Disponibilidad corregidos por día
   Object.keys(byDay).forEach(key => {
+    const day = byDay[key];
     const dayNcByOrden = DATA.ncByOrdenByDay[key] || {};
     let calNum = 0, calDen = 0;
-    Object.entries(byDay[key].prodByOrden).forEach(([o, prod]) => {
+    Object.entries(day.prodByOrden).forEach(([o, prod]) => {
       const nc = Math.min(dayNcByOrden[o]||0, prod);
-      calNum += prod - nc;
-      calDen += prod;
+      calNum += prod - nc; calDen += prod;
     });
-    byDay[key].calValue = calDen > 0 ? (calNum/calDen)*100 : null;
+    day.calValue  = calDen > 0 ? (calNum/calDen)*100 : null;
+    day.rendValue = calcRendimiento(day.rows);
+    day.dispValue = calcDisponibilidad(day.rows);
   });
   const dayVals = Object.values(byDay);
   const tLabels = dayVals.map(x=>x.label);
 
   // Eje derecho (componentes): escala dinámica para mostrar variación real
   const compVals = [
-    ...dayVals.map(x=>x.rendCant>0?x.rendW/x.rendCant:null),
-    ...dayVals.map(x=>x.dispTP>0?x.dispW/x.dispTP:null),
+    ...dayVals.map(x=>x.rendValue),
+    ...dayVals.map(x=>x.dispValue),
     ...dayVals.map(x=>x.calValue)
   ].filter(v=>v!=null&&v>0);
   const compMin = compVals.length ? Math.max(0, Math.floor(Math.min(...compVals)/5)*5 - 5) : 0;
 
   makeChart('oee-trend','line',tLabels,[
     {label:'OEE',           yAxisID:'y',  data:dayVals.map(x=>avgArr(x.oee)),  borderColor:'#10B981',borderWidth:2,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Rendimiento',   yAxisID:'y1', data:dayVals.map(x=>x.rendCant>0?Math.min(100,x.rendW/x.rendCant):null), borderColor:'#8B5CF6',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
-    {label:'Disponibilidad',yAxisID:'y1', data:dayVals.map(x=>x.dispTP>0?Math.min(100,x.dispW/x.dispTP):null),    borderColor:'#06B6D4',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Rendimiento',   yAxisID:'y1', data:dayVals.map(x=>x.rendValue!=null?Math.min(100,x.rendValue):null), borderColor:'#8B5CF6',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'Disponibilidad',yAxisID:'y1', data:dayVals.map(x=>x.dispValue!=null?Math.min(100,x.dispValue):null), borderColor:'#06B6D4',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
     {label:'Calidad',       yAxisID:'y1', data:dayVals.map(x=>x.calValue!=null?Math.min(100,Math.max(0,x.calValue)):null), borderColor:'#F59E0B',borderWidth:2,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
   ],{
     xScale:{ticks:{maxTicksLimit:15}},
