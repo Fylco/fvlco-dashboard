@@ -1885,6 +1885,7 @@ function calcCalidad(rows) {
 // % Rendimiento — corregido: undProd / undProg por slot (turno disponible - paros programados)
 // Agrupa por maq+diaTurno+turno igual que el Reporte Compacto.
 function calcRendimiento(rows) {
+  const _esProg = rz => /programado/i.test(String(rz||''));
   const _TSEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   const slots = {};
   rows.forEach(r => {
@@ -1893,7 +1894,7 @@ function calcRendimiento(rows) {
     const s = slots[sk];
     s.undProd += r._cant||0;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-    if (esProgramado(rz)) s.paroProgSeg += (r._paro||0)*60;
+    if (_esProg(rz)) s.paroProgSeg += (r._paro||0)*60;
     if (!s.cicloEst) s.cicloEst = pNum(r['T. CICLO EST'])||0;
     if (!s.cavTeor)  s.cavTeor  = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
   });
@@ -1914,6 +1915,7 @@ function calcRendimiento(rows) {
 // % Disponibilidad — corregido: TRT / (TRT + parosNoProg) por slot
 // TRT (tiempo real de trabajo) = undProd / cavReal × cicloReal ÷ 60
 function calcDisponibilidad(rows) {
+  const _esProg = rz => /programado/i.test(String(rz||''));
   const slots = {};
   rows.forEach(r => {
     const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
@@ -1921,7 +1923,7 @@ function calcDisponibilidad(rows) {
     const s = slots[sk];
     s.undProd += r._cant||0;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-    if (!esProgramado(rz)) s.paroNoProg += r._paro||0;
+    if (!_esProg(rz)) s.paroNoProg += r._paro||0;
     if (!s.cavReal)   s.cavReal  = _findColVal(r,'CAVIDAD','TEOR')||0;
     if (!s.cicloReal) s.cicloReal = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||pNum(r['T. CICLO EST'])||0;
   });
@@ -2369,7 +2371,7 @@ function renderResumen() {
   d.forEach(r => {
     if (!(r._paro>0)) return;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim()||'Sin especificar';
-    if (!esProgramado(rz)) _paretoMap[rz] = (_paretoMap[rz]||0)+(r._paro||0);
+    if (!/programado/i.test(rz)) _paretoMap[rz] = (_paretoMap[rz]||0)+(r._paro||0);
   });
   const _paretoArr = Object.entries(_paretoMap).sort((a,b)=>b[1]-a[1]);
   const _parTotal  = _paretoArr.reduce((s,[,v])=>s+v,0);
