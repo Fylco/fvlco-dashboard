@@ -2402,18 +2402,35 @@ function renderResumen() {
     if (!realMap[k]) realMap[k] = {ref:r._prod, real:0};
     realMap[k].real += r._cant;
   });
-  const allKeys = new Set([...Object.keys(planMap), ...Object.keys(realMap)]);
-  const refs = [...allKeys].map(k=>({
-    ref:(planMap[k]||realMap[k]).ref,
-    plan:(planMap[k]||{plan:0}).plan,
-    real:(realMap[k]||{real:0}).real
-  })).filter(x=>x.plan>0||x.real>0).sort((a,b)=>b.plan-a.plan);
 
-  const refsCumpl = refs.filter(x=>x.plan>0).map(x=>({...x, p:x.real/x.plan*100}));
+  // ── Maquila: sumar unidades fabricadas por fuera, filtradas por mes ──
+  const _MES_IDX = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const maqMap = {};
+  (DATA.maquilas||[]).forEach(m => {
+    const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if (!mm) return;
+    if (mesSel && _MES_IDX[parseInt(mm[2])] !== mesSel.toLowerCase()) return;
+    const k = normRef(m.referencia);
+    if (!k) return;
+    const cant = parseFloat(String(m.cantidad||'').replace(/[^0-9.-]/g,''))||0;
+    if (!maqMap[k]) maqMap[k] = {ref: m.referencia, maquila:0};
+    maqMap[k].maquila += cant;
+  });
+
+  const allKeys = new Set([...Object.keys(planMap), ...Object.keys(realMap), ...Object.keys(maqMap)]);
+  const refs = [...allKeys].map(k=>({
+    ref:     (planMap[k]||realMap[k]||maqMap[k]).ref,
+    plan:    (planMap[k]||{plan:0}).plan,
+    real:    (realMap[k]||{real:0}).real,
+    maquila: (maqMap[k]||{maquila:0}).maquila,
+  })).map(x=>({...x, total: x.real + x.maquila}))
+    .filter(x=>x.plan>0||x.real>0||x.maquila>0).sort((a,b)=>b.plan-a.plan);
+
+  const refsCumpl = refs.filter(x=>x.plan>0).map(x=>({...x, p:x.total/x.plan*100}));
   const refsOk   = refsCumpl.filter(x=>x.p>=95).length;
   const refsRisk = refsCumpl.filter(x=>x.p>=80&&x.p<95).length;
   const refsFail = refsCumpl.filter(x=>x.p<80).length;
-  const brechaTotal = refs.reduce((s,x)=>s+Math.max(0,x.plan-x.real),0);
+  const brechaTotal = refs.reduce((s,x)=>s+Math.max(0,x.plan-x.total),0);
 
   // Clientes con pedidos tardíos
   const byCliente = {};
@@ -2575,25 +2592,29 @@ function renderResumen() {
   // ── Tabla compacta Plan vs Real Referencias ──────────────────────────────
   const planrefEl = document.getElementById('resumen-planref');
   if (planrefEl) {
+    const hasMaq = refs.some(x=>x.maquila>0);
     const tblRows = refs.map(x => {
-      const p = x.plan>0 ? x.real/x.plan*100 : null;
+      const p = x.plan>0 ? x.total/x.plan*100 : null;
       const bg = p===null?'#F9FAFB':p>=95?'#F0FDF4':p>=80?'#FFFBEB':'#FEF2F2';
       const fc = p===null?'#6B7280':p>=95?'#16A34A':p>=80?'#D97706':'#DC2626';
       const ic = p===null?'—':p>=95?'✅':p>=80?'⚠️':'❌';
-      const brecha = x.plan>0&&x.real<x.plan ? `<span style="color:#DC2626">-${fmt(x.plan-x.real)}</span>` :
-                     x.real>x.plan ? `<span style="color:#16A34A">+${fmt(x.real-x.plan)}</span>` : '—';
+      const brecha = x.plan>0&&x.total<x.plan ? `<span style="color:#DC2626">-${fmt(x.plan-x.total)}</span>` :
+                     x.total>x.plan ? `<span style="color:#16A34A">+${fmt(x.total-x.plan)}</span>` : '—';
       return `<tr style="background:${bg};border-bottom:1px solid #E5E7EB">
         <td style="padding:7px 12px;font-size:.88rem;font-weight:600;color:#111827;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ic} ${x.ref}</td>
         <td style="padding:7px 12px;text-align:right;font-size:.88rem;color:#374151">${fmt(x.plan)}</td>
         <td style="padding:7px 12px;text-align:right;font-size:.88rem;color:#374151">${fmt(x.real)}</td>
+        ${hasMaq?`<td style="padding:7px 12px;text-align:right;font-size:.88rem;color:#D97706;font-weight:600">${x.maquila>0?fmt(x.maquila):'—'}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:.88rem;color:#111827;font-weight:700">${fmt(x.total)}</td>`:''}
         <td style="padding:7px 12px;text-align:right;font-size:.95rem;font-weight:800;color:${fc}">${p!==null?p.toFixed(1)+'%':'—'}</td>
         <td style="padding:7px 12px;text-align:right;font-size:.85rem">${brecha}</td>
       </tr>`;
     }).join('');
+    const colSpan = hasMaq ? 7 : 5;
     planrefEl.innerHTML = `
       <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;margin-top:24px">
         <div style="background:#F3F4F6;padding:10px 16px;border-bottom:2px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-          <div style="font-size:1rem;font-weight:700;color:#111827"><i class="fa-solid fa-boxes-stacked" style="color:#8B5CF6;margin-right:6px"></i>Plan vs Real por Referencia${mesLabel}</div>
+          <div style="font-size:1rem;font-weight:700;color:#111827"><i class="fa-solid fa-boxes-stacked" style="color:#8B5CF6;margin-right:6px"></i>Plan vs Real por Referencia${mesLabel}${hasMaq?' <span style="font-size:.75rem;font-weight:500;color:#D97706;margin-left:8px">+ Maquila incluida</span>':''}</div>
           <div style="font-size:.78rem;color:#6B7280;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:6px;padding:3px 10px">${refs.length} referencias · filtro global activo</div>
         </div>
         <div style="overflow-x:auto">
@@ -2601,11 +2622,13 @@ function renderResumen() {
             <thead><tr style="background:#F9FAFB">
               <th style="padding:8px 12px;text-align:left;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Referencia / Producto</th>
               <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Planeado</th>
-              <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Real</th>
+              <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Real Interno</th>
+              ${hasMaq?`<th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#D97706;font-weight:700;border-bottom:2px solid #E5E7EB">Maquila</th>
+              <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#111827;font-weight:700;border-bottom:2px solid #E5E7EB">Total</th>`:''}
               <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">% Cumpl.</th>
               <th style="padding:8px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Brecha</th>
             </tr></thead>
-            <tbody>${tblRows||'<tr><td colspan="5" style="text-align:center;padding:24px;color:#9CA3AF;font-size:.9rem">Sin datos de plan para el filtro seleccionado</td></tr>'}</tbody>
+            <tbody>${tblRows||`<tr><td colspan="${colSpan}" style="text-align:center;padding:24px;color:#9CA3AF;font-size:.9rem">Sin datos de plan para el filtro seleccionado</td></tr>`}</tbody>
           </table>
         </div>
       </div>`;
@@ -3041,29 +3064,53 @@ function renderPlanRef() {
     realMap[k].real += r._cant;
   });
 
-  // Unión de claves plan + real
-  const allKeys = new Set([...Object.keys(planMap), ...Object.keys(realMap)]);
-  const refs = [...allKeys].map(k => ({
-    ref:  (planMap[k]||realMap[k]).ref,
-    plan: (planMap[k]||{plan:0}).plan,
-    real: (realMap[k]||{real:0}).real
-  })).filter(x=>x.plan>0||x.real>0).sort((a,b)=>b.plan-a.plan).slice(0,15);
+  // ── Maquila por mes
+  const _MES_IDX2 = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const maqMap = {};
+  (DATA.maquilas||[]).forEach(m => {
+    const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if (!mm) return;
+    if (mesSel && _MES_IDX2[parseInt(mm[2])] !== mesSel.toLowerCase()) return;
+    const k = normRef(m.referencia);
+    if (!k) return;
+    const cant = parseFloat(String(m.cantidad||'').replace(/[^0-9.-]/g,''))||0;
+    if (!maqMap[k]) maqMap[k] = {ref: m.referencia, maquila:0};
+    maqMap[k].maquila += cant;
+  });
 
-  makeChart('pref-chart','bar',refs.map(x=>x.ref.substring(0,30)),[
-    {label:'Planeado',data:refs.map(x=>x.plan),backgroundColor:'#8B5CF644',borderColor:'#8B5CF6',borderWidth:2,borderRadius:3},
-    {label:'Real',data:refs.map(x=>x.real),backgroundColor:'#06B6D466',borderColor:'#06B6D4',borderWidth:2,borderRadius:3}
-  ]);
+  // Unión de claves plan + real + maquila
+  const allKeys = new Set([...Object.keys(planMap), ...Object.keys(realMap), ...Object.keys(maqMap)]);
+  const refs = [...allKeys].map(k => ({
+    ref:     (planMap[k]||realMap[k]||maqMap[k]).ref,
+    plan:    (planMap[k]||{plan:0}).plan,
+    real:    (realMap[k]||{real:0}).real,
+    maquila: (maqMap[k]||{maquila:0}).maquila,
+  })).map(x=>({...x, total: x.real + x.maquila}))
+    .filter(x=>x.plan>0||x.real>0||x.maquila>0).sort((a,b)=>b.plan-a.plan).slice(0,15);
+
+  const hasMaq = refs.some(x=>x.maquila>0);
+  const datasets = [
+    {label:'Planeado', data:refs.map(x=>x.plan),    backgroundColor:'#8B5CF644',borderColor:'#8B5CF6',borderWidth:2,borderRadius:3},
+    {label:'Real Interno', data:refs.map(x=>x.real), backgroundColor:'#06B6D466',borderColor:'#06B6D4',borderWidth:2,borderRadius:3},
+  ];
+  if (hasMaq) datasets.push(
+    {label:'Maquila', data:refs.map(x=>x.maquila), backgroundColor:'#F59E0B55',borderColor:'#F59E0B',borderWidth:2,borderRadius:3}
+  );
+  makeChart('pref-chart','bar',refs.map(x=>x.ref.substring(0,30)), datasets);
 
   const rows = refs.map(x=>{
-    const c = x.plan>0?(x.real/x.plan*100):null;
+    const c = x.plan>0?(x.total/x.plan*100):null;
     return `<tr>
       <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${x.ref}</td>
-      <td>${fmt(x.plan)}</td><td>${fmt(x.real)}</td>
+      <td>${fmt(x.plan)}</td>
+      <td>${fmt(x.real)}</td>
+      ${hasMaq?`<td style="color:#D97706;font-weight:600">${x.maquila>0?fmt(x.maquila):'—'}</td><td style="font-weight:700">${fmt(x.total)}</td>`:''}
       <td>${badge(c,95,80)}</td>
     </tr>`;
   }).join('');
+  const maqHeaders = hasMaq ? '<th>Maquila</th><th>Total</th>' : '';
   document.getElementById('pref-tbl').innerHTML=`
-    <thead><tr><th>Referencia</th><th>Planeado</th><th>Real</th><th>Cumplimiento</th></tr></thead>
+    <thead><tr><th>Referencia</th><th>Planeado</th><th>Real Interno</th>${maqHeaders}<th>Cumplimiento</th></tr></thead>
     <tbody>${rows}</tbody>`;
 }
 
