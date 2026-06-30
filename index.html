@@ -1400,6 +1400,7 @@ let SEL_DIAS_NC   = new Set();
 // Tarifas base (COP/hora) — se sobreescriben automáticamente con los valores del sheet
 let TARIFAS_MAQ = { 1:67196, 2:67196, 3:68490, 4:68490, 5:62304, 6:100753 };
 let CAV_MAP = {}; // producto → cavidades (de filas que sí tienen el dato)
+let COSTOS_FAB_MAP = {}; // producto → costo COP por unidad (de PLAN REFERENCIAS)
 
 function parseCOP(str) {
   if (!str) return null;
@@ -1421,6 +1422,44 @@ function buildCavTeorMap() {
     const cav = pNum(r['CAV.TEORICAS']);
     if (cav > 0 && r._prod) CAV_TEOR_MAP[r._prod] = cav;
   });
+}
+
+// Lee la sección "Costo de Fabricacion por Producto" del planRef.
+// Busca cualquier fila cuya primera columna contenga "COSTO" y "FAB" (case/accent insensitive).
+// Las filas siguientes son: producto → primer valor numérico (COP) encontrado en cualquier columna.
+function loadCostosFabFromSheet() {
+  COSTOS_FAB_MAP = {};
+  const _norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  const _rk   = row => (row['REFERENCIA / PRODUCTO']||row['']||Object.values(row)[0]||'').toString().trim();
+  let inSec = false;
+  const SKIP_COLS = new Set(['REFERENCIA / PRODUCTO', ''].concat(MESES_CAP));
+  for (const row of DATA.planRef) {
+    const ref = _rk(row);
+    const rn  = _norm(ref);
+    // Detectar encabezado de sección — cualquier variante de "costo de fabricacion"
+    if (!inSec) {
+      if (rn.includes('costo') && (rn.includes('fab') || rn.includes('prod'))) { inSec = true; }
+      continue;
+    }
+    // Fin de sección: fila vacía o nueva sección (otra tabla)
+    if (!ref) break;
+    if (rn.includes('costo') || rn.includes('total') || rn.includes('cavidad')) break;
+    // Buscar primer valor COP > 0 en las columnas no-mes
+    let costoUnit = null;
+    for (const [k, v] of Object.entries(row)) {
+      if (SKIP_COLS.has(k)) continue;
+      const n = parseCOP(v);
+      if (n && n > 0) { costoUnit = n; break; }
+    }
+    // Si no se encontró en columnas extra, intentar mes (la sección puede usar columnas de mes)
+    if (!costoUnit) {
+      for (const m of MESES_CAP) {
+        const n = parseCOP(row[m]);
+        if (n && n > 0) { costoUnit = n; break; }
+      }
+    }
+    if (costoUnit && ref) COSTOS_FAB_MAP[ref.toUpperCase().replace(/\s+/g,'')] = costoUnit;
+  }
 }
 
 function loadTarifasFromSheet() {
@@ -2018,6 +2057,7 @@ async function loadAll() {
 
     populateAllFilters();
     loadTarifasFromSheet();
+    loadCostosFabFromSheet();
     buildCavMap();
     buildCavTeorMap();
     renderAll();
@@ -2516,12 +2556,13 @@ function renderResumen() {
       if (lost <= 0) return;
       // Atribuir pérdida proporcionalmente a cada producto del slot
       const totalSlotProd = Object.values(s.prods).reduce((a,b)=>a+b,0)||1;
-      const tarifa = (typeof TARIFAS_MAQ !== 'undefined' ? TARIFAS_MAQ[parseInt(s.maq)] : 0) || 25000;
-      const lostHoras = s.cicloEst>0 && s.cavTeor>0 ? lost*s.cicloEst/s.cavTeor/3600 : 0;
       Object.entries(s.prods).forEach(([prod, prodCant]) => {
-        const fraccion = prodCant/totalSlotProd;
-        const lostProd = Math.round(lost*fraccion);
-        const valueProd = Math.round(lostHoras*fraccion*tarifa);
+        const fraccion   = prodCant/totalSlotProd;
+        const lostProd   = Math.round(lost*fraccion);
+        // Costo unitario: primero de PLAN REFERENCIAS, si no hay → 0 (se muestra sin valor)
+        const _normProd  = prod.toUpperCase().replace(/\s+/g,'');
+        const costoUnit  = (COSTOS_FAB_MAP[_normProd]||0);
+        const valueProd  = Math.round(lostProd * costoUnit);
         if (!_byProdMaq[prod]) _byProdMaq[prod] = {};
         if (!_byProdMaq[prod][s.maq]) _byProdMaq[prod][s.maq] = {lost:0, value:0};
         _byProdMaq[prod][s.maq].lost  += lostProd;
@@ -2559,7 +2600,7 @@ function renderResumen() {
           <div style="font-size:1.05rem;font-weight:800;color:#991B1B"><i class="fa-solid fa-circle-minus" style="color:#DC2626;margin-right:8px"></i>Unidades Dejadas de Fabricar${mesLabel}</div>
           <div style="display:flex;gap:14px;flex-wrap:wrap">
             <div style="text-align:right"><div style="font-size:.72rem;color:#B91C1C;font-weight:700;text-transform:uppercase">Total unidades perdidas</div><div style="font-size:1.3rem;font-weight:800;color:#DC2626">${fmt(_upTotal)}</div></div>
-            <div style="text-align:right"><div style="font-size:.72rem;color:#B91C1C;font-weight:700;text-transform:uppercase">Costo de máquina estimado</div><div style="font-size:1.3rem;font-weight:800;color:#DC2626">${_copFmt(_upValue)}</div></div>
+            <div style="text-align:right"><div style="font-size:.72rem;color:#B91C1C;font-weight:700;text-transform:uppercase">Costo de Fabricación</div><div style="font-size:1.3rem;font-weight:800;color:#DC2626">${_copFmt(_upValue)}</div></div>
           </div>
         </div>
         ${_upProds.length>0?`
@@ -2568,7 +2609,7 @@ function renderResumen() {
             <thead><tr style="background:#FEF9F9">
               <th style="padding:9px 14px;text-align:left;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Producto</th>
               <th style="padding:9px 14px;text-align:right;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Und. No Producidas</th>
-              <th style="padding:9px 14px;text-align:right;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Valor Est. (Costo Máq)</th>
+              <th style="padding:9px 14px;text-align:right;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Valor (Costo Fab.)</th>
               <th style="padding:9px 14px;text-align:left;font-size:.8rem;color:#6B7280;font-weight:700;border-bottom:2px solid #FECACA">Detalle por Máquina</th>
             </tr></thead>
             <tbody>${_upRows}</tbody>
@@ -4866,16 +4907,17 @@ function exportPDF() {
     });
     const _byProdP={};
     Object.values(_upSlotsP).forEach(s=>{
-      if(s.cicloEst>0&&s.cavTeor>0){
+      if(s.cicloEst>=5&&s.cavTeor>0){
         const tEf=Math.max(0,(_TSEG_P[s.turno]||28800)-s.paroProgSeg);
         s.undProg=Math.round((tEf/s.cicloEst)*s.cavTeor);
       } else { s.undProg=s.undProd; }
       const lost=Math.max(0,s.undProg-s.undProd); if(lost<=0) return;
       const tot=Object.values(s.prods).reduce((a,b)=>a+b,0)||1;
-      const tarifa=(typeof TARIFAS_MAQ!=='undefined'?TARIFAS_MAQ[parseInt(s.maq)]:0)||25000;
-      const lostH=s.cicloEst>0&&s.cavTeor>0?lost*s.cicloEst/s.cavTeor/3600:0;
       Object.entries(s.prods).forEach(([prod,cant])=>{
-        const f=cant/tot, lp=Math.round(lost*f), vp=Math.round(lostH*f*tarifa);
+        const f=cant/tot, lp=Math.round(lost*f);
+        const _np=prod.toUpperCase().replace(/\s+/g,'');
+        const costoU=(typeof COSTOS_FAB_MAP!=='undefined'?COSTOS_FAB_MAP[_np]:0)||0;
+        const vp=Math.round(lp*costoU);
         if(!_byProdP[prod]) _byProdP[prod]={lost:0,value:0,maqs:{}};
         _byProdP[prod].lost+=lp; _byProdP[prod].value+=vp;
         _byProdP[prod].maqs[s.maq]=(_byProdP[prod].maqs[s.maq]||0)+lp;
@@ -4888,7 +4930,7 @@ function exportPDF() {
         return [prod.substring(0,32), fmt(x.lost), '$'+Math.round(x.value).toLocaleString('es-CO'), detMaq];
       });
     if(_upRowsP.length) {
-      table(['Producto','Und. No Producidas','Valor Est. (Costo Máq)','Máquinas'],
+      table(['Producto','Und. No Producidas','Valor (Costo Fab.)','Máquinas'],
         _upRowsP, [55,30,38,45]);
     } else {
       pdf.setFont('helvetica','italic'); pdf.setFontSize(8); pdf.setTextColor(34,197,94);
