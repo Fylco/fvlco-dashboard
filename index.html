@@ -1426,20 +1426,62 @@ function buildCavTeorMap() {
 }
 
 // Lee costos unitarios por producto del planRef.
-// 4 estrategias en cascada; la primera que encuentre datos se usa.
+// Usa valores confirmados por el usuario como base; el sheet complementa con productos adicionales.
 function loadCostosFabFromSheet() {
-  COSTOS_FAB_MAP = {};
+  const _normK = s => String(s||'').toUpperCase().replace(/\s+/g,'');
   const _norm  = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
-  const _normK = s => s.toUpperCase().replace(/\s+/g,'');
-  // Primera columna: intenta varias claves habituales al exportar el sheet
+
+  // ── Costos confirmados (Plan de Referencias — tabla "Costo de Fabricacion por Producto") ──
+  // Incluye nombre del plan Y aliases de producción para cubrir variaciones de nombre
+  const BASE = {
+    // Tapas / Válvulas Terra 15mm
+    'TAPA15MMTERRA'        : 12,
+    'TAPATERRA15MM'        : 12,
+    'VALVULATERRA15MM'     : 12,
+    'VALVULATERRА15MM'     : 12,
+    'TAPATERRА15MM'        : 12,
+    // Terra X 24 CAV
+    'VALVULTATERRAX24CAV'  : 14,
+    'VALVULATERRAX24CAV'   : 14,
+    'VALVULATERRA15MMX24CAV': 14,
+    'VALVULATERRА15MMX24CAV': 14,
+    // Terra X 32 CAV
+    'VALVULTATERRAX32CAV'  : 14,
+    'VALVULATERRAX32CAV'   : 14,
+    // Terra X 48 CAV
+    'VALVULTATERRAX48CAV'  : 10,
+    'VALVULATERRAX48CAV'   : 10,
+    // Tapa 38mm sin liner
+    'TAPA38MMSINLINER'     : 43,
+    'TAPA38SINLINER'       : 43,
+    'TAPA38SINLINER38MM'   : 43,
+    // Tapa 38mm con liner
+    'TAPA38MMCONLINER'     : 43,
+    'TAPA38CONLINER'       : 43,
+    'TAPA38CONLINER38MM'   : 43,
+    // Tapadora V1 / V2
+    'TAPADORAV1'           : 21,
+    'TAPADORAV2'           : 21,
+    // Válvula lateral
+    'VALVULALATERAL'       : 46,
+    'VALVULALATERAL38MM'   : 46,
+    'VALVULАЛATERAL'       : 46,
+    // Válvula frontal
+    'VALVULAFRONTAL'       : 87,
+    'VALVULAFRONTAL38MM'   : 87,
+    // Canastilla
+    'CANASTILLA'           : 48,
+    'CANASTILLAS'          : 48,
+  };
+  COSTOS_FAB_MAP = {...BASE};
+
+  // ── Leer del sheet para complementar productos no cubiertos en BASE ──
   const _rk = row => {
-    const keys = Object.keys(row);
-    // Busca columna cuyo nombre contenga "referencia" o "producto"
-    for (const k of keys) { if (_norm(k).includes('referencia') || _norm(k).includes('producto')) return String(row[k]||'').trim(); }
-    // Fallback: primera columna del objeto
+    for (const k of Object.keys(row)) {
+      if (_norm(k).includes('referencia') || _norm(k).includes('producto')) return String(row[k]||'').trim();
+    }
     return String(Object.values(row)[0]||'').trim();
   };
-  // Primer valor numérico > 0 de una fila, omitiendo el nombre del producto
   const _firstNum = (row, skipVal) => {
     for (const v of Object.values(row)) {
       const s = String(v||'').trim();
@@ -1449,77 +1491,49 @@ function loadCostosFabFromSheet() {
     }
     return null;
   };
-  const MESES_SET = new Set(MESES_CAP.map(m => m.toLowerCase()));
 
-  // ── Estrategia 1: sección dedicada con header "costo"/"valor"/"precio" ──
+  // Detectar sección de costos buscando "costo" + "fabricacion" en cualquier celda de la fila
   let inSec = false;
   for (const row of DATA.planRef) {
-    const ref = _rk(row);
-    const rn  = _norm(ref);
     if (!inSec) {
-      if (rn.includes('costo') || rn.includes('valor') || rn.includes('precio')) inSec = true;
-      continue; // siempre salta el encabezado
+      const anyVal = Object.values(row).map(v => _norm(String(v||'')));
+      if (anyVal.some(v => v.includes('costo') && (v.includes('fabric') || v.includes('product')))) {
+        inSec = true; continue;
+      }
+      const ref0 = _rk(row);
+      const rn0 = _norm(ref0);
+      if (rn0.includes('costo') || rn0.includes('valor') || rn0.includes('precio')) { inSec = true; continue; }
+      continue;
     }
-    if (!ref) break; // fila vacía = fin de sección
+    const ref = _rk(row);
+    if (!ref) { inSec = false; continue; }
+    const rn = _norm(ref);
     if (rn.includes('utilizacion') || rn.includes('maquina') || rn.includes('tarifa')) break;
-    // Dentro de la sección: toma el primer número de CUALQUIER columna
+    if (rn.includes('referencia') || rn.includes('producto')) continue;
+    const k = _normK(ref);
+    if (COSTOS_FAB_MAP[k]) continue; // ya cubierto por BASE, no sobreescribir
     const n = _firstNum(row, ref);
-    if (n && ref) COSTOS_FAB_MAP[_normK(ref)] = n;
+    if (n && n > 0) COSTOS_FAB_MAP[k] = n;
   }
 
-  // ── Estrategia 2: columnas cuyo NOMBRE contenga "costo"/"valor"/"precio" ──
-  if (!Object.keys(COSTOS_FAB_MAP).length) {
-    const costCols = Object.keys(DATA.planRef[0]||{}).filter(k => {
-      const kn = _norm(k);
-      return kn.includes('costo') || kn.includes('valor') || kn.includes('precio');
-    });
-    if (costCols.length) {
-      for (const row of DATA.planRef) {
-        const ref = _rk(row);
-        if (!ref || _normK(ref) === 'TOTAL') break;
-        const rn = _norm(ref);
-        if (rn.includes('referencia') || rn.includes('producto') || rn.includes('costo') || rn.includes('mes')) continue;
-        for (const col of costCols) {
-          const n = parseCOP(row[col]);
-          if (n && n > 0) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
-        }
-      }
+  // ── Coincidencia parcial: producción vs BASE (cubre nombres con palabras en diferente orden) ──
+  const baseKeys = Object.keys(BASE);
+  (DATA.prod || []).forEach(r => {
+    const pk = _normK(r._prod||'');
+    if (!pk || COSTOS_FAB_MAP[pk]) return; // ya mapeado
+    // Busca en BASE la clave que comparta mayor número de tokens con pk
+    const pkTokens = pk.match(/[A-Z0-9]+/g) || [];
+    let bestKey = null, bestScore = 0;
+    for (const bk of baseKeys) {
+      const bkTokens = bk.match(/[A-Z0-9]+/g) || [];
+      const shared = pkTokens.filter(t => t.length > 2 && bkTokens.includes(t)).length;
+      const score = shared / Math.max(pkTokens.length, bkTokens.length);
+      if (score > bestScore && score >= 0.6) { bestScore = score; bestKey = bk; }
     }
-  }
+    if (bestKey) COSTOS_FAB_MAP[pk] = BASE[bestKey];
+  });
 
-  // ── Estrategia 3: filas del plan principal con columnas no-mes que tengan valor numérico ──
-  if (!Object.keys(COSTOS_FAB_MAP).length) {
-    for (const row of DATA.planRef) {
-      const ref = _rk(row);
-      if (!ref || _normK(ref) === 'TOTAL') break;
-      const rn = _norm(ref);
-      if (rn.includes('referencia') || rn.includes('producto') || rn.includes('costo')) continue;
-      for (const [k, v] of Object.entries(row)) {
-        if (MESES_SET.has(_norm(k)) || _norm(k).includes('referencia') || _norm(k).includes('producto')) continue;
-        const n = parseCOP(v);
-        if (n && n > 0) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
-      }
-    }
-  }
-
-  // ── Estrategia 4: cruzar nombres de producción contra TODAS las filas del planRef ──
-  if (!Object.keys(COSTOS_FAB_MAP).length && DATA.prod.length) {
-    const prodKeys = new Set(DATA.prod.map(r => r._prod ? _normK(r._prod) : null).filter(Boolean));
-    for (const row of DATA.planRef) {
-      const ref = _rk(row);
-      if (!ref) continue;
-      const rk = _normK(ref);
-      if (!prodKeys.has(rk)) continue; // solo filas cuyo nombre coincide con un producto real
-      const n = _firstNum(row, ref);
-      if (n) COSTOS_FAB_MAP[rk] = n;
-    }
-  }
-
-  // ── Debug: muestra siempre la estructura del planRef en consola para diagnóstico ──
-  const cols = Object.keys(DATA.planRef[0]||{});
-  console.log('[FVLco] planRef columnas:', cols);
-  console.log('[FVLco] planRef primeras 5 filas:', DATA.planRef.slice(0,5));
-  console.log('[FVLco] COSTOS_FAB_MAP:', Object.keys(COSTOS_FAB_MAP).length, 'productos →', COSTOS_FAB_MAP);
+  console.log('[FVLco] COSTOS_FAB_MAP:', Object.keys(COSTOS_FAB_MAP).length, 'entradas →', COSTOS_FAB_MAP);
 }
 
 function loadTarifasFromSheet() {
