@@ -1052,7 +1052,7 @@ const SHEETS = {
   planRef:      _exp('9934746'),
   accid:        _exp('904371036'),
   ventas:       _exp('2006233736'),
-  planesAccion: null, // ← reemplazar con _exp('GID_DE_PLANES_ACCION') una vez creada la hoja
+  planesAccion: _exp('644639776'),
 };
 // Maquilas: misma hoja, endpoint export directo
 const MAQUILAS_CSV = _exp('1924737619');
@@ -2030,6 +2030,7 @@ async function silentRefresh() {
     await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
     await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
     await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
+    if (SHEETS.planesAccion) await loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; });
     await loadMaquilas();
     document.getElementById('last-update').textContent =
       `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`;
@@ -2449,6 +2450,12 @@ function renderResumen() {
   const planesEl = document.getElementById('resumen-planes');
   if (planesEl) {
     const hasPlanesData = typeof DATA.planesAccion !== 'undefined' && Array.isArray(DATA.planesAccion) && DATA.planesAccion.length > 0;
+    const _estadoStyle = estado => {
+      const e = String(estado||'').toUpperCase().trim();
+      if (e.includes('CERRAD')) return {bg:'#F0FDF4',color:'#15803D',border:'#86EFAC',label:'Cerrada'};
+      if (e.includes('PROCESO')||e.includes('PROGRESO')) return {bg:'#EFF6FF',color:'#1D4ED8',border:'#93C5FD',label:'En Proceso'};
+      return {bg:'#FFFBEB',color:'#B45309',border:'#FCD34D',label:'Pendiente'};
+    };
     const planesBody = hasPlanesData
       ? DATA.planesAccion.map(r => {
           const fAccion  = r['FECHA DE ACCION']||r['FECHA ACCION']||'—';
@@ -2457,33 +2464,44 @@ function renderResumen() {
           const resp     = r['RESPONSABLE']||'—';
           const seg      = r['SEGUIMIENTO']||'—';
           const valor    = r['VALOR DE LA ACCION']||r['VALOR']||'—';
+          const estado   = r['ESTADO']||'PENDIENTE';
           const hoy      = new Date().toISOString().slice(0,10);
-          const atrasado = fCierre && fCierre!=='—' && fCierre < hoy;
-          return `<tr style="border-bottom:1px solid #E5E7EB;${atrasado?'background:#FEF2F2':''}">
-            <td style="padding:8px 12px;font-size:.85rem;color:#111827;font-weight:500">${plan}</td>
+          const atrasado = fCierre && fCierre!=='—' && fCierre < hoy && !String(estado).toUpperCase().includes('CERRAD');
+          const es = _estadoStyle(estado);
+          return `<tr style="border-bottom:1px solid #E5E7EB;${atrasado?'background:#FEF9F9':''}">
+            <td style="padding:8px 12px;font-size:.85rem;color:#111827;font-weight:500;max-width:260px">${plan}</td>
             <td style="padding:8px 12px;font-size:.85rem;color:#374151;white-space:nowrap">${fAccion}</td>
             <td style="padding:8px 12px;font-size:.85rem;white-space:nowrap;color:${atrasado?'#DC2626':'#374151'};font-weight:${atrasado?700:400}">${fCierre}${atrasado?' ⚠️':''}</td>
             <td style="padding:8px 12px;font-size:.85rem;color:#374151">${resp}</td>
-            <td style="padding:8px 12px;font-size:.85rem;color:#374151">${seg}</td>
-            <td style="padding:8px 12px;font-size:.85rem;color:#374151;text-align:right">${valor}</td>
+            <td style="padding:8px 12px;font-size:.82rem;color:#374151;max-width:200px">${seg}</td>
+            <td style="padding:8px 12px;font-size:.85rem;color:#374151;text-align:right;white-space:nowrap">${valor}</td>
+            <td style="padding:8px 12px;text-align:center">
+              <span style="font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;background:${es.bg};color:${es.color};border:1px solid ${es.border};white-space:nowrap">${es.label}</span>
+            </td>
           </tr>`;
         }).join('')
-      : `<tr><td colspan="6" style="padding:28px 20px;text-align:center">
-          <div style="font-size:.95rem;font-weight:600;color:#374151;margin-bottom:10px"><i class="fa-solid fa-link" style="color:#0EA5E9;margin-right:6px"></i>Conecta la hoja <em>Planes de Acción</em></div>
-          <div style="font-size:.82rem;color:#6B7280;max-width:480px;margin:0 auto;line-height:1.6">
-            1. En tu Spreadsheet crea una hoja llamada <strong>Planes de Accion</strong><br>
-            2. Encabezados en fila 1: <code>PLAN DE ACCION · FECHA DE ACCION · FECHA DE CIERRE · RESPONSABLE · SEGUIMIENTO · VALOR DE LA ACCION</code><br>
-            3. Comparte el GID de esa hoja para conectarla al dashboard
-          </div>
-        </td></tr>`;
+      : `<tr><td colspan="7" style="padding:28px 20px;text-align:center;color:#9CA3AF;font-size:.88rem">Sin planes de acción registrados</td></tr>`;
+
+    // Contadores de estado para el header
+    const _tot = hasPlanesData ? DATA.planesAccion.length : 0;
+    const _cerradas   = hasPlanesData ? DATA.planesAccion.filter(r=>String(r['ESTADO']||'').toUpperCase().includes('CERRAD')).length : 0;
+    const _enProceso  = hasPlanesData ? DATA.planesAccion.filter(r=>{const e=String(r['ESTADO']||'').toUpperCase();return e.includes('PROCESO')||e.includes('PROGRESO');}).length : 0;
+    const _pendientes = _tot - _cerradas - _enProceso;
+
     planesEl.innerHTML = `
       <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden">
         <div style="background:#F0F9FF;padding:10px 16px;border-bottom:2px solid #BAE6FD;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <div style="font-size:1rem;font-weight:700;color:#111827"><i class="fa-solid fa-list-check" style="color:#0EA5E9;margin-right:6px"></i>Planes de Acción</div>
-          <div style="font-size:.78rem;color:#0369A1;background:#E0F2FE;border-radius:6px;padding:3px 10px">Seguimiento de compromisos y mejoras</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            ${_tot>0?`
+              <span style="font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:20px;background:#F0FDF4;color:#15803D;border:1px solid #86EFAC">${_cerradas} Cerradas</span>
+              <span style="font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:1px solid #93C5FD">${_enProceso} En Proceso</span>
+              <span style="font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:20px;background:#FFFBEB;color:#B45309;border:1px solid #FCD34D">${_pendientes} Pendientes</span>
+            `:'<span style="font-size:.78rem;color:#6B7280">Sin registros</span>'}
+          </div>
         </div>
         <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;min-width:700px">
+          <table style="width:100%;border-collapse:collapse;min-width:750px">
             <thead><tr style="background:#F9FAFB">
               <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Plan de Acción</th>
               <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Fecha Acción</th>
@@ -2491,6 +2509,7 @@ function renderResumen() {
               <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Responsable</th>
               <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Seguimiento</th>
               <th style="padding:9px 12px;text-align:right;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Valor Acción</th>
+              <th style="padding:9px 12px;text-align:center;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Estado</th>
             </tr></thead>
             <tbody>${planesBody}</tbody>
           </table>
