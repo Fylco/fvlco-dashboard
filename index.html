@@ -1425,42 +1425,91 @@ function buildCavTeorMap() {
   });
 }
 
-// Lee la sección "Costo de Fabricacion por Producto" del planRef.
-// Busca cualquier fila cuya primera columna contenga "COSTO" y "FAB" (case/accent insensitive).
-// Las filas siguientes son: producto → primer valor numérico (COP) encontrado en cualquier columna.
+// Lee costos unitarios por producto del planRef.
+// Estrategia 1: busca una sección encabezada con "costo", "valor" o "precio" en la primera columna.
+// Estrategia 2: si no hay sección, busca columnas cuyo NOMBRE contenga "costo", "valor" o "precio"
+//               en las filas del plan principal (antes del TOTAL).
 function loadCostosFabFromSheet() {
   COSTOS_FAB_MAP = {};
-  const _norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
-  const _rk   = row => (row['REFERENCIA / PRODUCTO']||row['']||Object.values(row)[0]||'').toString().trim();
-  let inSec = false;
+  const _norm  = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  const _normK = s => s.toUpperCase().replace(/\s+/g,'');
+  const _rk    = row => (row['REFERENCIA / PRODUCTO']||row['']||Object.values(row)[0]||'').toString().trim();
   const SKIP_COLS = new Set(['REFERENCIA / PRODUCTO', ''].concat(MESES_CAP));
+
+  // ── Estrategia 1: buscar sección dedicada ──────────────────────────────
+  let inSec = false;
   for (const row of DATA.planRef) {
     const ref = _rk(row);
     const rn  = _norm(ref);
-    // Detectar encabezado de sección — cualquier variante de "costo de fabricacion"
     if (!inSec) {
-      if (rn.includes('costo') && (rn.includes('fab') || rn.includes('prod'))) { inSec = true; }
+      // Acepta: "costo de fabricacion", "costo unitario", "costos", "valor unitario", "precio"
+      if (rn.includes('costo') || (rn.includes('valor') && (rn.includes('unit') || rn.includes('fab'))) || rn.includes('precio unit')) {
+        inSec = true;
+      }
       continue;
     }
-    // Fin de sección: fila vacía o nueva sección (otra tabla)
-    if (!ref) break;
-    if (rn.includes('costo') || rn.includes('total') || rn.includes('cavidad')) break;
-    // Buscar primer valor COP > 0 en las columnas no-mes
+    if (!ref) break; // fila vacía = fin de sección
+    if (rn.includes('utilizacion') || rn.includes('utiliz') || rn.includes('maquina') || rn.includes('tarifa')) break;
+    // Buscar primer valor numérico: primero en columnas NO-mes, luego en mes
     let costoUnit = null;
     for (const [k, v] of Object.entries(row)) {
       if (SKIP_COLS.has(k)) continue;
       const n = parseCOP(v);
-      if (n && n > 0) { costoUnit = n; break; }
+      if (n && n > 100) { costoUnit = n; break; } // > 100 para evitar cavidades/ciclos
     }
-    // Si no se encontró en columnas extra, intentar mes (la sección puede usar columnas de mes)
     if (!costoUnit) {
       for (const m of MESES_CAP) {
         const n = parseCOP(row[m]);
-        if (n && n > 0) { costoUnit = n; break; }
+        if (n && n > 100) { costoUnit = n; break; }
       }
     }
-    if (costoUnit && ref) COSTOS_FAB_MAP[ref.toUpperCase().replace(/\s+/g,'')] = costoUnit;
+    if (costoUnit && ref) COSTOS_FAB_MAP[_normK(ref)] = costoUnit;
   }
+
+  // ── Estrategia 2: columnas con nombre "costo"/"valor"/"precio" en filas del plan ──
+  if (Object.keys(COSTOS_FAB_MAP).length === 0) {
+    // Detectar columnas con nombres que parezcan de costo
+    const costCols = [];
+    for (const row of DATA.planRef) {
+      for (const k of Object.keys(row)) {
+        if (SKIP_COLS.has(k)) continue;
+        const kn = _norm(k);
+        if ((kn.includes('costo') || kn.includes('valor') || kn.includes('precio')) && !costCols.includes(k)) {
+          costCols.push(k);
+        }
+      }
+    }
+    if (costCols.length > 0) {
+      // Leer las filas del plan principal (hasta TOTAL)
+      for (const row of DATA.planRef) {
+        const ref = _rk(row);
+        if (!ref || ref.toUpperCase() === 'TOTAL') break;
+        const rn = _norm(ref);
+        if (rn.includes('referencia') || rn.includes('mes') || rn.includes('costo') || rn.includes('valor')) continue;
+        for (const col of costCols) {
+          const n = parseCOP(row[col]);
+          if (n && n > 100) { COSTOS_FAB_MAP[_normK(ref)] = n; break; }
+        }
+      }
+    }
+  }
+
+  // ── Estrategia 3: cualquier columna no-mes con valor alto en filas de plan ──
+  if (Object.keys(COSTOS_FAB_MAP).length === 0) {
+    for (const row of DATA.planRef) {
+      const ref = _rk(row);
+      if (!ref || ref.toUpperCase() === 'TOTAL') break;
+      const rn = _norm(ref);
+      if (rn.includes('referencia') || rn.includes('mes') || rn.includes('costo') || rn.includes('valor')) continue;
+      for (const [k, v] of Object.entries(row)) {
+        if (SKIP_COLS.has(k)) continue;
+        const n = parseCOP(v);
+        if (n && n > 500) { COSTOS_FAB_MAP[_normK(ref)] = n; break; } // umbral 500 COP mín.
+      }
+    }
+  }
+
+  console.log('[FVLco] COSTOS_FAB_MAP cargado:', Object.keys(COSTOS_FAB_MAP).length, 'productos', COSTOS_FAB_MAP);
 }
 
 function loadTarifasFromSheet() {
@@ -2636,7 +2685,7 @@ function renderResumen() {
               <td style="padding:9px 14px;font-size:.95rem;font-weight:800;color:#991B1B">TOTAL</td>
               <td style="padding:9px 14px;text-align:right;font-size:1.05rem;font-weight:800;color:#DC2626">${fmt(_upTotal)}</td>
               <td style="padding:9px 14px;text-align:right;font-size:1.05rem;font-weight:800;color:#DC2626">${_copFmt(_upValue)}</td>
-              <td style="padding:9px 14px;font-size:.75rem;color:#9CA3AF">Und. no fabricadas = capacidad teórica en tiempo efectivo (turno − paros prog.) − producción real. Solo slots con ciclo estimado ≥ 5 s. Valor = horas perdidas × tarifa/hora máquina.</td>
+              <td style="padding:9px 14px;font-size:.75rem;color:#9CA3AF">Und. no fabricadas = capacidad teórica (ciclo × cavidades en tiempo efectivo) − producción real. Valor = unidades perdidas × costo unit. por producto (Plan de Referencias).</td>
             </tr></tfoot>
           </table>
         </div>`:'<div style="padding:20px;text-align:center;color:#16A34A;font-size:.95rem;font-weight:600">✅ Sin pérdidas de producción en el período seleccionado</div>'}
