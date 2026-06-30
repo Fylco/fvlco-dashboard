@@ -278,20 +278,30 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         #sec-resumen .section-title { color:#374151; font-size:.8rem; font-weight:700; }
         #sec-resumen .section-title::after { background:#D1D5DB; }
       </style>
-      <div style="margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #E5E7EB">
-        <div style="font-size:1.45rem;font-weight:800;color:#111827"><i class="fa-solid fa-file-contract" style="color:#6366F1;margin-right:8px"></i>Informe de Cierre de Mes Global</div>
-        <div style="font-size:.9rem;color:#6B7280;margin-top:3px">Resumen ejecutivo · Conectado al filtro global de mes y turno</div>
+      <div style="margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #E5E7EB;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:1.45rem;font-weight:800;color:#111827"><i class="fa-solid fa-file-contract" style="color:#6366F1;margin-right:8px"></i>Informe de Cierre de Mes Global</div>
+          <div style="font-size:.9rem;color:#6B7280;margin-top:3px">Resumen ejecutivo · Conectado al filtro global de mes y turno</div>
+        </div>
+        <button onclick="compartirInformeWA()" style="background:#25D366;color:#FFFFFF;border:none;border-radius:8px;padding:8px 16px;font-size:.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <i class="fa-brands fa-whatsapp"></i> Compartir por WhatsApp
+        </button>
       </div>
       <div class="section-title">Indicadores Clave</div>
       <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
       <div id="resumen-alertas" style="margin-bottom:20px"></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:18px">
-        <div class="chart-card"><div class="section-title">OEE por Máquina</div><div style="height:220px"><canvas id="r-oee-maq"></canvas></div></div>
-        <div class="chart-card"><div class="section-title">Plan vs Real Mensual</div><div style="height:220px"><canvas id="r-plan-mes"></canvas></div></div>
-        <div class="chart-card"><div class="section-title">Top No Conformes (Causa)</div><div style="height:220px"><canvas id="r-nc-causa"></canvas></div></div>
-        <div class="chart-card"><div class="section-title">OTIF por Mes</div><div style="height:220px"><canvas id="r-otif-mes"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">OEE por Máquina</div><div style="height:280px"><canvas id="r-oee-maq"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">Plan vs Real Mensual</div><div style="height:280px"><canvas id="r-plan-mes"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">Top No Conformes (Causa)</div><div style="height:280px"><canvas id="r-nc-causa"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">OTIF por Mes</div><div style="height:280px"><canvas id="r-otif-mes"></canvas></div></div>
+      </div>
+      <div class="chart-card" style="margin-top:18px">
+        <div class="section-title">Pareto de Tiempos de Paro — Causas que acumulan el 80%</div>
+        <div style="height:300px"><canvas id="r-pareto-paro"></canvas></div>
       </div>
       <div id="resumen-planref"></div>
+      <div id="resumen-planes" style="margin-top:24px"></div>
     </div>
 
     <!-- ======================================= OEE == -->
@@ -1042,6 +1052,7 @@ const SHEETS = {
   planRef:      _exp('9934746'),
   accid:        _exp('904371036'),
   ventas:       _exp('2006233736'),
+  planesAccion: null, // ← reemplazar con _exp('GID_DE_PLANES_ACCION') una vez creada la hoja
 };
 // Maquilas: misma hoja, endpoint export directo
 const MAQUILAS_CSV = _exp('1924737619');
@@ -1871,37 +1882,58 @@ function calcCalidad(rows) {
   return Math.min(100, Math.max(0, ((tp-tn)/tp)*100));
 }
 
-// % Rendimiento — promedio ponderado por CANT REPORTADA.
-// El sheet calcula el % por fila (col AK); para agregar N filas usamos
-// promedio ponderado por producción: filas con más producto pesan más.
+// % Rendimiento — corregido: undProd / undProg por slot (turno disponible - paros programados)
+// Agrupa por maq+diaTurno+turno igual que el Reporte Compacto.
 function calcRendimiento(rows) {
-  let sumWR=0, totalW=0;
+  const _TSEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
+  const slots = {};
   rows.forEach(r => {
-    const rend = r._rend;
-    const cant = r._cant||0;
-    if (rend !== null && rend !== undefined && !isNaN(rend) && rend > 0 && cant > 0) {
-      sumWR  += rend * cant;
-      totalW += cant;
+    const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+    if (!slots[sk]) slots[sk] = {undProd:0, cicloEst:0, cavTeor:0, paroProgSeg:0, turno:String(r._turno||'')};
+    const s = slots[sk];
+    s.undProd += r._cant||0;
+    const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
+    if (esProgramado(rz)) s.paroProgSeg += (r._paro||0)*60;
+    if (!s.cicloEst) s.cicloEst = pNum(r['T. CICLO EST'])||0;
+    if (!s.cavTeor)  s.cavTeor  = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
+  });
+  let totProd=0, totTeo=0;
+  Object.values(slots).forEach(s => {
+    totProd += s.undProd;
+    if (s.cicloEst>0 && s.cavTeor>0) {
+      const tEfSeg = Math.max(0, (_TSEG[s.turno]||28800) - s.paroProgSeg);
+      totTeo += Math.round((tEfSeg/s.cicloEst)*s.cavTeor);
+    } else {
+      totTeo += s.undProd; // sin datos de ciclo → asumir 100% para ese slot
     }
   });
-  if (totalW <= 0) return avg(rows,'_rend');
-  return Math.min(100, Math.max(0, sumWR / totalW));
+  if (totTeo<=0) return null;
+  return Math.min(100, Math.max(0, (totProd/totTeo)*100));
 }
 
-// % Disponibilidad — ponderado por Tiempo Programado de cada fila.
-// Evita que filas de poco tiempo tengan el mismo peso que turnos completos.
+// % Disponibilidad — corregido: TRT / (TRT + parosNoProg) por slot
+// TRT (tiempo real de trabajo) = undProd / cavReal × cicloReal ÷ 60
 function calcDisponibilidad(rows) {
-  let sumWD=0, totalW=0;
+  const slots = {};
   rows.forEach(r => {
-    const disp = r._disp;
-    const tp   = pNum(r['Tiempo Programado']) || pNum(r['TIEMPO PROGRAMADO']) || 0;
-    if (disp !== null && disp !== undefined && !isNaN(disp) && disp > 0 && tp > 0) {
-      sumWD  += disp * tp;
-      totalW += tp;
+    const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+    if (!slots[sk]) slots[sk] = {undProd:0, cavReal:0, cicloReal:0, paroNoProg:0};
+    const s = slots[sk];
+    s.undProd += r._cant||0;
+    const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
+    if (!esProgramado(rz)) s.paroNoProg += r._paro||0;
+    if (!s.cavReal)   s.cavReal  = _findColVal(r,'CAVIDAD','TEOR')||0;
+    if (!s.cicloReal) s.cicloReal = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||pNum(r['T. CICLO EST'])||0;
+  });
+  let totTRT=0, totParo=0;
+  Object.values(slots).forEach(s => {
+    if (s.cavReal>0 && s.cicloReal>0) {
+      totTRT  += (s.undProd/s.cavReal*s.cicloReal)/60;
+      totParo += s.paroNoProg;
     }
   });
-  if (totalW <= 0) return avg(rows,'_disp');
-  return Math.min(100, Math.max(0, sumWD / totalW));
+  if ((totTRT+totParo)<=0) return null;
+  return Math.min(100, Math.max(0, totTRT/(totTRT+totParo)*100));
 }
 
 // Fracción NC por orden = nc_total / prod_total para distribuir NC
@@ -1954,6 +1986,11 @@ async function loadAll() {
 
     setProgress(82, 'Cargando Accidentalidad...');
     await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
+
+    if (SHEETS.planesAccion) {
+      setProgress(88, 'Cargando Planes de Acción...');
+      await loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; });
+    }
 
     setProgress(92, 'Cargando Maquilas...');
     await loadMaquilas();   // hoja distinta; ya maneja su propio error
@@ -2292,29 +2329,80 @@ function renderResumen() {
       </div>`:''}
     </div>`;
 
+  // Opciones de tema claro para todos los gráficos del informe
+  const LO = {
+    xScale: {ticks:{color:'#374151',font:{size:11}}, grid:{color:'#E5E7EB'}},
+    yScale: {ticks:{color:'#374151',font:{size:11}}, grid:{color:'#E5E7EB'}},
+    extra:  {plugins:{legend:{labels:{color:'#374151',boxWidth:12,font:{size:12,family:'Tahoma'}}},tooltip:{mode:'index',intersect:false}}}
+  };
+
   // Mini chart: OEE por máquina
   const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
+  const oeeByMaqVal = maqs.map(m => { const v=avg(d.filter(r=>r._maq==m),'_oee'); return v!=null?Math.min(100,v):null; });
   makeChart('r-oee-maq','bar', maqs.map(m=>'Maq '+m),
-    [{label:'OEE %', data:maqs.map(m=>avg(d.filter(r=>r._maq==m),'_oee')), backgroundColor:PAL, borderRadius:5}]);
+    [{label:'OEE %', data:oeeByMaqVal, backgroundColor:oeeByMaqVal.map(v=>v==null?'#D1D5DB':v>=65?'#22C55E':v>=50?'#F59E0B':'#EF4444'), borderRadius:5}],
+    LO);
 
   // Mini chart: Plan vs Real mensual
   const planMes = calcPlanMensual();
   makeChart('r-plan-mes','bar', planMes.map(x=>cap(x.mes)),[
-    {label:'Planeado', data:planMes.map(x=>x.plan), backgroundColor:'#8B5CF644', borderColor:'#8B5CF6', borderWidth:2},
-    {label:'Real', data:planMes.map(x=>x.real), backgroundColor:'#06B6D444', borderColor:'#06B6D4', borderWidth:2}
-  ]);
+    {label:'Planeado', data:planMes.map(x=>x.plan), backgroundColor:'#8B5CF655', borderColor:'#8B5CF6', borderWidth:2, borderRadius:4},
+    {label:'Real',     data:planMes.map(x=>x.real), backgroundColor:'#06B6D455', borderColor:'#06B6D4', borderWidth:2, borderRadius:4}
+  ], LO);
 
   // Mini chart: NC por causa
   const ncCausa = {};
   nc.forEach(r=>{ const k=r['CAUSA']||'Sin dato'; const v=pNum(r['CANTIDAD NC'])||0; if(v>0) ncCausa[k]=(ncCausa[k]||0)+v; });
   const topNC = Object.entries(ncCausa).sort((a,b)=>b[1]-a[1]).slice(0,6);
   makeChart('r-nc-causa','doughnut', topNC.map(x=>x[0].substring(0,25)),
-    [{data:topNC.map(x=>x[1]), backgroundColor:PAL, borderWidth:0}]);
+    [{data:topNC.map(x=>x[1]), backgroundColor:PAL, borderWidth:2, borderColor:'#FFFFFF'}],
+    {extra:{plugins:{legend:{labels:{color:'#374151',boxWidth:12,font:{size:11,family:'Tahoma'}}}}}});
 
   // Mini chart: OTIF mensual
   const otifMes = calcOTIFMensual(vnts);
   makeChart('r-otif-mes','line', otifMes.map(x=>cap(x.mes)),
-    [{label:'OTIF %', data:otifMes.map(x=>x.otif), borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.4, fill:true, pointRadius:3}]);
+    [{label:'OTIF %', data:otifMes.map(x=>x.otif), borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.4, fill:true, pointRadius:4, pointBackgroundColor:'#3B82F6'}],
+    LO);
+
+  // Pareto 80-20 de paros no programados
+  const _paretoMap = {};
+  d.forEach(r => {
+    if (!(r._paro>0)) return;
+    const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim()||'Sin especificar';
+    if (!esProgramado(rz)) _paretoMap[rz] = (_paretoMap[rz]||0)+(r._paro||0);
+  });
+  const _paretoArr = Object.entries(_paretoMap).sort((a,b)=>b[1]-a[1]);
+  const _parTotal  = _paretoArr.reduce((s,[,v])=>s+v,0);
+  let _pcum=0;
+  const _pareto80 = [];
+  for (const [rz,min] of _paretoArr) {
+    _pcum += min;
+    _pareto80.push({rz, min, cum:_pcum/_parTotal*100});
+    if (_pcum/_parTotal>=0.80) break;
+  }
+  if (_pareto80.length>0) {
+    makeChart('r-pareto-paro','bar',
+      _pareto80.map(x=>x.rz.length>35?x.rz.substring(0,33)+'…':x.rz),
+      [{
+        label:'Minutos de paro',
+        data: _pareto80.map(x=>x.min),
+        backgroundColor: _pareto80.map(x=>x.cum<=40?'#DC2626':x.cum<=70?'#F59E0B':'#6366F1'),
+        borderRadius:4
+      }],
+      {
+        indexAxis:'y',
+        xScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
+        yScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}},
+        extra:{plugins:{
+          legend:{labels:{color:'#374151',font:{size:12,family:'Tahoma'}}},
+          tooltip:{callbacks:{label:c=>`${c.raw} min · ${(_pareto80[c.dataIndex]?.cum||0).toFixed(1)}% acumulado`}}
+        }}
+      }
+    );
+  } else {
+    const pc = document.getElementById('r-pareto-paro');
+    if (pc && pc.parentElement) pc.parentElement.innerHTML = '<div style="color:#6B7280;font-size:.88rem;padding:20px;text-align:center">Sin paros no programados en el período seleccionado</div>';
+  }
 
   // ── Tabla compacta Plan vs Real Referencias ──────────────────────────────
   const planrefEl = document.getElementById('resumen-planref');
@@ -2354,6 +2442,84 @@ function renderResumen() {
         </div>
       </div>`;
   }
+
+  // ── Planes de Acción ─────────────────────────────────────────────────────
+  const planesEl = document.getElementById('resumen-planes');
+  if (planesEl) {
+    const hasPlanesData = typeof DATA.planesAccion !== 'undefined' && Array.isArray(DATA.planesAccion) && DATA.planesAccion.length > 0;
+    const planesBody = hasPlanesData
+      ? DATA.planesAccion.map(r => {
+          const fAccion  = r['FECHA DE ACCION']||r['FECHA ACCION']||'—';
+          const fCierre  = r['FECHA DE CIERRE']||r['FECHA CIERRE']||'—';
+          const plan     = r['PLAN DE ACCION']||r['PLAN ACCION']||r['PLAN']||'—';
+          const resp     = r['RESPONSABLE']||'—';
+          const seg      = r['SEGUIMIENTO']||'—';
+          const valor    = r['VALOR DE LA ACCION']||r['VALOR']||'—';
+          const hoy      = new Date().toISOString().slice(0,10);
+          const atrasado = fCierre && fCierre!=='—' && fCierre < hoy;
+          return `<tr style="border-bottom:1px solid #E5E7EB;${atrasado?'background:#FEF2F2':''}">
+            <td style="padding:8px 12px;font-size:.85rem;color:#111827;font-weight:500">${plan}</td>
+            <td style="padding:8px 12px;font-size:.85rem;color:#374151;white-space:nowrap">${fAccion}</td>
+            <td style="padding:8px 12px;font-size:.85rem;white-space:nowrap;color:${atrasado?'#DC2626':'#374151'};font-weight:${atrasado?700:400}">${fCierre}${atrasado?' ⚠️':''}</td>
+            <td style="padding:8px 12px;font-size:.85rem;color:#374151">${resp}</td>
+            <td style="padding:8px 12px;font-size:.85rem;color:#374151">${seg}</td>
+            <td style="padding:8px 12px;font-size:.85rem;color:#374151;text-align:right">${valor}</td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="6" style="padding:28px 20px;text-align:center">
+          <div style="font-size:.95rem;font-weight:600;color:#374151;margin-bottom:10px"><i class="fa-solid fa-link" style="color:#0EA5E9;margin-right:6px"></i>Conecta la hoja <em>Planes de Acción</em></div>
+          <div style="font-size:.82rem;color:#6B7280;max-width:480px;margin:0 auto;line-height:1.6">
+            1. En tu Spreadsheet crea una hoja llamada <strong>Planes de Accion</strong><br>
+            2. Encabezados en fila 1: <code>PLAN DE ACCION · FECHA DE ACCION · FECHA DE CIERRE · RESPONSABLE · SEGUIMIENTO · VALOR DE LA ACCION</code><br>
+            3. Comparte el GID de esa hoja para conectarla al dashboard
+          </div>
+        </td></tr>`;
+    planesEl.innerHTML = `
+      <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden">
+        <div style="background:#F0F9FF;padding:10px 16px;border-bottom:2px solid #BAE6FD;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div style="font-size:1rem;font-weight:700;color:#111827"><i class="fa-solid fa-list-check" style="color:#0EA5E9;margin-right:6px"></i>Planes de Acción</div>
+          <div style="font-size:.78rem;color:#0369A1;background:#E0F2FE;border-radius:6px;padding:3px 10px">Seguimiento de compromisos y mejoras</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;min-width:700px">
+            <thead><tr style="background:#F9FAFB">
+              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Plan de Acción</th>
+              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Fecha Acción</th>
+              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Fecha Cierre</th>
+              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Responsable</th>
+              <th style="padding:9px 12px;text-align:left;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Seguimiento</th>
+              <th style="padding:9px 12px;text-align:right;font-size:.75rem;color:#6B7280;font-weight:700;border-bottom:2px solid #E5E7EB">Valor Acción</th>
+            </tr></thead>
+            <tbody>${planesBody}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  // Snapshot para WhatsApp
+  window._informeSnap = { oee, rend, disp, cal, refsOk, refsFail, clientesLate, totalCli, mesLabel };
+}
+
+// ── WhatsApp share para Informe de Cierre ──────────────────────────────────
+function compartirInformeWA() {
+  const s = window._informeSnap || {};
+  const pc = v => v!=null ? v.toFixed(1)+'%' : '—';
+  const mes = (document.getElementById('g-filter-mes')?.value||'').trim();
+  const periodoLabel = mes ? `Período: ${mes.charAt(0).toUpperCase()+mes.slice(1)}` : 'Período: (mes actual)';
+  let txt = `📊 *Informe de Cierre de Mes Global — FVLco*\n`;
+  txt += `${periodoLabel}\n\n`;
+  txt += `*OEE Global:* ${pc(s.oee)}\n`;
+  txt += `*Disponibilidad:* ${pc(s.disp)}\n`;
+  txt += `*Rendimiento:* ${pc(s.rend)}\n`;
+  txt += `*Calidad:* ${pc(s.cal)}\n\n`;
+  if (s.totalCli!=null && s.totalCli>0) {
+    txt += `*Cumplimiento pedidos:*\n`;
+    txt += `  ✅ Cumplidas: ${s.refsOk||0} refs\n`;
+    txt += `  ❌ Incumplidas: ${s.refsFail||0} refs\n`;
+    txt += `  🚚 Clientes con retraso: ${s.clientesLate||0} de ${s.totalCli}\n\n`;
+  }
+  txt += `🔗 Ver informe completo:\n${window.location.href}`;
+  window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
 }
 
 // ── OEE
