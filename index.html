@@ -300,8 +300,8 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div class="chart-card"><div class="section-title">OTIF por Mes</div><div style="height:280px"><canvas id="r-otif-mes"></canvas></div></div>
       </div>
       <div class="chart-card" style="margin-top:18px">
-        <div class="section-title">Pareto de Tiempos de Paro — Causas que acumulan el 80%</div>
-        <div style="height:360px"><canvas id="r-pareto-paro"></canvas></div>
+        <div class="section-title">Pareto de Tiempos de Paro por Máquina — Causas que acumulan el 80%</div>
+        <div id="r-pareto-maq-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:12px"></div>
       </div>
       <div id="resumen-planref"></div>
       <div id="resumen-und-perdidas" style="margin-top:24px"></div>
@@ -1942,6 +1942,15 @@ function calcDisponibilidad(rows) {
   return Math.min(100, Math.max(0, totTRT/(totTRT+totParo)*100));
 }
 
+// OEE = Disp × Rend × Cal / 10000  (valores en %, resultado en %)
+// Usa siempre las funciones de cálculo corregidas, nunca avg('_oee').
+function calcOEEFromDRC(rows) {
+  const d = calcDisponibilidad(rows);
+  const r = calcRendimiento(rows);
+  const c = calcCalidad(rows);
+  return (d != null && r != null && c != null) ? Math.min(100, d * r * c / 10000) : null;
+}
+
 // Fracción NC por orden = nc_total / prod_total para distribuir NC
 // proporcionalmente al calcular calidad fila a fila (ej: en gráficos).
 function buildNcFraction(rows) {
@@ -2233,10 +2242,10 @@ function renderResumen() {
   const d    = filterProd();
   const vnts = filterVentas();
   const nc   = filterNC();
-  const oee  = avg(d,'_oee');
   const rend = calcRendimiento(d);
   const disp = calcDisponibilidad(d);
   const cal  = calcCalidad(d);
+  const oee  = calcOEEFromDRC(d);
   const otif = calcOTIF(vnts);
   const accDias = getAccDias();
   const mesSel  = getVal('g-mes');
@@ -2345,7 +2354,7 @@ function renderResumen() {
 
   // Mini chart: OEE por máquina
   const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
-  const oeeByMaqVal = maqs.map(m => { const v=avg(d.filter(r=>r._maq==m),'_oee'); return v!=null?Math.min(100,v):null; });
+  const oeeByMaqVal = maqs.map(m => calcOEEFromDRC(d.filter(r=>r._maq==m)));
   makeChart('r-oee-maq','bar', maqs.map(m=>'Maq '+m),
     [{label:'OEE %', data:oeeByMaqVal, backgroundColor:oeeByMaqVal.map(v=>v==null?'#D1D5DB':v>=65?'#22C55E':v>=50?'#F59E0B':'#EF4444'), borderRadius:5}],
     LO);
@@ -2371,58 +2380,66 @@ function renderResumen() {
     [{label:'OTIF %', data:otifMes.map(x=>x.otif), borderColor:'#3B82F6', backgroundColor:'#3B82F622', tension:.4, fill:true, pointRadius:4, pointBackgroundColor:'#3B82F6'}],
     LO);
 
-  // Pareto 80-20 de paros no programados — apilado por máquina
+  // Pareto 80-20 individual por máquina
   const _maqPal = ['#DC2626','#2563EB','#16A34A','#D97706','#7C3AED','#0891B2','#DB2777','#059669','#EA580C','#4F46E5','#0D9488'];
   const _allMaqsP = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
-  const _paretoMaqMap = {}; // {reason: {maq: min}}
-  d.forEach(r => {
-    if (!(r._paro>0)) return;
-    const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim()||'Sin especificar';
-    if (/programado/i.test(rz)) return;
-    const maq = String(r._maq||'?');
-    if (!_paretoMaqMap[rz]) _paretoMaqMap[rz] = {};
-    _paretoMaqMap[rz][maq] = (_paretoMaqMap[rz][maq]||0) + (r._paro||0);
-  });
-  const _rzTotales = Object.entries(_paretoMaqMap)
-    .map(([rz, maqData]) => ({rz, total:Object.values(maqData).reduce((s,v)=>s+v,0), maqData}))
-    .sort((a,b)=>b.total-a.total);
-  const _parTotalM = _rzTotales.reduce((s,x)=>s+x.total,0);
-  let _pcumM=0;
-  const _pareto80M = [];
-  for (const x of _rzTotales) {
-    _pcumM += x.total;
-    _pareto80M.push({...x, cum:_pcumM/_parTotalM*100});
-    if (_pcumM/_parTotalM>=0.80) break;
-  }
-  if (_pareto80M.length>0) {
-    const _maqDatasets = _allMaqsP.map((maq,i) => ({
-      label: `Maq ${maq}`,
-      data:  _pareto80M.map(x=>x.maqData[maq]||0),
-      backgroundColor: _maqPal[i%_maqPal.length]+'CC',
-      borderRadius: 2,
-    }));
-    makeChart('r-pareto-paro','bar',
-      _pareto80M.map(x=>x.rz.length>38?x.rz.substring(0,36)+'…':x.rz),
-      _maqDatasets,
-      {
-        indexAxis:'y',
-        xScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
-        yScale:{ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}},
-        extra:{
-          plugins:{
-            legend:{labels:{color:'#374151',font:{size:11,family:'Tahoma'},boxWidth:12}},
-            tooltip:{callbacks:{label:c=>`Maq ${c.dataset.label.replace('Maq ','')}: ${c.raw} min`}}
-          },
-          scales:{
-            x:{stacked:true,ticks:{color:'#374151',font:{size:11}},grid:{color:'#E5E7EB'}},
-            y:{stacked:true,ticks:{color:'#374151',font:{size:11}},grid:{color:'#F3F4F6'}}
+  const _paretoContainer = document.getElementById('r-pareto-maq-container');
+  if (_paretoContainer) {
+    _paretoContainer.innerHTML = '';
+    _allMaqsP.forEach((maq, mi) => {
+      const maqRows = d.filter(r => r._maq === maq);
+      const maqParo = {};
+      maqRows.forEach(r => {
+        if (!(r._paro > 0)) return;
+        const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim() || 'Sin especificar';
+        if (/programado/i.test(rz)) return;
+        maqParo[rz] = (maqParo[rz]||0) + r._paro;
+      });
+      const sorted = Object.entries(maqParo).sort((a,b)=>b[1]-a[1]);
+      if (sorted.length === 0) return;
+      const total = sorted.reduce((s,[,v])=>s+v, 0);
+      let cum = 0;
+      const p80 = [];
+      for (const [rz, min] of sorted) {
+        cum += min;
+        p80.push({rz, min, cumPct: cum/total*100});
+        if (cum/total >= 0.80) break;
+      }
+      const color = _maqPal[mi % _maqPal.length];
+      const chartId = `r-pareto-maq-${maq}`;
+      const card = document.createElement('div');
+      card.style.cssText = 'background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:14px';
+      card.innerHTML = `
+        <div style="font-size:.85rem;font-weight:700;color:#374151;margin-bottom:8px">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:6px"></span>
+          Máquina ${maq} — Top causas (${Math.round(p80[p80.length-1].cumPct)}% del paro)
+        </div>
+        <div style="height:${Math.max(140, p80.length * 38)}px"><canvas id="${chartId}"></canvas></div>
+      `;
+      _paretoContainer.appendChild(card);
+      makeChart(chartId, 'bar',
+        p80.map(x => x.rz.length > 35 ? x.rz.substring(0,33)+'…' : x.rz),
+        [{label:'min', data: p80.map(x => x.min), backgroundColor: color+'CC', borderRadius:3}],
+        {
+          indexAxis: 'y',
+          xScale:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#E5E7EB'}},
+          yScale:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#F3F4F6'}},
+          extra:{
+            plugins:{
+              legend:{display:false},
+              tooltip:{callbacks:{label:c=>`${c.raw} min`}}
+            },
+            scales:{
+              x:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#E5E7EB'}},
+              y:{ticks:{color:'#374151',font:{size:10}},grid:{color:'#F3F4F6'}}
+            }
           }
         }
-      }
-    );
-  } else {
-    const pc = document.getElementById('r-pareto-paro');
-    if (pc && pc.parentElement) pc.parentElement.innerHTML = '<div style="color:#6B7280;font-size:.92rem;padding:20px;text-align:center">Sin paros no programados en el período seleccionado</div>';
+      );
+    });
+    if (_paretoContainer.children.length === 0) {
+      _paretoContainer.innerHTML = '<div style="color:#6B7280;font-size:.92rem;padding:20px;text-align:center">Sin paros no programados en el período seleccionado</div>';
+    }
   }
 
   // ── Tabla compacta Plan vs Real Referencias ──────────────────────────────
@@ -2673,10 +2690,10 @@ function compartirInformeWA() {
 // ── OEE
 function renderOEE() {
   const d = filterProd();
-  const oee  = avg(d,'_oee');
   const rend = calcRendimiento(d);
   const disp = calcDisponibilidad(d);
   const cal  = calcCalidad(d);
+  const oee  = calcOEEFromDRC(d);
 
   // Gauge cards
   const gData = [
@@ -2728,7 +2745,7 @@ function renderOEE() {
   const compMin = compVals.length ? Math.max(0, Math.floor(Math.min(...compVals)/5)*5 - 5) : 0;
 
   makeChart('oee-trend','line',tLabels,[
-    {label:'OEE',           yAxisID:'y',  data:dayVals.map(x=>avgArr(x.oee)),  borderColor:'#10B981',borderWidth:2,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
+    {label:'OEE',           yAxisID:'y',  data:dayVals.map(x=>{const _d=x.dispValue,_r=x.rendValue,_c=x.calValue;return(_d!=null&&_r!=null&&_c!=null)?Math.min(100,_d*_r*_c/10000):null;}),  borderColor:'#10B981',borderWidth:2,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
     {label:'Rendimiento',   yAxisID:'y1', data:dayVals.map(x=>x.rendValue!=null?Math.min(100,x.rendValue):null), borderColor:'#8B5CF6',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
     {label:'Disponibilidad',yAxisID:'y1', data:dayVals.map(x=>x.dispValue!=null?Math.min(100,x.dispValue):null), borderColor:'#06B6D4',borderWidth:1.5,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
     {label:'Calidad',       yAxisID:'y1', data:dayVals.map(x=>x.calValue!=null?Math.min(100,Math.max(0,x.calValue)):null), borderColor:'#F59E0B',borderWidth:2,fill:false,tension:.4,pointRadius:2,pointHoverRadius:5},
@@ -2746,7 +2763,7 @@ function renderOEE() {
   // OEE por maq
   const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
   makeChart('oee-maq','bar',maqs.map(m=>'Maq '+m),
-    [{label:'OEE %',data:maqs.map(m=>avg(d.filter(r=>r._maq==m),'_oee')),
+    [{label:'OEE %',data:maqs.map(m=>calcOEEFromDRC(d.filter(r=>r._maq==m))),
       backgroundColor:maqs.map((_,i)=>PAL[i%PAL.length]+'bb'),borderRadius:5}]);
 
   // Table
@@ -2756,7 +2773,7 @@ function renderOEE() {
       <td style="font-weight:600">Máq ${m}</td>
       <td>${s.length}</td>
       <td>${fmt(sum(s,'_cant'))}</td>
-      <td>${badge(avg(s,'_oee'))}</td>
+      <td>${badge(calcOEEFromDRC(s))}</td>
       <td>${badge(calcRendimiento(s))}</td>
       <td>${badge(calcDisponibilidad(s))}</td>
       <td>${badge(calcCalidad(s))}</td>
@@ -4742,7 +4759,7 @@ function exportPDF() {
     // ── PÁGINA 1: KPIs OEE ───────────────────────────────────────────────
     addPage('Informe de Cierre de Mes Global — FVLco');
     const dProd = filterProd();
-    const oeeVal  = avg(dProd,'_oee');
+    const oeeVal  = calcOEEFromDRC(dProd);
     const rendVal = calcRendimiento(dProd);
     const dispVal = calcDisponibilidad(dProd);
     const calVal  = calcCalidad(dProd);
@@ -4771,7 +4788,7 @@ function exportPDF() {
       maqsP.map(m => {
         const s=dProd.filter(r=>r._maq==m);
         return ['Máq '+m, fmt(sum(s,'_cant')),
-          oeeStr(avg(s,'_oee')), oeeStr(calcDisponibilidad(s)),
+          oeeStr(calcOEEFromDRC(s)), oeeStr(calcDisponibilidad(s)),
           oeeStr(calcRendimiento(s)), oeeStr(calcCalidad(s)), fmt(sum(s,'_paro'))];
       }),
       [22,28,22,24,22,22,22]
