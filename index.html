@@ -1882,11 +1882,23 @@ function normalizeProd(r) {
   for (const k in r) out[k.trim()] = r[k];
 
   // ── Extraer fecha de turno ANTES de la conversión numérica masiva
+  // Solo los turnos 3 (22:00-06:00) y 5 (18:00-06:00) cruzan medianoche, por
+  // eso el sheet tiene "FECHAS SEGUN TURNO DE TRABAJO": agrupa sus filas de
+  // madrugada bajo el día en que arrancó el turno. Los turnos 1/2/4 nunca
+  // cruzan medianoche, así que su día de trabajo es el propio calendario de
+  // "FECHA Y HORA" — usar esa columna de agrupación para ellos es un error
+  // de la fórmula del Sheet: retrocede un día también en los PRIMEROS
+  // reportes de turno 1 (~6:00-6:15am, típicamente los de paro/arranque),
+  // sacándolos silenciosamente del día correcto (dejaban de verse sus paros).
+  const _turnoCrudo = String(out['TURNO'] || '').trim();
+  const _cruzaMedianoche = (_turnoCrudo === '3' || _turnoCrudo === '5');
   let _ftRaw = '';
-  // Prioridad 1: columna que contenga FECHA y TURNO
-  for (const _k of Object.keys(out)) {
-    const _ku = _k.toUpperCase();
-    if (_ku.includes('FECHA') && _ku.includes('TURNO')) { _ftRaw = String(out[_k]||'').trim(); break; }
+  // Prioridad 1 (solo turnos que cruzan medianoche): columna FECHA + TURNO
+  if (_cruzaMedianoche) {
+    for (const _k of Object.keys(out)) {
+      const _ku = _k.toUpperCase();
+      if (_ku.includes('FECHA') && _ku.includes('TURNO')) { _ftRaw = String(out[_k]||'').trim(); break; }
+    }
   }
   // Prioridad 2: columna que contenga solo FECHA (con formato de fecha)
   if (!_ftRaw) {
