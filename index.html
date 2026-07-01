@@ -4663,30 +4663,6 @@ function renderReporteCompacto() {
 
   const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
 
-  // DEBUG VISIBLE — muestra info de diagnóstico para máquinas con paro=0 pero filas > 0
-  const _dbgEl = document.getElementById('rc-debug-panel');
-  if (_dbgEl) {
-    const _prob = Object.values(maqMap).filter(g => g.paro === 0 && g.rows.length > 0);
-    if (_prob.length > 0) {
-      _dbgEl.style.display = 'block';
-      _dbgEl.innerHTML = _prob.map(g => {
-        const _sampleRow = g.rows[0] || {};
-        const _paroCols = Object.keys(_sampleRow)
-          .filter(c => c.toUpperCase().includes('PARO') || c.toUpperCase().includes('TIEMPO'))
-          .map(c => `<b>${c}</b>: "${_sampleRow[c]}"`)
-          .join('<br>');
-        const _maqCols = Object.keys(_sampleRow)
-          .filter(c => c.toUpperCase().includes('QUINA'))
-          .map(c => `<b>${c}</b>: "${_sampleRow[c]}"`)
-          .join(' | ');
-        return `<div style="margin-bottom:8px"><b>Maq "${g.maq}"</b> — ${g.rows.length} filas, undProd=${g.undProd}, _paro_detectado=${g.paro}<br>
-          Cols MAQUINA: ${_maqCols||'ninguna'}<br>
-          Cols PARO/TIEMPO: ${_paroCols||'ninguna'}</div>`;
-      }).join('<hr>');
-    } else {
-      _dbgEl.style.display = 'none';
-    }
-  }
 
   // ── NC del día por MÁQUINA (col B) + fecha (col A) ─────────────────────
   // Se respeta la MÁQUINA que reporta el NC: así, si una orden está
