@@ -2000,15 +2000,23 @@ function normalizeProd(r) {
   out._prod  = String(out['PRODUCTO'] ?? '').trim();
   out._orden = out['ORDEN'] ?? '';
   out._cant  = pNum(out['CANT REPORTADA']) || _findColVal(out,'CANT REPORT','') || 0;
-  out._paro  = pNum(out['TIEMPO PARO MIN'])
-    || _findColVal(out,'PARO MIN','')
-    || _findColVal(out,'TIEMPO PARO','')
-    || _findColVal(out,'MIN PARO','')
-    || _findColVal(out,'PARO','RAZON')   // catch-all: cualquier col numérica con "PARO" (excluye RAZON)
-    || _findColVal(out,'PERDIDO','')     // TIEMPO PERDIDO, MIN PERDIDOS, etc.
-    || _findColVal(out,'PARADA','')      // TIEMPO PARADA, MIN PARADA
-    || _findColVal(out,'T PERDIDO','')
-    || 0;
+  // Si la fila trae la columna autoritativa "TIEMPO PARO MIN", usar SIEMPRE ese
+  // valor (incluyendo 0 = sin paro). Antes, "0 || siguienteFallback" trataba un
+  // paro real de 0 como "sin dato" y caía al catch-all de abajo, que terminaba
+  // leyendo columnas ajenas como "Min_paro_turno" (un acumulado/derivado del
+  // sheet, no el paro de ESTA fila) — así, filas de producción normales
+  // heredaban un paro de turno completo (480 min) que no les correspondía.
+  // Los fallbacks solo aplican a hojas que NO tienen "TIEMPO PARO MIN" (ej. NC).
+  out._paro  = ('TIEMPO PARO MIN' in out)
+    ? pNum(out['TIEMPO PARO MIN'])
+    : (_findColVal(out,'PARO MIN','')
+      || _findColVal(out,'TIEMPO PARO','')
+      || _findColVal(out,'MIN PARO','')
+      || _findColVal(out,'PARO','RAZON')   // catch-all: cualquier col numérica con "PARO" (excluye RAZON)
+      || _findColVal(out,'PERDIDO','')     // TIEMPO PERDIDO, MIN PERDIDOS, etc.
+      || _findColVal(out,'PARADA','')      // TIEMPO PARADA, MIN PARADA
+      || _findColVal(out,'T PERDIDO','')
+      || 0);
   out._rend  = out['% RENDIMIENTO'];
   out._disp  = out['% DISPONIBILIDAD'];
   out._oee   = out['OEE FINAL'];
