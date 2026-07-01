@@ -296,11 +296,20 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="section-title">Indicadores Clave</div>
       <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px"></div>
       <div id="resumen-alertas" style="margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px">
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">OEE por Máquina</div><div style="height:270px;position:relative"><canvas id="r-oee-maq"></canvas></div></div>
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">Plan vs Real Mensual</div><div style="height:270px;position:relative"><canvas id="r-plan-mes"></canvas></div></div>
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">Top No Conformes (Causa)</div><div style="height:270px;position:relative"><canvas id="r-nc-causa"></canvas></div></div>
-        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">OTIF por Mes</div><div style="height:270px;position:relative"><canvas id="r-otif-mes"></canvas></div></div>
+      <!-- OEE ancho completo para que las 6 máquinas tengan espacio -->
+      <div class="chart-card" style="margin-bottom:18px">
+        <div class="section-title" style="margin-bottom:12px">OEE por Máquina</div>
+        <div style="height:260px;position:relative"><canvas id="r-oee-maq"></canvas></div>
+      </div>
+      <!-- Plan vs Real | OTIF lado a lado -->
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:18px">
+        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">Plan vs Real Mensual</div><div style="height:300px;position:relative"><canvas id="r-plan-mes"></canvas></div></div>
+        <div class="chart-card"><div class="section-title" style="margin-bottom:12px">OTIF por Mes</div><div style="height:300px;position:relative"><canvas id="r-otif-mes"></canvas></div></div>
+      </div>
+      <!-- No Conformes ancho completo -->
+      <div class="chart-card" style="margin-bottom:18px">
+        <div class="section-title" style="margin-bottom:12px">Top No Conformes (Causa)</div>
+        <div style="height:280px;position:relative"><canvas id="r-nc-causa"></canvas></div>
       </div>
       <div class="chart-card" style="margin-top:18px">
         <div class="section-title">Pareto de Tiempos de Paro por Máquina — Causas que acumulan el 80%</div>
@@ -2716,10 +2725,14 @@ function renderResumen() {
       </tr>`;
     }).join('');
 
+    const _periodoUnd = mesSel ? `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7;margin-left:10px">📅 ${cap(mesSel)}</span>` : `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;margin-left:10px">⚠️ Todos los meses — filtra por mes para ver un período específico</span>`;
     undPerdEl.innerHTML = `
       <div style="background:#FFFFFF;border:1px solid #FECACA;border-radius:10px;overflow:hidden">
         <div style="background:#FEF2F2;padding:12px 18px;border-bottom:2px solid #FECACA;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-          <div style="font-size:1.05rem;font-weight:800;color:#991B1B"><i class="fa-solid fa-circle-minus" style="color:#DC2626;margin-right:8px"></i>Unidades Dejadas de Fabricar${mesLabel}</div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+            <div style="font-size:1.05rem;font-weight:800;color:#991B1B"><i class="fa-solid fa-circle-minus" style="color:#DC2626;margin-right:8px"></i>Unidades Dejadas de Fabricar</div>
+            ${_periodoUnd}
+          </div>
           <div style="display:flex;gap:14px;flex-wrap:wrap">
             <div style="text-align:right"><div style="font-size:.72rem;color:#B91C1C;font-weight:700;text-transform:uppercase">Total unidades perdidas</div><div style="font-size:1.3rem;font-weight:800;color:#DC2626">${fmt(_upTotal)}</div></div>
             <div style="text-align:right"><div style="font-size:.72rem;color:#B91C1C;font-weight:700;text-transform:uppercase">Costo de Fabricación</div><div style="font-size:1.3rem;font-weight:800;color:#DC2626">${_copFmt(_upValue)}</div></div>
@@ -2783,13 +2796,13 @@ function renderResumen() {
           const atrasado = fCStr && fCStr!=='—' && fCStr < hoy && !String(estado).toUpperCase().includes('CERRAD');
           const es = _estadoStyle(estado);
           return `<tr style="border-bottom:1px solid #E5E7EB;${atrasado?'background:#FEF9F9':''}">
-            <td style="padding:9px 14px;font-size:.95rem;color:#111827;font-weight:600;max-width:280px">${plan}</td>
-            <td style="padding:9px 14px;font-size:.92rem;color:#374151;white-space:nowrap">${fAccion}</td>
-            <td style="padding:9px 14px;font-size:.92rem;white-space:nowrap;color:${atrasado?'#DC2626':'#374151'};font-weight:${atrasado?700:400}">${fCierre}${atrasado?' ⚠️':''}</td>
-            <td style="padding:9px 14px;font-size:.92rem;color:#374151">${resp}</td>
-            <td style="padding:9px 14px;font-size:.88rem;color:#374151;max-width:220px">${seg}</td>
-            <td style="padding:9px 14px;font-size:.92rem;color:#374151;text-align:right;white-space:nowrap">${valor}</td>
-            <td style="padding:9px 14px;text-align:center">
+            <td style="padding:9px 14px;font-size:.93rem;color:#111827;font-weight:600;min-width:220px">${plan}</td>
+            <td style="padding:9px 14px;font-size:.92rem;color:#374151;white-space:nowrap;min-width:100px">${fAccion}</td>
+            <td style="padding:9px 14px;font-size:.92rem;white-space:nowrap;min-width:100px;color:${atrasado?'#DC2626':'#374151'};font-weight:${atrasado?700:400}">${fCierre}${atrasado?' ⚠️':''}</td>
+            <td style="padding:9px 14px;font-size:.92rem;color:#374151;min-width:110px">${resp}</td>
+            <td style="padding:9px 14px;font-size:.88rem;color:#374151;min-width:200px">${seg}</td>
+            <td style="padding:9px 14px;font-size:.92rem;color:#374151;text-align:right;white-space:nowrap;min-width:90px">${valor}</td>
+            <td style="padding:9px 14px;text-align:center;min-width:100px">
               <span style="font-size:.78rem;font-weight:700;padding:4px 12px;border-radius:20px;background:${es.bg};color:${es.color};border:1px solid ${es.border};white-space:nowrap">${es.label}</span>
             </td>
           </tr>`;
@@ -2856,17 +2869,39 @@ async function compartirInformeWA() {
       windowWidth: el.scrollWidth
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const { jsPDF } = window.jspdf;
     const mmPerPx = 25.4 / 96;
-    const imgWmm = canvas.width / 2 * mmPerPx;
-    const imgHmm = canvas.height / 2 * mmPerPx;
-    const pageW = 210;
-    const scale = pageW / imgWmm;
-    const pageH = Math.min(imgHmm * scale, 800);
+    // Escala real del canvas (capturado a scale:2)
+    const imgWpx = canvas.width / 2;   // px reales de pantalla
+    const imgHpx = canvas.height / 2;
+    const imgWmm = imgWpx * mmPerPx;
+    const imgHmm = imgHpx * mmPerPx;
 
-    const pdf = new jsPDF({ orientation: pageH > pageW ? 'portrait' : 'landscape', unit:'mm', format:[pageW, pageH] });
-    pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH);
+    // Página A4 portrait
+    const PAGE_W = 210, PAGE_H = 297;
+    const fitScale = PAGE_W / imgWmm;           // factor para que el ancho encaje en A4
+    const contentHmm = imgHmm * fitScale;       // altura total del contenido en mm
+    const numPages = Math.ceil(contentHmm / PAGE_H);
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    for (let page = 0; page < numPages; page++) {
+      if (page > 0) pdf.addPage();
+      // Porción de canvas que corresponde a esta página (en px del canvas a scale:2)
+      const sliceYpx = page * (PAGE_H / fitScale) * mmPerPx * 2;          // px canvas
+      const sliceHpx = Math.min((PAGE_H / fitScale) * mmPerPx * 2, canvas.height - sliceYpx);
+      if (sliceHpx <= 0) break;
+
+      // Recortar esa franja del canvas
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width  = canvas.width;
+      tmpCanvas.height = Math.round(sliceHpx);
+      tmpCanvas.getContext('2d').drawImage(canvas, 0, Math.round(sliceYpx), canvas.width, Math.round(sliceHpx), 0, 0, canvas.width, Math.round(sliceHpx));
+
+      const sliceImg = tmpCanvas.toDataURL('image/jpeg', 0.92);
+      const sliceHmm = (sliceHpx / 2) * mmPerPx * fitScale;   // altura real en mm de esta franja
+      pdf.addImage(sliceImg, 'JPEG', 0, 0, PAGE_W, sliceHmm);
+    }
 
     const mes = (document.getElementById('g-filter-mes')?.value||'').trim();
     const fileName = `Informe-FVLco${mes?'-'+mes:''}.pdf`;
