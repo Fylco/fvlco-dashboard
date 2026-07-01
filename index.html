@@ -1885,8 +1885,10 @@ function normalizeProd(r) {
   if (_dtParts || _dtIso) {
     let _d, _m, _y;
     if (_dtParts) {
-      // Formato DD/MM/YYYY
+      // Formato DD/MM/YYYY (locale CO/ES). Si _m > 12 y _d <= 12, el sheet exportó
+      // en formato MM/DD/YYYY (locale en-US) — invertir para obtener la fecha correcta.
       _d = parseInt(_dtParts[1]); _m = parseInt(_dtParts[2]); _y = parseInt(_dtParts[3]);
+      if (_m > 12 && _d <= 12) { const _tmp = _d; _d = _m; _m = _tmp; }
     } else {
       // Formato ISO YYYY-MM-DD
       _y = parseInt(_dtIso[1]); _m = parseInt(_dtIso[2]); _d = parseInt(_dtIso[3]);
