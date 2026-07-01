@@ -2070,11 +2070,13 @@ function calcRendimiento(rows) {
   const slots = {};
   rows.forEach(r => {
     const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
-    if (!slots[sk]) slots[sk] = {undProd:0, cicloEst:0, cavTeor:0, paroProgSeg:0, turno:String(r._turno||'')};
+    if (!slots[sk]) slots[sk] = {undProd:0, cicloEst:0, cavTeor:0, paroProgSeg:0, paroTotal:0, turno:String(r._turno||'')};
     const s = slots[sk];
     s.undProd += r._cant||0;
+    const p = r._paro||0;
+    s.paroTotal += p;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-    if (_esProg(rz)) s.paroProgSeg += (r._paro||0)*60;
+    if (_esProg(rz)) s.paroProgSeg += p*60;
     // Ciclo estimado: T.CICLO EST preferido; fallback BD Productos por descripción; último recurso cicloReal
     const ce  = pNum(r['T. CICLO EST'])||0;
     const cr  = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||0;
@@ -2088,9 +2090,11 @@ function calcRendimiento(rows) {
   });
   let totProd=0, totTeo=0;
   Object.values(slots).forEach(s => {
+    const mp = (s.turno==='4'||s.turno==='5') ? 720 : 480;
+    // Paro total de turno con producción = dato erróneo: se ignora el paroProg
+    if (s.undProd > 0 && s.paroTotal >= mp) s.paroProgSeg = 0;
     if (s.cicloEst > 0) {
       totProd += s.undProd;
-      // Si no hay dato de cavidades, usar 1 como mínimo (una pieza por ciclo)
       const cavEff = s.cavTeor > 0 ? s.cavTeor : 1;
       const tEfSeg = Math.max(0, (_TSEG[s.turno]||28800) - s.paroProgSeg);
       totTeo += Math.round((tEfSeg / s.cicloEst) * cavEff);
@@ -2108,16 +2112,21 @@ function calcDisponibilidad(rows) {
   const slots = {};
   rows.forEach(r => {
     const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
-    if (!slots[sk]) slots[sk] = {undProd:0, cavReal:0, cicloReal:0, paroNoProg:0};
+    if (!slots[sk]) slots[sk] = {undProd:0, cavReal:0, cicloReal:0, paroNoProg:0, paroTotal:0, turno:String(r._turno||'')};
     const s = slots[sk];
     s.undProd += r._cant||0;
+    const p = r._paro||0;
+    s.paroTotal += p;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-    if (!_esProg(rz)) s.paroNoProg += r._paro||0;
+    if (!_esProg(rz)) s.paroNoProg += p;
     if (!s.cavReal)   s.cavReal  = _findColVal(r,'CAVIDAD','TEOR')||(typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||0;
     if (!s.cicloReal) s.cicloReal = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||pNum(r['T. CICLO EST'])||0;
   });
   let totTRT=0, totParo=0;
   Object.values(slots).forEach(s => {
+    const mp = (s.turno==='4'||s.turno==='5') ? 720 : 480;
+    // Paro total de turno con producción = dato erróneo: no penaliza disponibilidad
+    if (s.undProd > 0 && s.paroTotal >= mp) s.paroNoProg = 0;
     if (s.cavReal>0 && s.cicloReal>0) {
       totTRT  += (s.undProd/s.cavReal*s.cicloReal)/60;
       totParo += s.paroNoProg;
