@@ -1827,7 +1827,7 @@ async function loadBdProductos() {
     const rows = Papa.parse(txt, { header: false, skipEmptyLines: true }).data;
     const map = {};
     rows.slice(1).forEach(vals => {          // slice(1) salta la fila de encabezados
-      const desc  = String(vals[1] || '').trim().toUpperCase();   // col B (índice 1)
+      const desc  = String(vals[1] || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');  // col B (índice 1)
       const ciclo = parseFloat(String(vals[7] || '').replace(',','.'));  // col H (índice 7)
       if (desc && ciclo > 0) map[desc] = ciclo;
     });
@@ -2073,10 +2073,12 @@ function calcRendimiento(rows) {
     s.undProd += r._cant||0;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
     if (_esProg(rz)) s.paroProgSeg += (r._paro||0)*60;
-    // Ciclo estimado: T.CICLO EST preferido; si no existe/es 0, usa T.CICLO REAL como proxy
+    // Ciclo estimado: T.CICLO EST preferido; fallback BD Productos por descripción; último recurso cicloReal
     const ce  = pNum(r['T. CICLO EST'])||0;
     const cr  = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||0;
-    const cic = ce > 0 ? ce : cr;
+    const _bdKey = String(r._prod||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const cb  = (DATA.cicloEstMap && _bdKey) ? (DATA.cicloEstMap[_bdKey]||0) : 0;
+    const cic = ce > 0 ? ce : (cb > 0 ? cb : cr);
     if (cic > 0 && cic > s.cicloEst) s.cicloEst = cic;
     // Cavidades teóricas: múltiples fuentes
     const cv = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
@@ -4018,7 +4020,7 @@ function renderReporteDiario() {
     g.cicloEst  = _modeBy(g.rows,r=>pNum(r['T. CICLO EST']))||g.cicloEst;
     // Fallback BD Productos: si la fila no trae ciclo estándar, buscarlo por descripción del producto
     if (!g.cicloEst && DATA.cicloEstMap) {
-      const _prd = String(Object.keys(g.porProd||{})[0]||'').toUpperCase();
+      const _prd = String(Object.keys(g.porProd||{})[0]||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
       g.cicloEst = DATA.cicloEstMap[_prd] || 0;
     }
     g.cavReal   = _modeBy(g.rows,r=>_findColVal(r,'CAVIDAD','TEOR'))||g.cavReal;
@@ -4595,7 +4597,7 @@ function renderReporteCompacto() {
     g.cicloEst  = _modeBy(g.rows, r=>pN(r['T. CICLO EST'])) || g.cicloEst;
     // Fallback BD Productos: si la fila no trae ciclo estándar, buscarlo por descripción del producto
     if (!g.cicloEst && DATA.cicloEstMap) {
-      const _prd = String(Object.keys(g.porProd||{})[0]||'').toUpperCase();
+      const _prd = String(Object.keys(g.porProd||{})[0]||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
       g.cicloEst = DATA.cicloEstMap[_prd] || 0;
     }
     g.cavReal   = _modeBy(g.rows, r=>_findColVal(r,'CAVIDAD','TEOR')) || g.cavReal;
