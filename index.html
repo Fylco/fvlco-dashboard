@@ -1978,7 +1978,10 @@ function normalizeProd(r) {
     || _findColVal(out,'PARO MIN','')
     || _findColVal(out,'TIEMPO PARO','')
     || _findColVal(out,'MIN PARO','')
-    || _findColVal(out,'PARO','RAZON')   // catch-all: cualquier col. numérica con "PARO" (excluye "RAZON PARO")
+    || _findColVal(out,'PARO','RAZON')   // catch-all: cualquier col numérica con "PARO" (excluye RAZON)
+    || _findColVal(out,'PERDIDO','')     // TIEMPO PERDIDO, MIN PERDIDOS, etc.
+    || _findColVal(out,'PARADA','')      // TIEMPO PARADA, MIN PARADA
+    || _findColVal(out,'T PERDIDO','')
     || 0;
   out._rend  = out['% RENDIMIENTO'];
   out._disp  = out['% DISPONIBILIDAD'];
@@ -4709,10 +4712,19 @@ function renderReporteCompacto() {
 
     const bodyRows = turnoTableRows || `<tr><td colspan="2" style="padding:4px 8px;color:#6B7280;font-size:.9rem">Sin producción</td></tr>`;
     const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${bodyRows}${totalRow}</table>`;
+    // Debug inline: si paro=0 pero hay filas, mostrar columnas del sheet directamente en la celda
+    const _dbgInline = (g.paro === 0 && g.rows.length > 0) ? (() => {
+      const _r0 = g.rows[0] || {};
+      const _allCols = Object.keys(_r0)
+        .filter(c => !c.startsWith('_'))
+        .map(c => `<span style="display:block">${c}: <b>${_r0[c]}</b></span>`)
+        .join('');
+      return `<div style="margin-top:4px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:4px;padding:4px 6px;font-size:.65rem;color:#92400E;font-family:monospace;text-align:left;max-height:120px;overflow-y:auto">${_allCols}</div>`;
+    })() : '';
     return `<tr>
       <td style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
       <td style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
-      <td style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min</td>
+      <td style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min${_dbgInline}</td>
       <td style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.8rem;font-weight:800">${pc(g.disp)}</td>
       <td style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.8rem;font-weight:800">${pc(g.rend)}</td>
       <td style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.8rem;font-weight:800">${pc(g.cal)}</td>
