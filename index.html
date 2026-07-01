@@ -1824,10 +1824,9 @@ async function loadBdProductos() {
     const res = await fetch(proxy(BD_PRODUCTOS_CSV + `&_t=${Date.now()}`), { cache: 'no-store' });
     if (!res.ok) return;
     const txt = await res.text();
-    const rows = parseCSV(txt);
+    const rows = Papa.parse(txt, { header: false, skipEmptyLines: true }).data;
     const map = {};
-    rows.forEach(r => {
-      const vals = Object.values(r);
+    rows.slice(1).forEach(vals => {          // slice(1) salta la fila de encabezados
       const desc  = String(vals[1] || '').trim().toUpperCase();   // col B (índice 1)
       const ciclo = parseFloat(String(vals[7] || '').replace(',','.'));  // col H (índice 7)
       if (desc && ciclo > 0) map[desc] = ciclo;
@@ -2278,7 +2277,7 @@ function populateAllFilters() {
   buildCostosDiaDd(diasTurno.length ? diasTurno : dias);
   // Razones de paro
   const razonMap = {};
-  DATA.prod.filter(r=>r._paro>0).forEach(r=>{ const k=(r['RAZON PARO']||'').trim(); if(k) razonMap[k]=(razonMap[k]||0)+1; });
+  DATA.prod.filter(r=>r._paro>0).forEach(r=>{ const k=String(r['RAZON PARO']||'').trim(); if(k) razonMap[k]=(razonMap[k]||0)+1; });
   const razones = Object.entries(razonMap).sort((a,b)=>b[1]-a[1]);
   const list = document.getElementById('paro-razones-list');
   if (list) list.innerHTML = razones.map(([r,cnt])=>`
@@ -2352,7 +2351,7 @@ function filterParo() {
     (!m        || (r._mesTurno || r._mes) === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq      || String(r._maq) === maq) &&
-    (!SEL_RAZONES.size || SEL_RAZONES.has((r['RAZON PARO']||'').trim()))
+    (!SEL_RAZONES.size || SEL_RAZONES.has(String(r['RAZON PARO']||'').trim()))
   );
 }
 function filterNC() {
