@@ -4498,6 +4498,18 @@ function renderReporteCompacto() {
 
   const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
 
+  // DEBUG temporal — ver en consola del navegador (F12 → Console)
+  console.group(`[Compacto] Máquinas en el día ${fKey} (${effRows.length} filas)`);
+  Object.entries(maqMap).forEach(([k,g]) => {
+    console.log(`Maq "${k}" → filas:${g.rows.length} undProd:${g.undProd} paro:${g.paro} paroNoProg:${g.paroNoProg}`);
+    if (g.rows.length > 0) {
+      const colsMuestra = Object.keys(g.rows[0]).filter(c=>c.startsWith('_')||c.toUpperCase().includes('PARO')||c.toUpperCase().includes('MAQUI')||c.toUpperCase().includes('TURNO'));
+      console.log(`  Columnas relevantes:`, colsMuestra);
+      console.log(`  Muestra fila-0:`, colsMuestra.reduce((o,c)=>(o[c]=g.rows[0][c],o),{}));
+    }
+  });
+  console.groupEnd();
+
   // ── NC del día por MÁQUINA (col B) + fecha (col A) ─────────────────────
   // Se respeta la MÁQUINA que reporta el NC: así, si una orden está
   // compartida entre dos máquinas o su fecha no coincide, el NC se asigna
