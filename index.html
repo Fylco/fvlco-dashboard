@@ -4635,7 +4635,7 @@ function renderReporteCompacto() {
   const oeeRows = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
 
-    // Todos los turnos del día (unión de porTurno y porProd)
+    // Todos los turnos del día (unión de porTurno y porProd), ordenados
     const allTurnos = [...new Set([
       ...Object.keys(g.porTurno),
       ...Object.values(g.porProd).flatMap(t => Object.keys(t))
@@ -4647,53 +4647,46 @@ function renderReporteCompacto() {
       .sort(([a],[b]) => a.localeCompare(b));
     const multiProd = realProdEntries.length > 1;
 
-    // ── Sección de UNIDADES por producto ────────────────────────────────────
-    const unidSection = realProdEntries.length > 0
-      ? realProdEntries.map(([prod, turnos]) => {
-          const turnoRows = Object.keys(turnos).filter(t=>t!=='').sort().map(t => {
-            const tv = turnos[t];
-            if (tv.prod === 0) return '';
-            return `<tr style="border:1px solid #E5E7EB">
-              <td style="padding:4px 8px;white-space:nowrap">Turno ${turnoNum(t)}</td>
-              <td style="padding:4px 8px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(tv.prod)}</strong></td>
-            </tr>`;
-          }).join('');
-          const prodTotal = Object.values(turnos).reduce((s,v)=>s+v.prod, 0);
-          const headerRow = multiProd
-            ? `<tr style="background:#EFF6FF"><td colspan="2" style="padding:3px 8px;font-weight:700;font-size:.92rem;color:#1D4ED8">${prod}</td></tr>`
-            : '';
-          return headerRow + turnoRows
-            + `<tr style="border:1px solid #D1D5DB;background:#F3F4F6">
-              <td style="padding:4px 8px;font-weight:700;color:#111827">${multiProd ? 'Subtotal' : 'Total'}</td>
-              <td style="padding:4px 8px;text-align:right;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(prodTotal)}</td>
-            </tr>`;
-        }).join('')
-        + (multiProd ? `<tr style="border:2px solid #374151;background:#E5E7EB">
-              <td style="padding:5px 8px;font-weight:800;color:#111827">TOTAL MÁQUINA</td>
-              <td style="padding:5px 8px;text-align:right;border-left:2px solid #374151;font-weight:900;color:#111827;font-size:1.2rem">${ri(g.undProd)}</td>
-            </tr>` : '')
-      : `<tr><td colspan="2" style="padding:4px 8px;color:#6B7280;font-size:.9rem">Sin producción</td></tr>`;
+    // ── Fila unificada por turno: producción + paro en la misma línea ────────
+    // Para cada turno se muestra: cantidad producida (si hay) + paro inline (si hay)
+    const turnoTableRows = allTurnos.map(t => {
+      // Producción total del turno (suma de todos los productos)
+      const prodThisTurn = Object.values(g.porProd)
+        .reduce((s, pt2) => s + (pt2[t]?.prod || 0), 0);
+      const paroThisTurn  = g.porTurno[t]?.paro    || 0;
+      const razonesThisTurn = g.porTurno[t]?.razones || [];
 
-    // ── Sección de PAROS por turno (siempre desde porTurno — fuente autoritativa) ─
-    // Se muestra aunque los paros estén en filas con producto vacío ('—')
-    const parosConTiempo = allTurnos.filter(t => (g.porTurno[t]?.paro || 0) > 0);
-    const paroSection = parosConTiempo.length > 0
-      ? `<tr style="background:#FFF1F1"><td colspan="2" style="padding:3px 8px;font-weight:700;font-size:.88rem;color:#B91C1C;border-top:2px solid #FECACA">⏱ Paros</td></tr>`
-        + parosConTiempo.map(t => {
-            const pt = g.porTurno[t];
-            const rzTxt = pt.razones.length
-              ? `<div style="font-size:.82rem;color:#B91C1C;margin-top:1px">${pt.razones.join(', ')}</div>`
-              : '';
-            return `<tr style="border:1px solid #FECACA;background:#FFF8F8">
-              <td style="padding:4px 8px;white-space:nowrap;color:#7F1D1D">Turno ${turnoNum(t)}</td>
-              <td style="padding:4px 8px;border-left:1px solid #FECACA;color:#DC2626;font-weight:600">
-                paro ${ri(pt.paro)} min${rzTxt}
-              </td>
-            </tr>`;
-          }).join('')
-      : '';
+      if (prodThisTurn === 0 && paroThisTurn === 0) return '';
 
-    const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${unidSection}${paroSection}</table>`;
+      const paroHtml = paroThisTurn > 0
+        ? `<span style="color:#DC2626;font-weight:600;margin-left:6px">(paro ${ri(paroThisTurn)} min)</span>`
+          + (razonesThisTurn.length
+              ? `<div style="font-size:.78rem;color:#B91C1C;margin-top:1px;text-transform:uppercase">${razonesThisTurn.join(', ')}</div>`
+              : '')
+        : '';
+
+      return `<tr style="border:1px solid #E5E7EB">
+        <td style="padding:4px 8px;white-space:nowrap;font-size:.95rem">Turno ${turnoNum(t)}</td>
+        <td style="padding:4px 8px;border-left:1px solid #E5E7EB">
+          ${prodThisTurn > 0 ? `<strong style="color:#374151">${ri(prodThisTurn)}</strong>` : ''}
+          ${paroHtml}
+        </td>
+      </tr>`;
+    }).join('');
+
+    // Verificar suma: total debe ser la suma de las producciones por turno
+    const sumTurnos = allTurnos.reduce((s, t) =>
+      s + Object.values(g.porProd).reduce((ss, pt2) => ss + (pt2[t]?.prod || 0), 0), 0);
+    // Usar sumTurnos como total visible (evita discrepancias con g.undProd por dobles acumulaciones)
+    const totalVisible = sumTurnos;
+
+    const totalRow = `<tr style="border:1px solid #D1D5DB;background:#F3F4F6">
+      <td style="padding:4px 8px;font-weight:700;color:#111827">Total</td>
+      <td style="padding:4px 8px;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(totalVisible)}</td>
+    </tr>`;
+
+    const bodyRows = turnoTableRows || `<tr><td colspan="2" style="padding:4px 8px;color:#6B7280;font-size:.9rem">Sin producción</td></tr>`;
+    const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${bodyRows}${totalRow}</table>`;
     return `<tr>
       <td style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
       <td style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
