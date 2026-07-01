@@ -4847,7 +4847,9 @@ function renderReporteCompacto() {
           + (razonesThisTurn.length
               ? `<div style="font-size:.78rem;color:#B91C1C;margin-top:1px;text-transform:uppercase">${razonesThisTurn.join(', ')}</div>`
               : '')
-        : '';
+        : razonesThisTurn.length
+          ? `<div style="font-size:.78rem;color:#B91C1C;margin-top:1px;text-transform:uppercase">${razonesThisTurn.join(', ')}</div>`
+          : '';
 
       return `<tr style="border:1px solid #E5E7EB">
         <td style="padding:4px 8px;white-space:nowrap;font-size:.95rem">${label}</td>
