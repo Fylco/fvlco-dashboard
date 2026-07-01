@@ -4493,11 +4493,14 @@ function renderReporteCompacto() {
   });
 
   // ── Agrupar por máquina (filas efectivas) ──────────────────────────────
+  // porTurno[t]           → solo paros por turno (para capping máx 480/720 min)
+  // porProd[prod][t]      → producción + paros POR PRODUCTO Y TURNO (para display completo)
   const maqMap = {};
   effRows.forEach(r => {
-    const maq = String(r._maq || '—');
+    const maq  = String(r._maq || '—');
+    const prod = r._prod || '—';
     if (!maqMap[maq]) maqMap[maq] = {
-      maq, prod:r._prod||'—', rows:[], turnos:new Set(), dtSet:{}, porTurno:{},
+      maq, rows:[], turnos:new Set(), dtSet:{}, porTurno:{}, porProd:{},
       cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, paroProg:0, paroNoProg:0, undProd:0, razones:[]
     };
     const g = maqMap[maq];
@@ -4506,14 +4509,23 @@ function renderReporteCompacto() {
     if (t) g.turnos.add(t);
     const dia = String(r._diaTurno||'');
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia] ||= new Set()).add(t); }
-    if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0, razones:[] };
-    g.porTurno[t].prod += pN(r._cant);
+
+    // porTurno: solo paros (para capping), sin producción
+    if (!g.porTurno[t]) g.porTurno[t] = { paro:0, razones:[] };
     g.porTurno[t].paro += pN(r._paro);
-    // Razones de paro: por turno y a nivel máquina, sin duplicar
+
+    // porProd: producción y paros por producto + turno (captura TODOS los productos de la máquina)
+    if (!g.porProd[prod]) g.porProd[prod] = {};
+    if (!g.porProd[prod][t]) g.porProd[prod][t] = { prod:0, paro:0, razones:[] };
+    g.porProd[prod][t].prod += pN(r._cant);
+    g.porProd[prod][t].paro += pN(r._paro);
+
+    // Razones de paro: en todos los niveles sin duplicar
     if (pN(r._paro) > 0) {
       const rz = String(r['RAZON PARO'] || r['RAZÓN PARO'] || '').trim();
       if (rz) {
         if (!g.porTurno[t].razones.includes(rz)) g.porTurno[t].razones.push(rz);
+        if (!g.porProd[prod][t].razones.includes(rz)) g.porProd[prod][t].razones.push(rz);
         if (!g.razones.includes(rz)) g.razones.push(rz);
       }
       if (esProgramado(rz)) g.paroProg += pN(r._paro);
@@ -4653,9 +4665,14 @@ function renderReporteCompacto() {
   const nTurnos = g => g.horas>0 ? Math.max(1, Math.min(3, Math.round(g.horas/8))) : '—';
 
   // ── Filas de tablas (layout horizontal) ────────────────────────────────
-  const prodRows = maqList.map(g=>`<tr>
+  const prodRows = maqList.map(g => {
+    const allProds = Object.keys(g.porProd);
+    const prodCell = allProds.length > 1
+      ? allProds.map(p => `<div style="font-size:.88rem;padding:1px 0">${p}</div>`).join('')
+      : (allProds[0] || '—');
+    return `<tr>
     <td style="font-weight:700;color:#111827">${g.maq}</td>
-    <td>${g.prod}</td>
+    <td>${prodCell}</td>
     <td style="text-align:right">${g.cavTeor||'—'}</td>
     <td style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
     <td style="text-align:center">${nTurnos(g)}</td>
@@ -4664,19 +4681,43 @@ function renderReporteCompacto() {
     <td style="text-align:right;color:#2563EB;font-weight:700">${ri(g.undProg)}</td>
     <td style="text-align:right;color:#059669;font-weight:700">${ri(g.undProd)}</td>
     <td style="text-align:right;color:${g.falt>0?'#DC2626':'#059669'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   const oeeRows = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
-    const turnoDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">`
-      + Object.keys(g.porTurno).sort()
-      .map(t=>`<tr style="border:1px solid #E5E7EB"><td style="padding:4px 8px;white-space:nowrap">Turno ${turnoNum(t)}</td><td style="padding:4px 8px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(g.porTurno[t].prod)}</strong></td><td style="padding:4px 8px;border-left:1px solid #E5E7EB;color:#DC2626;min-width:100px">${g.porTurno[t].paro>0?`<span style="white-space:nowrap;font-weight:600">paro ${ri(g.porTurno[t].paro)}m</span>${g.porTurno[t].razones.length?`<div style="font-size:.88rem;color:#B91C1C;margin-top:2px">${g.porTurno[t].razones.join(', ')}</div>`:''}`:''}</td></tr>`)
-      .join('')
-      + `<tr style="border:1px solid #D1D5DB;background:#F3F4F6"><td colspan="2" style="padding:4px 8px;font-weight:700;color:#111827">Total</td><td style="padding:4px 8px;text-align:right;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(g.undProd)}</td></tr></table>`;
+    // Construir detalle por PRODUCTO → TURNO (captura todos los productos del día)
+    const prodEntries = Object.entries(g.porProd).sort(([a],[b])=>a.localeCompare(b));
+    const multiProd = prodEntries.length > 1;
+    const turnoDet = prodEntries.map(([prod, turnos]) => {
+      const turnoRows = Object.keys(turnos).sort().map(t => {
+        const tv = turnos[t];
+        const paroTxt = tv.paro > 0
+          ? `<span style="white-space:nowrap;font-weight:600">paro ${ri(tv.paro)}m</span>${tv.razones.length ? `<div style="font-size:.85rem;color:#B91C1C;margin-top:1px">${tv.razones.join(', ')}</div>` : ''}`
+          : '';
+        return `<tr style="border:1px solid #E5E7EB">
+          <td style="padding:4px 8px;white-space:nowrap">Turno ${turnoNum(t)}</td>
+          <td style="padding:4px 8px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(tv.prod)}</strong></td>
+          <td style="padding:4px 8px;border-left:1px solid #E5E7EB;color:#DC2626;min-width:100px">${paroTxt}</td>
+        </tr>`;
+      }).join('');
+      const prodTotal = Object.values(turnos).reduce((s,v)=>s+v.prod, 0);
+      const headerRow = multiProd
+        ? `<tr style="background:#EFF6FF"><td colspan="3" style="padding:3px 8px;font-weight:700;font-size:.92rem;color:#1D4ED8">${prod}</td></tr>`
+        : '';
+      return headerRow + turnoRows
+        + `<tr style="border:1px solid #D1D5DB;background:#F3F4F6">
+          <td colspan="2" style="padding:4px 8px;font-weight:700;color:#111827">${multiProd ? 'Subtotal' : 'Total'}</td>
+          <td style="padding:4px 8px;text-align:right;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(prodTotal)}</td>
+        </tr>`;
+    }).join('');
+    const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${turnoDet}${multiProd
+      ? `<tr style="border:2px solid #374151;background:#E5E7EB"><td colspan="2" style="padding:5px 8px;font-weight:800;color:#111827">TOTAL MÁQUINA</td><td style="padding:5px 8px;text-align:right;border-left:2px solid #374151;font-weight:900;color:#111827;font-size:1.2rem">${ri(g.undProd)}</td></tr>`
+      : ''}</table>`;
     return `<tr>
-      <td style="font-weight:700;color:#111827">Máquina ${g.maq}</td>
-      <td><span style="font-weight:700;color:#111827">${g.prod}</span><div style="font-size:.92rem;color:#374151;margin-top:4px">${turnoDet}</div></td>
-      <td style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700">${ri(g.paro)} min</td>
+      <td style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
+      <td style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
+      <td style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min</td>
       <td style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.8rem;font-weight:800">${pc(g.disp)}</td>
       <td style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.8rem;font-weight:800">${pc(g.rend)}</td>
       <td style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.8rem;font-weight:800">${pc(g.cal)}</td>
