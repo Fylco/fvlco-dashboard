@@ -1077,6 +1077,9 @@ const SHEETS = {
 };
 // Maquilas: misma hoja, endpoint export directo
 const MAQUILAS_CSV = _exp('1924737619');
+// BD Productos (ENTRADAS FYLCO) — col B: descripción, col H: ciclo estándar (seg)
+const _SID2 = '1vZTs6xImawkKwiWEPmFaY4y6LrVRKrMaAHKuCz0dy98';
+const BD_PRODUCTOS_CSV = `https://docs.google.com/spreadsheets/d/${_SID2}/export?format=csv&gid=1206180897`;
 const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + encodeURIComponent(u) : u;
 
 // =======================================================
@@ -1812,6 +1815,28 @@ async function fetchCSV(url, retries = 2) {
   throw lastErr;
 }
 
+// BD Productos: col B = descripción, col H = ciclo estándar (seg)
+// Construye DATA.cicloEstMap = { DESC_UPPER → cicloSeg }
+let _bdProdLoaded = false;
+async function loadBdProductos() {
+  if (_bdProdLoaded) return;
+  try {
+    const res = await fetch(proxy(BD_PRODUCTOS_CSV + `&_t=${Date.now()}`), { cache: 'no-store' });
+    if (!res.ok) return;
+    const txt = await res.text();
+    const rows = parseCSV(txt);
+    const map = {};
+    rows.forEach(r => {
+      const vals = Object.values(r);
+      const desc  = String(vals[1] || '').trim().toUpperCase();   // col B (índice 1)
+      const ciclo = parseFloat(String(vals[7] || '').replace(',','.'));  // col H (índice 7)
+      if (desc && ciclo > 0) map[desc] = ciclo;
+    });
+    DATA.cicloEstMap = map;
+    _bdProdLoaded = true;
+  } catch(e) { console.warn('BD Productos no cargó:', e.message); }
+}
+
 // Maquilas: layout de dos clientes lado a lado (VELCOPLAST cols 0-2, PRACTIDENT cols 4-6).
 // Cada bloque: Fecha / Referencia / Cantidad. Se parsea sin header.
 async function loadMaquilas() {
@@ -2164,7 +2189,10 @@ async function loadAll() {
       await loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; });
     }
 
-    setProgress(92, 'Cargando Maquilas...');
+    setProgress(90, 'Cargando BD Productos...');
+    await loadBdProductos();
+
+    setProgress(95, 'Cargando Maquilas...');
     await loadMaquilas();   // hoja distinta; ya maneja su propio error
 
     setProgress(100, 'Listo');
@@ -2202,6 +2230,7 @@ async function silentRefresh() {
     await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
     await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
     if (SHEETS.planesAccion) await loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; });
+    await loadBdProductos();
     await loadMaquilas();
     document.getElementById('last-update').textContent =
       `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`;
@@ -3988,6 +4017,11 @@ function renderReporteDiario() {
     g.paro = Object.values(g.porTurno).reduce((s,v)=>s+v.paro,0);
     g.cicloReal = _modeBy(g.rows,r=>pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL']))||g.cicloReal;
     g.cicloEst  = _modeBy(g.rows,r=>pNum(r['T. CICLO EST']))||g.cicloEst;
+    // Fallback BD Productos: si la fila no trae ciclo estándar, buscarlo por descripción del producto
+    if (!g.cicloEst && DATA.cicloEstMap) {
+      const _prd = String(Object.keys(g.porProd||{})[0]||'').toUpperCase();
+      g.cicloEst = DATA.cicloEstMap[_prd] || 0;
+    }
     g.cavReal   = _modeBy(g.rows,r=>_findColVal(r,'CAVIDAD','TEOR'))||g.cavReal;
     g.cavTeor   = _modeBy(g.rows,r=>_cavTeorOf(r))||g.cavTeor;
     g.horas = Object.values(g.dtSet).reduce((s,ts)=>s+calcShiftHours(ts),0);
@@ -4560,6 +4594,11 @@ function renderReporteCompacto() {
     // ciclo espurio). Aplica a ciclo real/estándar y cavidades.
     g.cicloReal = _modeBy(g.rows, r=>pN(r['T. CICLO REAL'])||pN(r['T.CICLO REAL'])) || g.cicloReal;
     g.cicloEst  = _modeBy(g.rows, r=>pN(r['T. CICLO EST'])) || g.cicloEst;
+    // Fallback BD Productos: si la fila no trae ciclo estándar, buscarlo por descripción del producto
+    if (!g.cicloEst && DATA.cicloEstMap) {
+      const _prd = String(Object.keys(g.porProd||{})[0]||'').toUpperCase();
+      g.cicloEst = DATA.cicloEstMap[_prd] || 0;
+    }
     g.cavReal   = _modeBy(g.rows, r=>_findColVal(r,'CAVIDAD','TEOR')) || g.cavReal;
     g.cavTeor   = _modeBy(g.rows, r=>_cavTeorOf(r)) || g.cavTeor;
 
