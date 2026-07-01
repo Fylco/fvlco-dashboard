@@ -2090,9 +2090,6 @@ function calcRendimiento(rows) {
   });
   let totProd=0, totTeo=0;
   Object.values(slots).forEach(s => {
-    const mp = (s.turno==='4'||s.turno==='5') ? 720 : 480;
-    // Paro total de turno con producción = dato erróneo: se ignora el paroProg
-    if (s.undProd > 0 && s.paroTotal >= mp) s.paroProgSeg = 0;
     if (s.cicloEst > 0) {
       totProd += s.undProd;
       const cavEff = s.cavTeor > 0 ? s.cavTeor : 1;
@@ -2124,9 +2121,6 @@ function calcDisponibilidad(rows) {
   });
   let totTRT=0, totParo=0;
   Object.values(slots).forEach(s => {
-    const mp = (s.turno==='4'||s.turno==='5') ? 720 : 480;
-    // Paro total de turno con producción = dato erróneo: no penaliza disponibilidad
-    if (s.undProd > 0 && s.paroTotal >= mp) s.paroNoProg = 0;
     if (s.cavReal>0 && s.cicloReal>0) {
       totTRT  += (s.undProd/s.cavReal*s.cicloReal)/60;
       totParo += s.paroNoProg;
@@ -4144,8 +4138,7 @@ function renderReporteDiario() {
   _mRdArr.forEach(g => {
     Object.keys(g.porTurno).forEach(t => {
       const mp=(t==='4'||t==='5')?720:480;
-      if(g.porTurno[t].paro>mp)g.porTurno[t].paro=mp;
-      if(g.porTurno[t].prod>0&&g.porTurno[t].paro>=mp){g.porTurno[t].paro=0;g.porTurno[t].paroProg=0;g.porTurno[t].paroNoProg=0;}
+      if(g.porTurno[t].paro>mp){const sc=mp/g.porTurno[t].paro;g.porTurno[t].paroProg*=sc;g.porTurno[t].paroNoProg*=sc;g.porTurno[t].paro=mp;}
     });
     g.paro       = Object.values(g.porTurno).reduce((s,v)=>s+v.paro,0);
     g.paroProg   = Object.values(g.porTurno).reduce((s,v)=>s+v.paroProg,0);
@@ -4698,8 +4691,7 @@ function renderReporteCompacto() {
     // imposibles (>1440 min/día) por datos mal cargados.
     Object.keys(g.porTurno).forEach(t => {
       const maxParo = (t==='4' || t==='5') ? 720 : 480;
-      if (g.porTurno[t].paro > maxParo) g.porTurno[t].paro = maxParo;
-      if (g.porTurno[t].prod > 0 && g.porTurno[t].paro >= maxParo) {g.porTurno[t].paro=0;g.porTurno[t].paroProg=0;g.porTurno[t].paroNoProg=0;}
+      if (g.porTurno[t].paro > maxParo) {const sc=maxParo/g.porTurno[t].paro;g.porTurno[t].paroProg*=sc;g.porTurno[t].paroNoProg*=sc;g.porTurno[t].paro=maxParo;}
     });
     g.paro       = Object.values(g.porTurno).reduce((s,v)=>s+v.paro, 0);
     g.paroProg   = Object.values(g.porTurno).reduce((s,v)=>s+v.paroProg, 0);
