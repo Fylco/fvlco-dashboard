@@ -321,6 +321,8 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
       <div id="resumen-planref"></div>
       <div id="resumen-und-perdidas" style="margin-top:24px"></div>
+      <div id="resumen-maquilas" style="margin-top:24px"></div>
+      <div id="resumen-accidentes" style="margin-top:24px"></div>
       <div id="resumen-planes" style="margin-top:24px"></div>
     </div>
 
@@ -2908,6 +2910,123 @@ function renderResumen() {
       </div>`;
   }
 
+  // ── Unidades Maquilas ──────────────────────────────────────────────────
+  const maquilasEl = document.getElementById('resumen-maquilas');
+  if (maquilasEl) {
+    const _pN = v => { const n=parseFloat(String(v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; };
+    const _ri = n => Math.round(n||0).toLocaleString('es-CO');
+    const _MES2 = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const maqData = (DATA.maquilas||[]).filter(m => {
+      const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+      if (!mm) return !mesSel;
+      if (mesSel && _MES2[parseInt(mm[2])] !== mesSel.toLowerCase()) return false;
+      return true;
+    });
+    const totalMaq = maqData.reduce((s,m)=>s+_pN(m.cantidad),0);
+    const byCli = {};
+    maqData.forEach(m => { (byCli[m.cliente]||=[]).push(m); });
+    const _maqPeriodo = mesSel
+      ? `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD;margin-left:10px">📅 ${cap(mesSel)}</span>`
+      : `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;margin-left:10px">⚠️ Todos los meses</span>`;
+
+    if (!maqData.length) {
+      maquilasEl.innerHTML = `
+        <div style="background:#FFFFFF;border:1px solid #DDD6FE;border-radius:10px;overflow:hidden">
+          <div style="background:#F5F3FF;padding:12px 18px;border-bottom:2px solid #DDD6FE;display:flex;align-items:center;gap:8px">
+            <div style="font-size:1.05rem;font-weight:800;color:#4C1D95"><i class="fa-solid fa-handshake" style="color:#7C3AED;margin-right:8px"></i>Unidades Maquilas</div>
+            ${_maqPeriodo}
+          </div>
+          <div style="padding:20px;text-align:center;color:#6B7280;font-size:.95rem">Sin maquilas registradas en el período seleccionado.</div>
+        </div>`;
+    } else {
+      const tablas = Object.entries(byCli).map(([cli, rows]) => {
+        const sub = rows.reduce((s,m)=>s+_pN(m.cantidad),0);
+        const body = rows.map(m=>`<tr style="border-bottom:1px solid #EDE9FE">
+          <td style="padding:8px 12px;font-size:.88rem;color:#6B7280">${m.fecha||'—'}</td>
+          <td style="padding:8px 12px;font-size:.92rem;color:#111827;font-weight:600">${m.referencia||'—'}</td>
+          <td style="padding:8px 12px;text-align:right;font-size:.95rem;font-weight:700;color:#6D28D9">${m.cantidad?_ri(_pN(m.cantidad)):'—'}</td>
+          <td style="padding:8px 12px;font-size:.85rem;color:#9CA3AF">${m.orden||'—'}</td>
+        </tr>`).join('');
+        return `<div style="margin-bottom:14px;border:1px solid #DDD6FE;border-radius:8px;overflow:hidden">
+          <div style="background:#EDE9FE;padding:8px 14px;display:flex;justify-content:space-between;align-items:center">
+            <div style="font-size:.92rem;font-weight:700;color:#4C1D95"><i class="fa-solid fa-building" style="margin-right:6px;color:#7C3AED"></i>${cli}</div>
+            <div style="font-size:.82rem;background:#7C3AED;border-radius:6px;padding:3px 10px;color:#FFFFFF;font-weight:600">Subtotal: ${_ri(sub)} und</div>
+          </div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:#F5F3FF">
+              <th style="padding:7px 12px;text-align:left;font-size:.78rem;color:#6B7280;font-weight:700">Fecha</th>
+              <th style="padding:7px 12px;text-align:left;font-size:.78rem;color:#6B7280;font-weight:700">Referencia / Producto</th>
+              <th style="padding:7px 12px;text-align:right;font-size:.78rem;color:#6B7280;font-weight:700">Cantidad</th>
+              <th style="padding:7px 12px;text-align:left;font-size:.78rem;color:#6B7280;font-weight:700">Orden</th>
+            </tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>`;
+      }).join('');
+      maquilasEl.innerHTML = `
+        <div style="background:#FFFFFF;border:1px solid #DDD6FE;border-radius:10px;overflow:hidden">
+          <div style="background:#F5F3FF;padding:12px 18px;border-bottom:2px solid #DDD6FE;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+              <div style="font-size:1.05rem;font-weight:800;color:#4C1D95"><i class="fa-solid fa-handshake" style="color:#7C3AED;margin-right:8px"></i>Unidades Maquilas</div>
+              ${_maqPeriodo}
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:.72rem;color:#6D28D9;font-weight:700;text-transform:uppercase">Total unidades maquila</div>
+              <div style="font-size:1.3rem;font-weight:800;color:#7C3AED">${_ri(totalMaq)}</div>
+            </div>
+          </div>
+          <div style="padding:14px 18px">${tablas}</div>
+        </div>`;
+    }
+  }
+
+  // ── Días Sin Accidentes ────────────────────────────────────────────────
+  const accidentesEl = document.getElementById('resumen-accidentes');
+  if (accidentesEl) {
+    let _diasAcc = null, _diasInc = null, _totalPersonal = null, _incap = null;
+    (DATA.accid||[]).forEach(row => {
+      const vals = Object.values(row).map(v=>String(v||''));
+      vals.forEach((v,i) => {
+        const up = v.toUpperCase().trim();
+        if (up==='DIAS SIN ACCIDENTES'||up==='DÍAS SIN ACCIDENTES'||up.includes('DIAS SIN ACCIDENTES')) { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _diasAcc=n; }
+        if (up==='DIAS SIN INCIDENTES'||up==='DÍAS SIN INCIDENTES') { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _diasInc=n; }
+        if (up.includes('TOTAL PERSONAL')) { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _totalPersonal=n; }
+        if (up.includes('INCAPACITADO'))   { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _incap=n; }
+      });
+    });
+    const _da = _diasAcc ?? 0;
+    const _di = _diasInc ?? 0;
+    const _daColor = _da===0?'#DC2626':_da<30?'#D97706':'#059669';
+    const _diColor = _di<7?'#DC2626':_di<30?'#D97706':'#059669';
+    const _daLabel = _da===0?'⚠️ Accidente registrado':_da<30?`${_da} días consecutivos`:`✅ ${_da} días consecutivos`;
+    const _diLabel = _di<7?'⚠️ Incidente reciente':_di<30?`${_di} días consecutivos`:`✅ ${_di} días consecutivos`;
+    const _accRate = (_incap!=null&&_totalPersonal>0)?((_incap/_totalPersonal)*100).toFixed(1)+'%':'—';
+    accidentesEl.innerHTML = `
+      <div style="background:#FFFFFF;border:1px solid #D1FAE5;border-radius:10px;overflow:hidden">
+        <div style="background:#ECFDF5;padding:12px 18px;border-bottom:2px solid #A7F3D0">
+          <div style="font-size:1.05rem;font-weight:800;color:#064E3B"><i class="fa-solid fa-shield-halved" style="color:#059669;margin-right:8px"></i>Seguridad — Días Sin Accidentes</div>
+          <div style="font-size:.82rem;color:#6B7280;margin-top:3px">Indicadores de seguridad industrial — Información actualizada desde el módulo de personal</div>
+        </div>
+        <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+          <div style="background:#F0FDF4;border:2px solid ${_daColor}44;border-radius:10px;padding:16px;text-align:center">
+            <div style="font-size:.75rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Días Sin Accidentes</div>
+            <div style="font-size:3rem;font-weight:800;color:${_daColor};line-height:1;margin-bottom:6px">${_da}</div>
+            <div style="font-size:.82rem;color:${_daColor};font-weight:600">${_daLabel}</div>
+          </div>
+          <div style="background:#F0FDF4;border:2px solid ${_diColor}44;border-radius:10px;padding:16px;text-align:center">
+            <div style="font-size:.75rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Días Sin Incidentes</div>
+            <div style="font-size:3rem;font-weight:800;color:${_diColor};line-height:1;margin-bottom:6px">${_di}</div>
+            <div style="font-size:.82rem;color:${_diColor};font-weight:600">${_diLabel}</div>
+          </div>
+          <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:16px;text-align:center">
+            <div style="font-size:.75rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Personal</div>
+            <div style="font-size:3rem;font-weight:800;color:#1E40AF;line-height:1;margin-bottom:6px">${_totalPersonal??'—'}</div>
+            <div style="font-size:.82rem;color:#6B7280">Incapacitados: ${_incap??0} · Accidentalidad: ${_accRate}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
   // Snapshot para WhatsApp
   window._informeSnap = { oee, rend, disp, cal, refsOk, refsFail, clientesLate, totalCli, mesLabel };
 }
@@ -5304,6 +5423,76 @@ async function exportPDF(shareMode = false) {
           String(_cP(r,'ESTADO')||'Pendiente'),
         ]),
         [60,22,22,30,22]
+      );
+    }
+
+    // ── UNIDADES MAQUILAS ────────────────────────────────────────────────
+    {
+      const _pNp = v => { const n=parseFloat(String(v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; };
+      const _MES2p = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+      const maqDataP = (DATA.maquilas||[]).filter(m => {
+        const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+        if (!mm) return !getVal('g-mes');
+        if (getVal('g-mes') && _MES2p[parseInt(mm[2])] !== getVal('g-mes').toLowerCase()) return false;
+        return true;
+      });
+      if (y > pageH-50) addPage('Informe de Cierre de Mes — FVLco');
+      secTitle('Unidades Maquilas');
+      if (maqDataP.length) {
+        const totalMaqP = maqDataP.reduce((s,m)=>s+_pNp(m.cantidad),0);
+        const maqRows = maqDataP.map(m => [
+          (m.cliente||'—').substring(0,28),
+          (m.referencia||'—').substring(0,52),
+          Math.round(_pNp(m.cantidad)).toLocaleString('es-CO'),
+          (m.fecha||'—'),
+          (m.orden||'—').substring(0,22)
+        ]);
+        table(
+          ['Cliente','Referencia / Producto','Cantidad','Fecha','Orden'],
+          [...maqRows, ['TOTAL','',totalMaqP.toLocaleString('es-CO'),'','']],
+          [36,60,24,24,28]
+        );
+      } else {
+        pdf.setFont('helvetica','italic'); pdf.setFontSize(8); pdf.setTextColor(34,197,94);
+        pdf.text('Sin maquilas registradas en el período seleccionado', ml+3, y); y+=8;
+      }
+    }
+
+    // ── SEGURIDAD — DÍAS SIN ACCIDENTES ──────────────────────────────────
+    {
+      let _dA=null, _dI=null, _tPers=null, _iCap=null;
+      (DATA.accid||[]).forEach(row => {
+        const vals = Object.values(row).map(v=>String(v||''));
+        vals.forEach((v,i) => {
+          const up = v.toUpperCase().trim();
+          if (up==='DIAS SIN ACCIDENTES'||up==='DÍAS SIN ACCIDENTES'||up.includes('DIAS SIN ACCIDENTES')) { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _dA=n; }
+          if (up==='DIAS SIN INCIDENTES'||up==='DÍAS SIN INCIDENTES') { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _dI=n; }
+          if (up.includes('TOTAL PERSONAL')) { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _tPers=n; }
+          if (up.includes('INCAPACITADO'))   { const n=parseFloat(vals[i+1]); if(!isNaN(n)) _iCap=n; }
+        });
+      });
+      if (y > pageH-60) addPage('Informe de Cierre de Mes — FVLco');
+      secTitle('Seguridad — Días Sin Accidentes');
+      const _da = _dA??0, _di = _dI??0;
+      const _daState = _da===0?'ALERTA':_da<30?'PRECAUCIÓN':'BIEN';
+      const _diState = _di<7?'ALERTA':_di<30?'PRECAUCIÓN':'BIEN';
+      const _accRate = (_iCap!=null&&_tPers>0)?((_iCap/_tPers)*100).toFixed(1)+'%':'—';
+      kpiRow([
+        {label:'Días Sin Accidentes', value:String(_da)+' días', color:_da===0?[220,38,38]:_da<30?[217,119,6]:[5,150,105]},
+        {label:'Días Sin Incidentes', value:String(_di)+' días', color:_di<7?[220,38,38]:_di<30?[217,119,6]:[5,150,105]},
+        {label:'Total Personal',      value:String(_tPers??'—'),  color:[30,64,175]},
+        {label:'Accidentalidad',       value:_accRate,             color:[239,68,68]},
+      ]);
+      table(
+        ['Indicador','Valor','Estado'],
+        [
+          ['Días consecutivos sin accidentes', String(_da)+' días', _daState],
+          ['Días consecutivos sin incidentes', String(_di)+' días', _diState],
+          ['Total personal activo',            String(_tPers??'—'), ''],
+          ['Personal incapacitado',            String(_iCap??'—'), ''],
+          ['Índice de accidentalidad',         _accRate,            ''],
+        ],
+        [90, 50, 42]
       );
     }
 
