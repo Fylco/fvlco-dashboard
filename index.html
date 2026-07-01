@@ -286,7 +286,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </style>
       <div style="margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #E5E7EB;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-size:1.45rem;font-weight:800;color:#111827"><i class="fa-solid fa-file-contract" style="color:#6366F1;margin-right:8px"></i>Informe de Cierre de Mes Global</div>
+          <div style="font-size:1.45rem;font-weight:800;color:#111827"><i class="fa-solid fa-file-contract" style="color:#6366F1;margin-right:8px"></i>Informe de Cierre de Mes</div>
           <div style="font-size:.9rem;color:#6B7280;margin-top:3px">Resumen ejecutivo · Conectado al filtro global de mes y turno</div>
         </div>
         <button onclick="compartirInformeWA()" style="background:#25D366;color:#FFFFFF;border:none;border-radius:8px;padding:8px 16px;font-size:.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
@@ -2684,10 +2684,11 @@ function renderResumen() {
   const undPerdEl = document.getElementById('resumen-und-perdidas');
   if (undPerdEl) {
     const _TSEG3 = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
-    // Acumular por slot
+    // Acumular por slot — clave incluye FECHA COMPLETA para que "Todos los meses"
+    // no fusione el día 15 de junio con el día 15 de mayo en el mismo slot.
     const _upSlots = {};
     d.forEach(r => {
-      const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+      const sk = `${r._fechaKey||r._mesTurno||'?'}|${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
       if (!_upSlots[sk]) _upSlots[sk] = {maq:String(r._maq||'?'), turno:String(r._turno||''), undProd:0, undProg:0, cicloEst:0, cavTeor:0, paroProgSeg:0, prods:{}};
       const s = _upSlots[sk];
       s.undProd += r._cant||0;
@@ -4978,7 +4979,7 @@ async function exportPDF(shareMode = false) {
     };
     const addPage = (title) => { pdf.addPage(); header(title); };
     const secTitle = (t) => {
-      if (y > pageH-35) { addPage('Informe de Cierre de Mes Global — FVLco'); }
+      if (y > pageH-35) { addPage('Informe de Cierre de Mes — FVLco'); }
       pdf.setFillColor(239,246,255); pdf.rect(ml,y,usableW,7,'F');
       pdf.setDrawColor(147,197,253); pdf.setLineWidth(0.3);
       pdf.rect(ml,y,usableW,7,'S');
@@ -5011,7 +5012,7 @@ async function exportPDF(shareMode = false) {
       hx=ml; headers.forEach((h,i)=>{ pdf.text(h,hx+2,y+4.5,{maxWidth:colWidths[i]-3}); hx+=colWidths[i]; });
       y+=rowH;
       rows.forEach((row,ri)=>{
-        if (y>pageH-18) { addPage('Informe de Cierre de Mes Global — FVLco'); }
+        if (y>pageH-18) { addPage('Informe de Cierre de Mes — FVLco'); }
         pdf.setFillColor(ri%2===0?255:248,ri%2===0?255:250,ri%2===0?255:252);
         hx=ml; colWidths.forEach(w=>{ pdf.rect(hx,y,w,rowH,'F'); hx+=w; });
         pdf.setDrawColor(226,232,240); pdf.setLineWidth(0.15);
@@ -5042,7 +5043,7 @@ async function exportPDF(shareMode = false) {
     pdf.setFont('helvetica','bold'); pdf.setFontSize(28); pdf.setTextColor(255,255,255);
     pdf.text('FVLco', pageW/2, 28, {align:'center'});
     pdf.setFontSize(12); pdf.setTextColor(219,234,254);
-    pdf.text('Informe de Cierre de Mes Global', pageW/2, 41, {align:'center'});
+    pdf.text('Informe de Cierre de Mes', pageW/2, 41, {align:'center'});
     // cuerpo portada
     pdf.setFillColor(248,250,252); pdf.rect(ml,72,usableW,60,'F');
     pdf.setDrawColor(147,197,253); pdf.setLineWidth(0.5); pdf.rect(ml,72,usableW,60,'S');
@@ -5059,7 +5060,7 @@ async function exportPDF(shareMode = false) {
     pdf.text('FVLco · Dashboard de Producción · Confidencial', pageW/2, pageH-4, {align:'center'});
 
     // ── PÁGINA 1: KPIs OEE ───────────────────────────────────────────────
-    addPage('Informe de Cierre de Mes Global — FVLco');
+    addPage('Informe de Cierre de Mes — FVLco');
     const dProd = filterProd();
     const oeeVal  = calcOEEFromDRC(dProd);
     const rendVal = calcRendimiento(dProd);
@@ -5114,7 +5115,7 @@ async function exportPDF(shareMode = false) {
       [84,28,28,28], {colorCol:3});
 
     // ── TIEMPOS DE PARO / PARETO ─────────────────────────────────────────
-    if (y > pageH-80) addPage('Informe de Cierre de Mes Global — FVLco');
+    if (y > pageH-80) addPage('Informe de Cierre de Mes — FVLco');
     secTitle('Pareto 80-20 — Causas de Paro No Programado por Máquina');
     const _paroMap2={};
     dProd.forEach(r=>{
@@ -5144,12 +5145,12 @@ async function exportPDF(shareMode = false) {
       _paretoRows2, [64,22,24,58]);
 
     // ── UNIDADES PERDIDAS ─────────────────────────────────────────────────
-    if (y > pageH-60) addPage('Informe de Cierre de Mes Global — FVLco');
+    if (y > pageH-60) addPage('Informe de Cierre de Mes — FVLco');
     secTitle('Unidades Dejadas de Fabricar');
     const _TSEG_P={'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
     const _upSlotsP={};
     dProd.forEach(r=>{
-      const sk=`${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+      const sk=`${r._fechaKey||r._mesTurno||'?'}|${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
       if(!_upSlotsP[sk]) _upSlotsP[sk]={maq:String(r._maq||'?'),turno:String(r._turno||''),undProd:0,undProg:0,cicloEst:0,cavTeor:0,paroProgSeg:0,prods:{}};
       const s=_upSlotsP[sk];
       s.undProd+=r._cant||0;
@@ -5200,7 +5201,7 @@ async function exportPDF(shareMode = false) {
     // ── PLANES DE ACCIÓN ─────────────────────────────────────────────────
     const planesData = (typeof DATA.planesAccion!=='undefined'&&Array.isArray(DATA.planesAccion)&&DATA.planesAccion.length>0) ? DATA.planesAccion : [];
     if (planesData.length>0) {
-      if (y > pageH-50) addPage('Informe de Cierre de Mes Global — FVLco');
+      if (y > pageH-50) addPage('Informe de Cierre de Mes — FVLco');
       secTitle('Planes de Acción');
       const _nc2=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
       const _cP=(r,...keys)=>{
