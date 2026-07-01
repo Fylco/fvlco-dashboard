@@ -417,6 +417,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <i class="fa-brands fa-whatsapp"></i> Compartir
         </button>
       </div>
+      <div id="rc-debug-panel" style="display:none;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:.78rem;color:#92400E;font-family:monospace"></div>
       <div id="rc-content"></div>
     </div>
 
@@ -1973,7 +1974,12 @@ function normalizeProd(r) {
   out._prod  = String(out['PRODUCTO'] ?? '').trim();
   out._orden = out['ORDEN'] ?? '';
   out._cant  = pNum(out['CANT REPORTADA']) || _findColVal(out,'CANT REPORT','') || 0;
-  out._paro  = pNum(out['TIEMPO PARO MIN']) || _findColVal(out,'PARO MIN','') || _findColVal(out,'TIEMPO PARO','') || 0;
+  out._paro  = pNum(out['TIEMPO PARO MIN'])
+    || _findColVal(out,'PARO MIN','')
+    || _findColVal(out,'TIEMPO PARO','')
+    || _findColVal(out,'MIN PARO','')
+    || _findColVal(out,'PARO','RAZON')   // catch-all: cualquier col. numérica con "PARO" (excluye "RAZON PARO")
+    || 0;
   out._rend  = out['% RENDIMIENTO'];
   out._disp  = out['% DISPONIBILIDAD'];
   out._oee   = out['OEE FINAL'];
@@ -4498,17 +4504,30 @@ function renderReporteCompacto() {
 
   const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
 
-  // DEBUG temporal — ver en consola del navegador (F12 → Console)
-  console.group(`[Compacto] Máquinas en el día ${fKey} (${effRows.length} filas)`);
-  Object.entries(maqMap).forEach(([k,g]) => {
-    console.log(`Maq "${k}" → filas:${g.rows.length} undProd:${g.undProd} paro:${g.paro} paroNoProg:${g.paroNoProg}`);
-    if (g.rows.length > 0) {
-      const colsMuestra = Object.keys(g.rows[0]).filter(c=>c.startsWith('_')||c.toUpperCase().includes('PARO')||c.toUpperCase().includes('MAQUI')||c.toUpperCase().includes('TURNO'));
-      console.log(`  Columnas relevantes:`, colsMuestra);
-      console.log(`  Muestra fila-0:`, colsMuestra.reduce((o,c)=>(o[c]=g.rows[0][c],o),{}));
+  // DEBUG VISIBLE — muestra info de diagnóstico para máquinas con paro=0 pero filas > 0
+  const _dbgEl = document.getElementById('rc-debug-panel');
+  if (_dbgEl) {
+    const _prob = Object.values(maqMap).filter(g => g.paro === 0 && g.rows.length > 0);
+    if (_prob.length > 0) {
+      _dbgEl.style.display = 'block';
+      _dbgEl.innerHTML = _prob.map(g => {
+        const _sampleRow = g.rows[0] || {};
+        const _paroCols = Object.keys(_sampleRow)
+          .filter(c => c.toUpperCase().includes('PARO') || c.toUpperCase().includes('TIEMPO'))
+          .map(c => `<b>${c}</b>: "${_sampleRow[c]}"`)
+          .join('<br>');
+        const _maqCols = Object.keys(_sampleRow)
+          .filter(c => c.toUpperCase().includes('QUINA'))
+          .map(c => `<b>${c}</b>: "${_sampleRow[c]}"`)
+          .join(' | ');
+        return `<div style="margin-bottom:8px"><b>Maq "${g.maq}"</b> — ${g.rows.length} filas, undProd=${g.undProd}, _paro_detectado=${g.paro}<br>
+          Cols MAQUINA: ${_maqCols||'ninguna'}<br>
+          Cols PARO/TIEMPO: ${_paroCols||'ninguna'}</div>`;
+      }).join('<hr>');
+    } else {
+      _dbgEl.style.display = 'none';
     }
-  });
-  console.groupEnd();
+  }
 
   // ── NC del día por MÁQUINA (col B) + fecha (col A) ─────────────────────
   // Se respeta la MÁQUINA que reporta el NC: así, si una orden está
