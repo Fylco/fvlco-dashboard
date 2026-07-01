@@ -1950,9 +1950,13 @@ function normalizeProd(r) {
       ? (_d * _r * _c) / 10000
       : null;
   }
-  // _mes SIEMPRE string (vacío si MES no es texto, ej. filas con fecha mal
-  // puesta en esa columna → pNum la volvió número). Evita .toLowerCase crash.
-  out._mes   = typeof out['MES'] === 'string' ? out['MES'].toLowerCase() : '';
+  // _mes: desde columna MES si es texto válido (no error #REF!, #N/A, etc.).
+  // Fallback a _mesTurno (derivado de la fecha) para filas donde MES es numérico
+  // o tiene errores de fórmula del sheet — evita que esas filas queden sin mes.
+  {
+    const _mesRaw = typeof out['MES'] === 'string' ? out['MES'].toLowerCase() : '';
+    out._mes = (_mesRaw && !_mesRaw.startsWith('#')) ? _mesRaw : (_mesTurno || '');
+  }
   // _maq robusto: el encabezado "MÁQUINA" a veces llega con la Á en otra
   // codificación (ej. en la hoja NC) y out['MÁQUINA'] no la encuentra. Se
   // busca de forma flexible cualquier columna que contenga "QUINA".
@@ -2213,7 +2217,8 @@ function clearFilters(prefix) {
 }
 
 function populateAllFilters() {
-  const meses = [...new Set(DATA.prod.map(r=>r._mes).filter(Boolean))];
+  // Excluir errores de fórmula del sheet (#ref!, #n/a, etc.) del listado de meses
+  const meses = [...new Set(DATA.prod.map(r=>r._mes).filter(v => v && !v.startsWith('#')))];
   const maqs  = [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort();
   const dias  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(x=>x!=null&&x!==''))].sort((a,b)=>Number(a)-Number(b));
   // Global top bar
@@ -2865,86 +2870,18 @@ function renderResumen() {
   window._informeSnap = { oee, rend, disp, cal, refsOk, refsFail, clientesLate, totalCli, mesLabel };
 }
 
-// ── WhatsApp share para Informe de Cierre — genera PDF y comparte ──────────
+// ── WhatsApp share para Informe de Cierre — usa el mismo jsPDF que "Descargar PDF" ──
 async function compartirInformeWA() {
   const btn = document.querySelector('[onclick="compartirInformeWA()"]');
   const originalHtml = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando PDF...'; }
   try {
-    const el = document.getElementById('sec-resumen');
-    if (!el) throw new Error('No se encontró la sección del informe');
-
-    // Captura la sección con fondo blanco para el PDF
-    const canvas = await html2canvas(el, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#F9FAFB',
-      logging: false,
-      scrollX: 0,
-      scrollY: 0,
-      width: el.scrollWidth,
-      height: el.scrollHeight,
-      windowWidth: el.scrollWidth
-    });
-
-    const { jsPDF } = window.jspdf;
-    const mmPerPx = 25.4 / 96;
-    // Escala real del canvas (capturado a scale:2)
-    const imgWpx = canvas.width / 2;   // px reales de pantalla
-    const imgHpx = canvas.height / 2;
-    const imgWmm = imgWpx * mmPerPx;
-    const imgHmm = imgHpx * mmPerPx;
-
-    // Página A4 portrait
-    const PAGE_W = 210, PAGE_H = 297;
-    const fitScale = PAGE_W / imgWmm;           // factor para que el ancho encaje en A4
-    const contentHmm = imgHmm * fitScale;       // altura total del contenido en mm
-    const numPages = Math.ceil(contentHmm / PAGE_H);
-
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    for (let page = 0; page < numPages; page++) {
-      if (page > 0) pdf.addPage();
-      // Porción de canvas que corresponde a esta página (en px del canvas a scale:2)
-      const sliceYpx = page * (PAGE_H / fitScale) * mmPerPx * 2;          // px canvas
-      const sliceHpx = Math.min((PAGE_H / fitScale) * mmPerPx * 2, canvas.height - sliceYpx);
-      if (sliceHpx <= 0) break;
-
-      // Recortar esa franja del canvas
-      const tmpCanvas = document.createElement('canvas');
-      tmpCanvas.width  = canvas.width;
-      tmpCanvas.height = Math.round(sliceHpx);
-      tmpCanvas.getContext('2d').drawImage(canvas, 0, Math.round(sliceYpx), canvas.width, Math.round(sliceHpx), 0, 0, canvas.width, Math.round(sliceHpx));
-
-      const sliceImg = tmpCanvas.toDataURL('image/jpeg', 0.92);
-      const sliceHmm = (sliceHpx / 2) * mmPerPx * fitScale;   // altura real en mm de esta franja
-      pdf.addImage(sliceImg, 'JPEG', 0, 0, PAGE_W, sliceHmm);
-    }
-
-    const mes = (document.getElementById('g-filter-mes')?.value||'').trim();
-    const fileName = `Informe-FVLco${mes?'-'+mes:''}.pdf`;
-    const pdfBlob = pdf.output('blob');
-    const pdfFile = new File([pdfBlob], fileName, { type:'application/pdf' });
-
-    // Intenta Web Share API (funciona en móvil y abre WhatsApp directamente)
-    if (navigator.canShare && navigator.canShare({ files:[pdfFile] })) {
-      await navigator.share({ files:[pdfFile], title:'Informe FVLco', text:'Informe de producción FVLco' });
-    } else {
-      // Fallback PC: descarga el PDF y abre WhatsApp Web
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = url; a.download = fileName; a.click();
-      URL.revokeObjectURL(url);
-      setTimeout(() => {
-        const s = window._informeSnap || {};
-        const pc = v => v!=null ? v.toFixed(1)+'%' : '—';
-        const txt = `📊 *Informe FVLco${mes?' - '+mes:''}*\nOEE: ${pc(s.oee)} | D: ${pc(s.disp)} | R: ${pc(s.rend)} | C: ${pc(s.cal)}\n\n📎 PDF descargado — adjúntalo en este chat.`;
-        window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
-      }, 800);
-    }
+    await exportPDF(true);   // shareMode=true → comparte en vez de descargar
   } catch(err) {
-    console.error('Error compartir PDF:', err);
-    alert('Error al generar el PDF: ' + (err.message||err));
+    if (err && err.name !== 'AbortError') {
+      console.error('Error compartir PDF:', err);
+      alert('Error al generar el PDF: ' + (err.message||err));
+    }
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
   }
@@ -5030,10 +4967,10 @@ function closeSidebar() {
 // =======================================================
 // EXPORT PDF
 // =======================================================
-function exportPDF() {
+// shareMode=true → comparte vía Web Share API (WhatsApp) en vez de descargar
+async function exportPDF(shareMode = false) {
   const btn = document.getElementById('btn-pdf');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...';
+  if (!shareMode && btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
 
   try {
     const { jsPDF } = window.jspdf;
@@ -5260,15 +5197,20 @@ function exportPDF() {
         _byProdP[prod].maqs[s.maq]=(_byProdP[prod].maqs[s.maq]||0)+lp;
       });
     });
-    const _upRowsP=Object.entries(_byProdP)
-      .filter(([,x])=>x.lost>0).sort((a,b)=>b[1].lost-a[1].lost)
-      .map(([prod,x])=>{
-        const detMaq=Object.entries(x.maqs).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([m,l])=>`Maq ${m}:${fmt(l)}`).join(' · ');
-        return [prod.substring(0,32), fmt(x.lost), '$'+Math.round(x.value).toLocaleString('es-CO'), detMaq];
-      });
+    const _upEntries=Object.entries(_byProdP).filter(([,x])=>x.lost>0).sort((a,b)=>b[1].lost-a[1].lost);
+    const _upTotalLost=_upEntries.reduce((s,[,x])=>s+x.lost,0);
+    const _upTotalVal =_upEntries.reduce((s,[,x])=>s+x.value,0);
+    const _upRowsP=_upEntries.map(([prod,x])=>{
+      // máx 2 máquinas por celda para que quepa en 52mm
+      const detMaq=Object.entries(x.maqs).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([m,l])=>`#${m}: ${fmt(l)}`).join(' / ');
+      return [prod.substring(0,38), fmt(x.lost), '$'+Math.round(x.value).toLocaleString('es-CO'), detMaq];
+    });
     if(_upRowsP.length) {
-      table(['Producto','Und. No Producidas','Valor (Costo Fab.)','Máquinas'],
-        _upRowsP, [55,30,38,45]);
+      // Columnas: Producto(60) + Und(30) + Valor(40) + Máq(52) = 182mm (ancho útil completo)
+      table(['Producto','Und. No Producidas','Valor (Costo Fab.)','Máquinas (Top 2)'],
+        [..._upRowsP,
+         ['TOTAL', fmt(_upTotalLost), '$'+Math.round(_upTotalVal).toLocaleString('es-CO'), '']],
+        [60,30,40,52]);
     } else {
       pdf.setFont('helvetica','italic'); pdf.setFontSize(8); pdf.setTextColor(34,197,94);
       pdf.text('Sin unidades perdidas en el período seleccionado', ml+3, y); y+=8;
@@ -5309,15 +5251,38 @@ function exportPDF() {
     }
 
     const filename = `FVLco_Informe_${mesLabel}_${fechaGen}.pdf`.replace(/[:\s]/g,'_');
-    pdf.save(filename);
+
+    if (shareMode) {
+      // Compartir vía Web Share API (WhatsApp móvil) o descargar + abrir WA web (PC)
+      const blob = pdf.output('blob');
+      const file = new File([blob], filename, { type:'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files:[file] })) {
+        await navigator.share({ files:[file], title:'Informe FVLco', text:'Informe de producción FVLco' });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+        URL.revokeObjectURL(url);
+        setTimeout(() => {
+          const s = window._informeSnap || {};
+          const _pc = v => v!=null?v.toFixed(1)+'%':'—';
+          const txt = `📊 *Informe FVLco${mesLabel?' - '+mesLabel:''}*\nOEE: ${_pc(s.oee)} | D: ${_pc(s.disp)} | R: ${_pc(s.rend)} | C: ${_pc(s.cal)}\n\n📎 PDF descargado — adjúntalo en este chat.`;
+          window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
+        }, 800);
+      }
+    } else {
+      pdf.save(filename);
+    }
 
   } catch(err) {
-    alert('Error generando PDF: '+err.message);
+    if (!shareMode) alert('Error generando PDF: '+err.message);
     console.error(err);
+    throw err;
+  } finally {
+    if (!shareMode && btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Descargar PDF';
+    }
   }
-
-  btn.disabled = false;
-  btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Descargar PDF';
 }
 // función helper para mostrar valor OEE en PDF
 function oeeStr(v) { return v!=null ? v.toFixed(1)+'%' : '—'; }
