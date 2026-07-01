@@ -3991,8 +3991,9 @@ function renderReporteDiario() {
     g.cavReal   = _modeBy(g.rows,r=>_findColVal(r,'CAVIDAD','TEOR'))||g.cavReal;
     g.cavTeor   = _modeBy(g.rows,r=>_cavTeorOf(r))||g.cavTeor;
     g.horas = Object.values(g.dtSet).reduce((s,ts)=>s+calcShiftHours(ts),0);
-    const cavR=g.cavReal||g.cavTeor||0, cEst=g.cicloEst||g.cicloReal||0, cReal=g.cicloReal||g.cicloEst||0;
-    g.undProg = (cEst>0&&g.horas>0)?Math.round((g.horas*3600/cEst)*(g.cavTeor||cavR||1)):g.undProd;
+    const cavR=g.cavReal||g.cavTeor||0, cEst=g.cicloEst||0, cReal=g.cicloReal||g.cicloEst||0;
+    const _cavTd=g.cavTeor||cavR||0;
+    g.undProg = (cEst>0&&_cavTd>0&&g.horas>0)?Math.round((g.horas*3600/cEst)*_cavTd):g.undProd;
     g.tReal   = (cavR>0&&cReal>0)?(g.undProd/cavR*cReal)/60:0;
     g.tProg   = g.tReal+(g.paroNoProg||0);
     g.disp    = g.tProg>0?g.tReal/g.tProg*100:null;
@@ -4566,13 +4567,12 @@ function renderReporteCompacto() {
     g.turnosN = g.horas>0 ? Math.max(1, Math.min(3, Math.round(g.horas/8))) : 0;
     const cavR = g.cavReal || g.cavTeor || 0;   // cavidades reales (func)
     const cavT = g.cavTeor || cavR || 0;        // cavidades teóricas
-    const cEst = g.cicloEst || g.cicloReal || 0;// ciclo estándar
+    const cEst = g.cicloEst || 0;              // ciclo estándar SOLO — sin fallback a cicloReal
     const cReal= g.cicloReal || g.cicloEst || 0;// ciclo real
     // #3 UNIDADES TEÓRICAS = (tiempo efectivo ÷ ciclo estándar) × cav teóricas
-    //    tiempo efectivo = horas turno − paros programados (mantenimiento, cambio molde
-    //    planificado, etc.). Los paros NO programados no reducen el objetivo teórico.
+    //    Si no hay ciclo estándar ni cav teóricas, no hay objetivo → usar undProd (rendim=100%).
     const horasEfectivasSeg = Math.max(0, g.horas*3600 - (g.paroProg||0)*60);
-    g.undProg = (cEst>0 && horasEfectivasSeg>0) ? Math.round((horasEfectivasSeg/cEst)*cavT) : g.undProd;
+    g.undProg = (cEst>0 && cavT>0 && horasEfectivasSeg>0) ? Math.round((horasEfectivasSeg/cEst)*cavT) : g.undProd;
     g.falt    = g.undProg - g.undProd;
 
     // #2 TIEMPO REAL TRABAJADO (min) = (producción ÷ cav reales × ciclo real) ÷ 60
