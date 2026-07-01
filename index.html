@@ -296,26 +296,23 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="section-title">Indicadores Clave</div>
       <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px"></div>
       <div id="resumen-alertas" style="margin-bottom:20px"></div>
-      <!-- Fila 1: OEE (más ancho) + NC donut (más compacto) -->
-      <div style="display:grid;grid-template-columns:3fr 2fr;gap:18px;margin-bottom:18px">
-        <div class="chart-card">
-          <div class="section-title" style="margin-bottom:12px">OEE por Máquina</div>
-          <div style="height:260px;position:relative"><canvas id="r-oee-maq"></canvas></div>
+      <!-- 2×2: todos los gráficos con columnas iguales y min-width:0 para responsividad correcta -->
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:18px">
+        <div class="chart-card" style="min-width:0;overflow:hidden">
+          <div class="section-title" style="margin-bottom:10px">OEE por Máquina</div>
+          <div style="height:250px;position:relative;width:100%"><canvas id="r-oee-maq"></canvas></div>
         </div>
-        <div class="chart-card">
-          <div class="section-title" style="margin-bottom:12px">Top No Conformes (Causa)</div>
-          <div style="height:260px;position:relative"><canvas id="r-nc-causa"></canvas></div>
+        <div class="chart-card" style="min-width:0;overflow:hidden">
+          <div class="section-title" style="margin-bottom:10px">Top No Conformes (Causa)</div>
+          <div style="height:250px;position:relative;width:100%"><canvas id="r-nc-causa"></canvas></div>
         </div>
-      </div>
-      <!-- Fila 2: Plan vs Real (más ancho) + OTIF (más compacto) -->
-      <div style="display:grid;grid-template-columns:3fr 2fr;gap:18px;margin-bottom:18px">
-        <div class="chart-card">
-          <div class="section-title" style="margin-bottom:12px">Plan vs Real Mensual</div>
-          <div style="height:290px;position:relative"><canvas id="r-plan-mes"></canvas></div>
+        <div class="chart-card" style="min-width:0;overflow:hidden">
+          <div class="section-title" style="margin-bottom:10px">Plan vs Real Mensual</div>
+          <div style="height:270px;position:relative;width:100%"><canvas id="r-plan-mes"></canvas></div>
         </div>
-        <div class="chart-card">
-          <div class="section-title" style="margin-bottom:12px">OTIF por Mes</div>
-          <div style="height:290px;position:relative"><canvas id="r-otif-mes"></canvas></div>
+        <div class="chart-card" style="min-width:0;overflow:hidden">
+          <div class="section-title" style="margin-bottom:10px">OTIF por Mes</div>
+          <div style="height:270px;position:relative;width:100%"><canvas id="r-otif-mes"></canvas></div>
         </div>
       </div>
       <div class="chart-card" style="margin-top:18px">
@@ -2515,17 +2512,24 @@ function renderResumen() {
     extra:  {plugins:{legend:{labels:{color:'#374151',boxWidth:13,font:{size:15,family:'Tahoma'}}},tooltip:{mode:'index',intersect:false}}}
   };
 
-  // Mini chart: OEE por máquina
-  const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
-  const oeeByMaqVal = maqs.map(m => calcOEEFromDRC(d.filter(r=>r._maq==m)));
+  // Mini chart: OEE por máquina — filtra solo por mes/día, sin filtro de máquina/turno del panel OEE
+  // para que siempre muestre TODAS las máquinas independientemente del filtro activo
+  const _mSel = gMes(); const _dias = gDia();
+  const dAllMaqs = DATA.prod.filter(r =>
+    (!_mSel || r._mes === _mSel) && (!_dias.size || _dias.has(r._diaTurno||''))
+  );
+  const maqs = [...new Set(dAllMaqs.map(r=>r._maq).filter(Boolean))].sort();
+  const oeeByMaqVal = maqs.map(m => calcOEEFromDRC(dAllMaqs.filter(r=>r._maq==m)) ?? 0);
   makeChart('r-oee-maq','bar', maqs.map(m=>'Maq '+m),
-    [{label:'OEE %', data:oeeByMaqVal, backgroundColor:oeeByMaqVal.map(v=>v==null?'#D1D5DB':v>=65?'#22C55E':v>=50?'#F59E0B':'#EF4444'), borderRadius:5, maxBarThickness:80}],
+    [{label:'OEE %', data:oeeByMaqVal,
+      backgroundColor:oeeByMaqVal.map(v=>v===0?'#D1D5DB':v>=65?'#22C55E':v>=50?'#F59E0B':'#EF4444'),
+      borderRadius:5, maxBarThickness:70}],
     {...LO,
       yScale:{...LO.yScale, min:0, max:110, ticks:{...LO.yScale.ticks, callback:v=>v<=100?v+'%':''}},
       extra:{...LO.extra, plugins:{...LO.extra.plugins,
         datalabels:{display:true, anchor:'end', align:'top', clip:false,
-          formatter:v=>v!=null?v.toFixed(1)+'%':'',
-          color:'#111827', font:{size:15, weight:'bold'}}
+          formatter:v=>v>0?v.toFixed(1)+'%':'S/D',
+          color:'#111827', font:{size:14, weight:'bold'}}
       }}
     });
 
