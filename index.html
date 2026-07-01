@@ -2097,12 +2097,16 @@ function calcRendimiento(rows) {
     s.paroTotal += p;
     const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
     if (_esProg(rz)) s.paroProgSeg += p*60;
-    // Ciclo estimado: T.CICLO EST preferido; fallback BD Productos por descripción; último recurso cicloReal
+    // Ciclo estimado: T.CICLO EST preferido; fallback BD Productos por descripción.
+    // SIN fallback a T.CICLO REAL: es el ciclo de UNA caja puntual (a veces con
+    // valores basura, ej. "3" en una fila de paro de una máquina totalmente
+    // parada) y usarlo como ciclo OBJETIVO invalida el cálculo — puede generar
+    // una meta teórica absurda (miles de unidades) para una máquina que no
+    // produjo nada, hundiendo el Rendimiento agregado del día.
     const ce  = pNum(r['T. CICLO EST'])||0;
-    const cr  = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||0;
     const _bdKey = String(r._prod||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
     const cb  = (DATA.cicloEstMap && _bdKey) ? (DATA.cicloEstMap[_bdKey]||0) : 0;
-    const cic = ce > 0 ? ce : (cb > 0 ? cb : cr);
+    const cic = ce > 0 ? ce : cb;
     if (cic > 0 && cic > s.cicloEst) s.cicloEst = cic;
     // Cavidades teóricas: múltiples fuentes
     const cv = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
@@ -2122,32 +2126,27 @@ function calcRendimiento(rows) {
   return Math.min(100, Math.max(0, (totProd/totTeo)*100));
 }
 
-// % Disponibilidad — corregido: TRT / (TRT + parosNoProg) por slot
-// TRT (tiempo real de trabajo) = undProd / cavReal × cicloReal ÷ 60
+// % Disponibilidad = (Tiempo Programado del turno − Paro TOTAL) / Tiempo Programado.
+// Es una métrica de TIEMPO: no depende de unidades/ciclo (eso es Rendimiento) y
+// TODO paro cuenta (programado o no) — un paro programado igual detiene la
+// máquina ese rato, así que sí reduce la disponibilidad real del turno.
+// Tiempo programado por turno: 480 min (T1/2/3, 8h) o 720 min (T4/5, 12h).
 function calcDisponibilidad(rows) {
-  const _esProg = rz => /programado/i.test(String(rz||''));
+  const TMIN = {'1':480,'2':480,'3':480,'4':720,'5':720};
   const slots = {};
   rows.forEach(r => {
     const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
-    if (!slots[sk]) slots[sk] = {undProd:0, cavReal:0, cicloReal:0, paroNoProg:0, paroTotal:0, turno:String(r._turno||'')};
-    const s = slots[sk];
-    s.undProd += r._cant||0;
-    const p = r._paro||0;
-    s.paroTotal += p;
-    const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-    if (!_esProg(rz)) s.paroNoProg += p;
-    if (!s.cavReal)   s.cavReal  = _findColVal(r,'CAVIDAD','TEOR')||(typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||0;
-    if (!s.cicloReal) s.cicloReal = pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL'])||pNum(r['T. CICLO EST'])||0;
+    if (!slots[sk]) slots[sk] = { paro:0, turno:String(r._turno||'') };
+    slots[sk].paro += r._paro||0;
   });
-  let totTRT=0, totParo=0;
+  let totProg=0, totParo=0;
   Object.values(slots).forEach(s => {
-    if (s.cavReal>0 && s.cicloReal>0) {
-      totTRT  += (s.undProd/s.cavReal*s.cicloReal)/60;
-      totParo += s.paroNoProg;
-    }
+    const dur = TMIN[s.turno] || 480;
+    totProg += dur;
+    totParo += Math.min(s.paro, dur); // cap: un turno no puede perder más minutos de los que dura
   });
-  if ((totTRT+totParo)<=0) return null;
-  return Math.min(100, Math.max(0, totTRT/(totTRT+totParo)*100));
+  if (totProg<=0) return null;
+  return Math.min(100, Math.max(0, (totProg-totParo)/totProg*100));
 }
 
 // OEE = Disp × Rend × Cal / 10000  (valores en %, resultado en %)
@@ -4177,8 +4176,8 @@ function renderReporteDiario() {
     const _cavTd=g.cavTeor||cavR||0;
     g.undProg = (cEst>0&&_cavTd>0&&g.horas>0)?Math.round((g.horas*3600/cEst)*_cavTd):g.undProd;
     g.tReal   = (cavR>0&&cReal>0)?(g.undProd/cavR*cReal)/60:0;
-    g.tProg   = g.tReal+(g.paroNoProg||0);
-    g.disp    = g.tProg>0?g.tReal/g.tProg*100:null;
+    g.tProg   = g.horas*60;
+    g.disp    = g.tProg>0?Math.min(100,Math.max(0,(g.tProg-g.paro)/g.tProg*100)):null;
     g.rend    = g.undProg>0?Math.min(100,g.undProd/g.undProg*100):null;
     const nc_rd = oeeByMaq[g.maq]?._nc||0;
     g.cal = g.undProd>0 ? Math.min(100,Math.max(0,(g.undProd-nc_rd)/g.undProd*100)) : null;
@@ -4743,13 +4742,13 @@ function renderReporteCompacto() {
 
     // #2 TIEMPO REAL TRABAJADO (min) = (producción ÷ cav reales × ciclo real) ÷ 60
     g.tReal = (cavR>0 && cReal>0) ? (g.undProd/cavR*cReal)/60 : 0;
-    // #1 TIEMPO PROGRAMADO (min) = tiempo real + paros NO programados
-    // Los paros programados (mantenimiento planeado, cambio de molde planificado, etc.)
-    // reducen el tiempo disponible de la planta — no penalizan Disponibilidad OEE.
-    g.tProg = g.tReal + (g.paroNoProg||0);
+    // #1 TIEMPO PROGRAMADO (min) = duración nominal de los turnos trabajados
+    g.tProg = g.horas*60;
 
-    // #4 DISPONIBILIDAD = tiempo real trabajado ÷ (tReal + paros no programados)
-    g.disp = g.tProg>0 ? g.tReal/g.tProg*100 : null;
+    // #4 DISPONIBILIDAD = (Tiempo Programado − Paro TOTAL) ÷ Tiempo Programado.
+    // Todo paro (programado o no) cuenta: un paro programado igual detiene la
+    // máquina, así que sí reduce la disponibilidad real del turno.
+    g.disp = g.tProg>0 ? Math.min(100, Math.max(0, (g.tProg-g.paro)/g.tProg*100)) : null;
 
     // #5 RENDIMIENTO = unidades producidas ÷ unidades teóricas (tope 100%:
     //    si corre más rápido que el ciclo estándar no puede superar el ideal)
