@@ -4133,7 +4133,7 @@ function renderReporteDiario() {
   // Métricas por máquina (idéntico al Compacto)
   const _mRdArr = Object.values(_mRd);
   _mRdArr.forEach(g => {
-    Object.keys(g.porTurno).forEach(t => { const mp=(t==='4'||t==='5')?720:480; if(g.porTurno[t].paro>mp)g.porTurno[t].paro=mp; });
+    Object.keys(g.porTurno).forEach(t => { const mp=(t==='4'||t==='5')?720:480; if(g.porTurno[t].paro>mp)g.porTurno[t].paro=mp; if(g.porTurno[t].prod>0&&g.porTurno[t].paro>=mp)g.porTurno[t].paro=0; });
     g.paro = Object.values(g.porTurno).reduce((s,v)=>s+v.paro,0);
     g.cicloReal = _modeBy(g.rows,r=>pNum(r['T. CICLO REAL'])||pNum(r['T.CICLO REAL']))||g.cicloReal;
     g.cicloEst  = _modeBy(g.rows,r=>pNum(r['T. CICLO EST']))||g.cicloEst;
@@ -4626,7 +4626,8 @@ function renderReporteCompacto() {
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia] ||= new Set()).add(t); }
 
     // porTurno: solo paros (para capping), sin producción
-    if (!g.porTurno[t]) g.porTurno[t] = { paro:0, razones:[] };
+    if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0, razones:[] };
+    g.porTurno[t].prod += pN(r._cant);
     g.porTurno[t].paro += pN(r._paro);
 
     // porProd: producción y paros por producto + turno (captura TODOS los productos de la máquina)
@@ -4707,6 +4708,7 @@ function renderReporteCompacto() {
     Object.keys(g.porTurno).forEach(t => {
       const maxParo = (t==='4' || t==='5') ? 720 : 480;
       if (g.porTurno[t].paro > maxParo) g.porTurno[t].paro = maxParo;
+      if (g.porTurno[t].prod > 0 && g.porTurno[t].paro >= maxParo) g.porTurno[t].paro = 0;
     });
     g.paro = Object.values(g.porTurno).reduce((s,v)=>s+v.paro, 0);
 
