@@ -1878,16 +1878,23 @@ function normalizeProd(r) {
       if (_v.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/)) { _ftRaw = _v; break; }
     }
   }
-  // Parsear DD/MM/YYYY o DD-MM-YYYY
+  // Parsear fecha: acepta DD/MM/YYYY, DD-MM-YYYY y también ISO YYYY-MM-DD / YYYY/MM/DD
   const _dtParts = _ftRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  const _dtIso   = !_dtParts ? _ftRaw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/) : null;
   let _diaTurno = null, _mesTurno = null, _fechaKey = null, _fechaLabel = null;
-  if (_dtParts) {
-    const _d = parseInt(_dtParts[1]), _m = parseInt(_dtParts[2]);
-    let _y = parseInt(_dtParts[3]); if (_y < 100) _y += 2000;
+  if (_dtParts || _dtIso) {
+    let _d, _m, _y;
+    if (_dtParts) {
+      // Formato DD/MM/YYYY
+      _d = parseInt(_dtParts[1]); _m = parseInt(_dtParts[2]); _y = parseInt(_dtParts[3]);
+    } else {
+      // Formato ISO YYYY-MM-DD
+      _y = parseInt(_dtIso[1]); _m = parseInt(_dtIso[2]); _d = parseInt(_dtIso[3]);
+    }
+    if (_y < 100) _y += 2000;
     if (_d >= 1 && _d <= 31) _diaTurno = String(_d);
     if (_m >= 1 && _m <= 12) _mesTurno = _MESES_ES[_m];
     if (_diaTurno && _mesTurno && !isNaN(_y)) {
-      // Clave ordenable YYYY-MM-DD y etiqueta legible "18 de junio de 2026"
       _fechaKey   = `${_y}-${String(_m).padStart(2,'0')}-${String(_d).padStart(2,'0')}`;
       _fechaLabel = `${_d} de ${_MESES_ES[_m]} de ${_y}`;
     }
@@ -1955,9 +1962,9 @@ function normalizeProd(r) {
       if (k.toUpperCase().includes('QUINA')) { _maqVal = out[k]; break; }
     }
   }
-  out._maq   = String(_maqVal ?? '');
-  out._turno = String(out['TURNO'] ?? '');
-  out._prod  = String(out['PRODUCTO'] ?? '');
+  out._maq   = String(_maqVal ?? '').trim();
+  out._turno = String(out['TURNO'] ?? '').trim();
+  out._prod  = String(out['PRODUCTO'] ?? '').trim();
   out._orden = out['ORDEN'] ?? '';
   out._cant  = pNum(out['CANT REPORTADA']) || _findColVal(out,'CANT REPORT','') || 0;
   out._paro  = pNum(out['TIEMPO PARO MIN']) || _findColVal(out,'PARO MIN','') || _findColVal(out,'TIEMPO PARO','') || 0;
@@ -4497,12 +4504,12 @@ function renderReporteCompacto() {
   });
 
   // ── Agrupar por máquina (filas efectivas) ──────────────────────────────
-  // porTurno[t]           → solo paros por turno (para capping máx 480/720 min)
-  // porProd[prod][t]      → producción + paros POR PRODUCTO Y TURNO (para display completo)
+  // porTurno[t]           → paros por turno (fuente autoritativa para display y capping)
+  // porProd[prod][t]      → producción POR PRODUCTO Y TURNO (solo unidades, sin paros)
   const maqMap = {};
   effRows.forEach(r => {
-    const maq  = String(r._maq || '—');
-    const prod = r._prod || '—';
+    const maq  = String(r._maq || '—').trim();   // trim: evita split por espacios "4" vs "4 "
+    const prod = (r._prod || '—').trim();         // trim: evita split por espacios en producto
     if (!maqMap[maq]) maqMap[maq] = {
       maq, rows:[], turnos:new Set(), dtSet:{}, porTurno:{}, porProd:{},
       cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, paro:0, paroProg:0, paroNoProg:0, undProd:0, razones:[]
@@ -4690,34 +4697,66 @@ function renderReporteCompacto() {
 
   const oeeRows = maqList.map(g=>{
     const oc = g.oee==null?'#6B7280':g.oee>=90?'#059669':g.oee>=70?'#D97706':'#DC2626';
-    // Construir detalle por PRODUCTO → TURNO (captura todos los productos del día)
-    const prodEntries = Object.entries(g.porProd).sort(([a],[b])=>a.localeCompare(b));
-    const multiProd = prodEntries.length > 1;
-    const turnoDet = prodEntries.map(([prod, turnos]) => {
-      const turnoRows = Object.keys(turnos).sort().map(t => {
-        const tv = turnos[t];
-        const paroTxt = tv.paro > 0
-          ? `<span style="white-space:nowrap;font-weight:600">paro ${ri(tv.paro)}m</span>${tv.razones.length ? `<div style="font-size:.85rem;color:#B91C1C;margin-top:1px">${tv.razones.join(', ')}</div>` : ''}`
-          : '';
-        return `<tr style="border:1px solid #E5E7EB">
-          <td style="padding:4px 8px;white-space:nowrap">Turno ${turnoNum(t)}</td>
-          <td style="padding:4px 8px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(tv.prod)}</strong></td>
-          <td style="padding:4px 8px;border-left:1px solid #E5E7EB;color:#DC2626;min-width:100px">${paroTxt}</td>
-        </tr>`;
-      }).join('');
-      const prodTotal = Object.values(turnos).reduce((s,v)=>s+v.prod, 0);
-      const headerRow = multiProd
-        ? `<tr style="background:#EFF6FF"><td colspan="3" style="padding:3px 8px;font-weight:700;font-size:.92rem;color:#1D4ED8">${prod}</td></tr>`
-        : '';
-      return headerRow + turnoRows
-        + `<tr style="border:1px solid #D1D5DB;background:#F3F4F6">
-          <td colspan="2" style="padding:4px 8px;font-weight:700;color:#111827">${multiProd ? 'Subtotal' : 'Total'}</td>
-          <td style="padding:4px 8px;text-align:right;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(prodTotal)}</td>
-        </tr>`;
-    }).join('');
-    const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${turnoDet}${multiProd
-      ? `<tr style="border:2px solid #374151;background:#E5E7EB"><td colspan="2" style="padding:5px 8px;font-weight:800;color:#111827">TOTAL MÁQUINA</td><td style="padding:5px 8px;text-align:right;border-left:2px solid #374151;font-weight:900;color:#111827;font-size:1.2rem">${ri(g.undProd)}</td></tr>`
-      : ''}</table>`;
+
+    // Todos los turnos del día (unión de porTurno y porProd)
+    const allTurnos = [...new Set([
+      ...Object.keys(g.porTurno),
+      ...Object.values(g.porProd).flatMap(t => Object.keys(t))
+    ])].filter(Boolean).sort();
+
+    // Productos REALES (excluye '—' que es solo paros sin producto asignado)
+    const realProdEntries = Object.entries(g.porProd)
+      .filter(([p]) => p !== '—')
+      .sort(([a],[b]) => a.localeCompare(b));
+    const multiProd = realProdEntries.length > 1;
+
+    // ── Sección de UNIDADES por producto ────────────────────────────────────
+    const unidSection = realProdEntries.length > 0
+      ? realProdEntries.map(([prod, turnos]) => {
+          const turnoRows = Object.keys(turnos).filter(t=>t!=='').sort().map(t => {
+            const tv = turnos[t];
+            if (tv.prod === 0) return '';
+            return `<tr style="border:1px solid #E5E7EB">
+              <td style="padding:4px 8px;white-space:nowrap">Turno ${turnoNum(t)}</td>
+              <td style="padding:4px 8px;text-align:right;white-space:nowrap;border-left:1px solid #E5E7EB"><strong style="color:#374151">${ri(tv.prod)}</strong></td>
+            </tr>`;
+          }).join('');
+          const prodTotal = Object.values(turnos).reduce((s,v)=>s+v.prod, 0);
+          const headerRow = multiProd
+            ? `<tr style="background:#EFF6FF"><td colspan="2" style="padding:3px 8px;font-weight:700;font-size:.92rem;color:#1D4ED8">${prod}</td></tr>`
+            : '';
+          return headerRow + turnoRows
+            + `<tr style="border:1px solid #D1D5DB;background:#F3F4F6">
+              <td style="padding:4px 8px;font-weight:700;color:#111827">${multiProd ? 'Subtotal' : 'Total'}</td>
+              <td style="padding:4px 8px;text-align:right;border-left:1px solid #D1D5DB;font-weight:800;color:#111827;white-space:nowrap">${ri(prodTotal)}</td>
+            </tr>`;
+        }).join('')
+        + (multiProd ? `<tr style="border:2px solid #374151;background:#E5E7EB">
+              <td style="padding:5px 8px;font-weight:800;color:#111827">TOTAL MÁQUINA</td>
+              <td style="padding:5px 8px;text-align:right;border-left:2px solid #374151;font-weight:900;color:#111827;font-size:1.2rem">${ri(g.undProd)}</td>
+            </tr>` : '')
+      : `<tr><td colspan="2" style="padding:4px 8px;color:#6B7280;font-size:.9rem">Sin producción</td></tr>`;
+
+    // ── Sección de PAROS por turno (siempre desde porTurno — fuente autoritativa) ─
+    // Se muestra aunque los paros estén en filas con producto vacío ('—')
+    const parosConTiempo = allTurnos.filter(t => (g.porTurno[t]?.paro || 0) > 0);
+    const paroSection = parosConTiempo.length > 0
+      ? `<tr style="background:#FFF1F1"><td colspan="2" style="padding:3px 8px;font-weight:700;font-size:.88rem;color:#B91C1C;border-top:2px solid #FECACA">⏱ Paros</td></tr>`
+        + parosConTiempo.map(t => {
+            const pt = g.porTurno[t];
+            const rzTxt = pt.razones.length
+              ? `<div style="font-size:.82rem;color:#B91C1C;margin-top:1px">${pt.razones.join(', ')}</div>`
+              : '';
+            return `<tr style="border:1px solid #FECACA;background:#FFF8F8">
+              <td style="padding:4px 8px;white-space:nowrap;color:#7F1D1D">Turno ${turnoNum(t)}</td>
+              <td style="padding:4px 8px;border-left:1px solid #FECACA;color:#DC2626;font-weight:600">
+                paro ${ri(pt.paro)} min${rzTxt}
+              </td>
+            </tr>`;
+          }).join('')
+      : '';
+
+    const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${unidSection}${paroSection}</table>`;
     return `<tr>
       <td style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
       <td style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
