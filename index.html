@@ -901,9 +901,15 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Capacidad Mensual de Planta</div>
           <div id="cap-mes-titulo" style="font-size:.72rem;color:#9CA3AF;margin-top:3px">Leyendo pestaña PLANEACION del sheet Restricciones…</div>
         </div>
-        <button onclick="loadCapacidadMensual(true)" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">
-          <i class="fa-solid fa-rotate"></i> Actualizar desde Sheets
-        </button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span id="cap-hist-badge" style="font-size:.65rem;font-weight:700;border-radius:6px;padding:3px 8px;display:none"></span>
+          <button onclick="capGuardarHistorico()" id="cap-btn-guardar" style="background:#059669;border:none;color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-weight:600;font-family:Tahoma,Arial,sans-serif">
+            <i class="fa-solid fa-floppy-disk"></i> Guardar mes en histórico
+          </button>
+          <button onclick="loadCapacidadMensual(true)" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">
+            <i class="fa-solid fa-rotate"></i> Actualizar desde Sheets
+          </button>
+        </div>
       </div>
 
       <!-- Simulador de escenarios -->
@@ -953,11 +959,29 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </div>
       </div>
 
-      <div style="overflow-x:auto">
+      <div style="overflow-x:auto;margin-bottom:22px">
         <table class="tbl">
           <thead><tr><th>Máquina</th><th style="text-align:right">Turnos Disponibles</th><th style="text-align:right">Turnos Requeridos</th><th style="text-align:right">% Ocupación</th><th>Estado</th></tr></thead>
           <tbody id="po-cap-tbody"></tbody>
         </table>
+      </div>
+
+      <!-- Histórico mensual -->
+      <div class="chart-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-clock-rotate-left" style="color:#F59E0B;margin-right:6px"></i>Histórico mensual (pestaña HISTORICO_CAPACIDAD)</div>
+          <select id="cap-hist-sel" onchange="capRenderHistorico()" style="background:#111827;border:1px solid #374151;border-radius:6px;padding:5px 10px;color:#EEEEEE;font-size:.73rem;outline:none"></select>
+        </div>
+        <div id="cap-hist-vacio" style="color:#4B5563;font-size:.75rem;padding:8px 0">Cargando histórico…</div>
+        <div id="cap-hist-body" style="display:none">
+          <div style="height:240px;margin-bottom:16px"><canvas id="cap-hist-chart"></canvas></div>
+          <div style="overflow-x:auto">
+            <table class="tbl">
+              <thead><tr><th>Producto</th><th style="text-align:right">Cav.</th><th style="text-align:right">Ciclo</th><th style="text-align:right">Efic.</th><th style="text-align:right">Und/Turno</th><th style="text-align:right">Proyección</th><th style="text-align:right">Turnos</th><th style="text-align:right">Días</th><th style="text-align:right">Operarios</th><th>Máquina</th><th style="text-align:right">HH</th></tr></thead>
+              <tbody id="cap-hist-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -6476,6 +6500,7 @@ async function loadCapacidadMensual(force) {
   const ef = document.getElementById('cap-efic');
   if (ef && CAP_DATA.params.eficiencia) ef.value = Math.round(CAP_DATA.params.eficiencia * 100);
   renderCapacidadMensual();
+  capLoadHistorico(!!force);
 }
 
 function parseCapacidad(rows) {
@@ -6565,6 +6590,7 @@ function renderCapacidadMensual() {
     if (!esMaquila) { if (maqs[0].startsWith('TV')) turnosReqTV += turnos; else turnosReqIny += turnos; }
     return { ...p, und8h, turnos, dias, hh, maqs, esMaquila };
   });
+  CAP_DATA.lastCalc = { items, ef, tpd, turnosMaq };
 
   // sobrecarga por máquina → desborde a maquila (regla molde 2 / maquila overflow)
   const overflow = [];
@@ -6669,6 +6695,124 @@ function renderCapacidadMensual() {
     options:{ plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},
       scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}}},
       responsive:true, maintainAspectRatio:false }});
+}
+
+// ── Histórico mensual: guardar y consultar HISTORICO_CAPACIDAD ──
+function _capBadge(status, msg) {
+  const b = document.getElementById('cap-hist-badge'); if (!b) return;
+  const map = { syncing:['rgba(245,158,11,.15)','#F59E0B'], ok:['rgba(16,185,129,.15)','#10B981'], error:['rgba(239,68,68,.15)','#EF4444'] };
+  const s = map[status] || map.ok;
+  b.style.display = 'inline-block'; b.style.background = s[0]; b.style.color = s[1]; b.textContent = msg;
+  if (status !== 'syncing') setTimeout(() => { b.style.display = 'none'; }, 6000);
+}
+
+async function capGuardarHistorico() {
+  if (!CAP_DATA.loaded || !CAP_DATA.lastCalc) { alert('Primero carga la capacidad del mes.'); return; }
+  const url = _getSyncUrl();
+  if (!url) {
+    alert('Para guardar el histórico configura primero la URL del Web App de Google\n(sección Máquinas y Personal → Sincronización con Google Sheets).');
+    return;
+  }
+  const { items, ef, tpd, turnosMaq } = CAP_DATA.lastCalc;
+  if (!confirm(`Guardar ${CAP_DATA.mes} ${CAP_DATA.anio} en el histórico con eficiencia ${Math.round(ef*100)}% y ${tpd} turnos/día?\nSi el mes ya existe, se reemplaza.`)) return;
+  const payload = {
+    token: SYNC_TOKEN, action: 'capacidad',
+    mes: CAP_DATA.mes, anio: String(CAP_DATA.anio),
+    filas: items.map(p => ({
+      producto: p.desc, cavidades: p.cav, ciclo: p.ciclo, eficiencia: ef,
+      undTurno: Math.round(p.und8h), proyeccion: p.proy,
+      turnos: Math.round(p.turnos*100)/100, dias: Math.round(p.dias*100)/100,
+      operarios: p.operarios||0, maquina: p.maquina||'',
+      horasHombre: Math.round(p.hh), turnosDisp: turnosMaq,
+      diasMes: CAP_DATA.params.diasTotales||0
+    }))
+  };
+  _capBadge('syncing', 'GUARDANDO…');
+  try {
+    const r = await fetch(url, { method:'POST', body: JSON.stringify(payload) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) { _capBadge('ok', `✓ ${CAP_DATA.mes} ${CAP_DATA.anio} GUARDADO`); capLoadHistorico(true); }
+    else _capBadge('error', 'ERROR: ' + (j.error || r.status));
+  } catch(e) { _capBadge('error', 'ERROR DE RED'); }
+}
+
+const CAP_HIST = { rows: [], loaded: false };
+async function capLoadHistorico(force) {
+  if (CAP_HIST.loaded && !force) { capRenderHistorico(); return; }
+  const vacio = document.getElementById('cap-hist-vacio');
+  try {
+    const u = `https://docs.google.com/spreadsheets/d/${CAP_SID}/gviz/tq?tqx=out:csv&sheet=HISTORICO_CAPACIDAD&_t=` + Date.now();
+    const res = await fetch(proxy(u), { cache:'no-store' });
+    const txt = await res.text();
+    if (!res.ok || txt.trim().startsWith('<')) throw new Error('sin pestaña');
+    const data = Papa.parse(txt, { header:true, skipEmptyLines:true }).data;
+    CAP_HIST.rows = data.filter(r => r['MES'] && r['PRODUCTO']).map(r => ({
+      mes: String(r['MES']).toUpperCase().trim(), anio: String(r['AÑO']||r['ANO']||'').trim(),
+      producto: r['PRODUCTO'], cav: capNum(r['CAVIDADES']), ciclo: capNum(r['CICLO']),
+      ef: capNum(r['EFICIENCIA']), undTurno: capNum(r['UND_TURNO_8H']), proy: capNum(r['PROYECCION']),
+      turnos: capNum(r['TURNOS']), dias: capNum(r['DIAS']), operarios: capNum(r['OPERARIOS']),
+      maquina: r['MAQUINA']||'', hh: capNum(r['HORAS_HOMBRE']), turnosDisp: capNum(r['TURNOS_DISP_MAQ'])
+    }));
+    CAP_HIST.loaded = true;
+  } catch(e) { CAP_HIST.rows = []; CAP_HIST.loaded = true; }
+  if (vacio && !CAP_HIST.rows.length) vacio.textContent = 'Aún no hay meses guardados. Usa "Guardar mes en histórico" para empezar a acumular la información mes a mes.';
+  capRenderHistorico();
+}
+
+const CAP_MESES_ORD = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+function capRenderHistorico() {
+  const body = document.getElementById('cap-hist-body'), vacio = document.getElementById('cap-hist-vacio');
+  if (!body) return;
+  if (!CAP_HIST.rows.length) { body.style.display = 'none'; if (vacio) vacio.style.display = 'block'; return; }
+  body.style.display = 'block'; if (vacio) vacio.style.display = 'none';
+
+  // meses disponibles ordenados cronológicamente
+  const claves = [...new Set(CAP_HIST.rows.map(r => r.mes + '|' + r.anio))]
+    .sort((a,b) => { const [ma,ya]=a.split('|'), [mb,yb]=b.split('|');
+      return (parseInt(ya)-parseInt(yb)) || (CAP_MESES_ORD.indexOf(ma)-CAP_MESES_ORD.indexOf(mb)); });
+  const sel = document.getElementById('cap-hist-sel');
+  const cur = sel.value;
+  sel.innerHTML = claves.map(k => { const [m,y]=k.split('|'); return `<option value="${k}">${m} ${y}</option>`; }).join('');
+  sel.value = claves.includes(cur) ? cur : claves[claves.length-1];
+
+  // gráfico comparativo: turnos requeridos y % ocupación inyección por mes
+  const serie = claves.map(k => {
+    const [m,y] = k.split('|');
+    const rows = CAP_HIST.rows.filter(r => r.mes===m && r.anio===y);
+    const enPlanta = rows.filter(r => !/MAQUILA/i.test(r.maquina));
+    const iny = enPlanta.filter(r => !/^TV/i.test(String(r.maquina).trim()));
+    const turnosIny = iny.reduce((s,r) => s+r.turnos, 0);
+    const nIny = new Set(iny.flatMap(r => capMaquinas(r.maquina))).size || 1;
+    const disp = (rows[0]?.turnosDisp||71) * nIny;
+    return { label: m.slice(0,3)+' '+y, turnos: Math.round(enPlanta.reduce((s,r)=>s+r.turnos,0)),
+      ocup: disp ? Math.round(turnosIny/disp*100) : 0, hh: rows.reduce((s,r)=>s+r.hh,0) };
+  });
+  destroyChart('cap-hist');
+  const el = document.getElementById('cap-hist-chart');
+  if (el) CHARTS['cap-hist'] = new Chart(el.getContext('2d'), { type:'bar',
+    data:{ labels:serie.map(s=>s.label), datasets:[
+      { label:'Turnos requeridos', data:serie.map(s=>s.turnos), backgroundColor:'#8B5CF688', borderRadius:4, yAxisID:'y' },
+      { label:'% Ocupación inyección', data:serie.map(s=>s.ocup), type:'line', borderColor:'#F59E0B', backgroundColor:'#F59E0B', tension:.3, yAxisID:'y2' }]},
+    options:{ plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},
+      scales:{ x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},
+        y:{position:'left',ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}},
+        y2:{position:'right',ticks:{color:'#F59E0B',callback:v=>v+'%'},grid:{display:false},suggestedMax:120} },
+      responsive:true, maintainAspectRatio:false }});
+
+  // tabla del mes seleccionado
+  const [sm, sy] = sel.value.split('|');
+  const tbody = document.getElementById('cap-hist-tbody');
+  if (tbody) tbody.innerHTML = CAP_HIST.rows.filter(r => r.mes===sm && r.anio===sy).map(r => `<tr>
+    <td style="font-weight:600">${r.producto}</td><td style="text-align:right">${r.cav}</td>
+    <td style="text-align:right">${r.ciclo.toLocaleString('es-CO')}</td>
+    <td style="text-align:right">${Math.round(r.ef*100)}%</td>
+    <td style="text-align:right">${r.undTurno.toLocaleString('es-CO')}</td>
+    <td style="text-align:right;font-weight:600">${r.proy.toLocaleString('es-CO')}</td>
+    <td style="text-align:right;font-weight:700;color:#8B5CF6">${r.turnos.toFixed(1)}</td>
+    <td style="text-align:right">${r.dias.toFixed(1)}</td>
+    <td style="text-align:right">${r.operarios||'—'}</td>
+    <td><span style="background:#374151;border-radius:4px;padding:2px 7px;font-size:.68rem">${r.maquina||'—'}</span></td>
+    <td style="text-align:right">${r.hh?Math.round(r.hh).toLocaleString('es-CO')+'h':'—'}</td></tr>`).join('');
 }
 
 // ── Maquila Plan ────────────────────────────────────────
