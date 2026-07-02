@@ -896,12 +896,66 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
     <!-- ======================================================= PO: CAPACIDAD == -->
     <div class="section" id="sec-po-capacidad">
-      <div style="font-size:1rem;font-weight:700;color:#F3F4F6;margin-bottom:18px">Capacidad por Máquina</div>
-      <div id="po-cap-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:22px"></div>
-      <div class="chart-card" style="margin-bottom:20px"><div class="section-title">Horas disponibles vs requeridas</div><div style="height:260px"><canvas id="po-chart-cap-barras"></canvas></div></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Capacidad Mensual de Planta</div>
+          <div id="cap-mes-titulo" style="font-size:.72rem;color:#9CA3AF;margin-top:3px">Leyendo pestaña PLANEACION del sheet Restricciones…</div>
+        </div>
+        <button onclick="loadCapacidadMensual(true)" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">
+          <i class="fa-solid fa-rotate"></i> Actualizar desde Sheets
+        </button>
+      </div>
+
+      <!-- Simulador de escenarios -->
+      <div style="background:#1F2937;border:1px solid #374151;border-radius:10px;padding:14px 16px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="font-size:.7rem;font-weight:700;color:#8B5CF6;text-transform:uppercase;letter-spacing:.08em"><i class="fa-solid fa-sliders" style="margin-right:6px"></i>Escenario</div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:.73rem;color:#9CA3AF">
+          Eficiencia:
+          <input id="cap-efic" type="range" min="50" max="100" step="1" value="85" oninput="renderCapacidadMensual()" style="width:160px;accent-color:#8B5CF6">
+          <span id="cap-efic-val" style="font-weight:800;color:#EEEEEE;min-width:38px">85%</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:.73rem;color:#9CA3AF">
+          Turnos/día L-V:
+          <select id="cap-turnos-dia" onchange="renderCapacidadMensual()" style="background:#111827;border:1px solid #374151;border-radius:6px;padding:4px 8px;color:#EEEEEE;font-size:.73rem;outline:none">
+            <option value="3" selected>3 (24h)</option><option value="2">2 (16h)</option><option value="1">1 (8h)</option>
+          </select>
+        </label>
+        <span id="cap-esc-nota" style="font-size:.68rem;color:#6B7280"></span>
+      </div>
+
+      <div id="cap-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-bottom:22px"></div>
+
+      <div id="cap-alertas" style="margin-bottom:20px"></div>
+
+      <div class="chart-card" style="margin-bottom:20px"><div class="section-title">Carga por máquina — turnos requeridos vs disponibles</div><div style="height:280px"><canvas id="po-chart-cap-barras"></canvas></div></div>
+
+      <div style="overflow-x:auto;margin-bottom:22px">
+        <table class="tbl">
+          <thead><tr>
+            <th>Producto</th><th style="text-align:right">Cav.</th><th style="text-align:right">Ciclo (s)</th>
+            <th style="text-align:right">Und/Turno 8h</th><th style="text-align:right">Proyección</th>
+            <th style="text-align:right">Turnos</th><th style="text-align:right">Días</th>
+            <th style="text-align:right">Operarios</th><th>Máquina</th>
+            <th style="text-align:right">Horas Hombre</th><th>Estado</th>
+          </tr></thead>
+          <tbody id="cap-prod-tbody"></tbody>
+        </table>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:20px">
+        <div class="chart-card">
+          <div class="section-title"><i class="fa-solid fa-boxes-packing" style="color:#F97316;margin-right:6px"></i>Maquila requerida</div>
+          <div id="cap-maquila" style="font-size:.75rem"></div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title"><i class="fa-solid fa-list-check" style="color:#06B6D4;margin-right:6px"></i>Cobertura de la proyección</div>
+          <div id="cap-cobertura" style="font-size:.75rem"></div>
+        </div>
+      </div>
+
       <div style="overflow-x:auto">
         <table class="tbl">
-          <thead><tr><th>Máquina</th><th style="text-align:right">Horas Disponibles</th><th style="text-align:right">Horas Requeridas</th><th style="text-align:right">% Utilización</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Máquina</th><th style="text-align:right">Turnos Disponibles</th><th style="text-align:right">Turnos Requeridos</th><th style="text-align:right">% Ocupación</th><th>Estado</th></tr></thead>
           <tbody id="po-cap-tbody"></tbody>
         </table>
       </div>
@@ -5034,7 +5088,7 @@ const TITLES = {
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
   accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', maquilas:'Maquilas', descripcion:'Descripción de Indicadores',
   'po-tablero':'Tablero Plan Operativo','po-plan':'Plan Maestro',
-  'po-capacidad':'Capacidad por Máquina','po-maquila':'Maquila Plan',
+  'po-capacidad':'Capacidad Mensual','po-maquila':'Maquila Plan',
   'po-personal':'Personal Q1/Q2','po-horas':'Horas & Costos',
   'po-lote':'Lote Mínimo','po-inventario':'Inventario MP',
   'po-recursos':'Máquinas y Personal'
@@ -6253,7 +6307,7 @@ function recalcularPlan() {
   const sel=document.getElementById('po-plan-f-cliente');
   if(sel){ sel.innerHTML='<option value="">Todos los clientes</option>'+clientes.map(c=>`<option>${c}</option>`).join(''); }
 
-  renderTablieroPlan(); renderPlanMaestro(); renderCapacidadPO();
+  renderTablieroPlan(); renderPlanMaestro();
   renderMaquilaPlan(); renderPersonalPlan(); renderHorasCostosPO();
   renderLoteMinimoPO(); renderInventarioMP();
 }
@@ -6382,33 +6436,239 @@ function renderPlanMaestro() {
     :'<tr><td colspan="10" style="text-align:center;color:#4B5563;padding:32px">Sin pedidos para este período. Selecciona un mes y pulsa Recalcular Plan.</td></tr>';
 }
 
-// ── Capacidad ───────────────────────────────────────────
-function renderCapacidadPO() {
-  const items=PLAN_DATA.plan||[];
-  const mes=parseInt(document.getElementById('po-mes-sel')?.value)||(new Date().getMonth()+1);
-  const anio=parseInt(document.getElementById('po-anio-sel')?.value)||new Date().getFullYear();
-  const diasH=diasHabilesPO(mes,anio);
-  const noms=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
-  const horasDisp=diasH.reduce((s,d)=>s+(PLAN_CFG.HORAS_DIA[noms[d.getDay()]]||0),0);
-  const maqMap={};items.forEach(i=>{if(i.maq&&i.maq!=='—')maqMap[i.maq]=(maqMap[i.maq]||0)+(i.hrs||0);});
-  const maqNms=Object.keys(maqMap);
-  const kpiEl=document.getElementById('po-cap-kpis');
-  if(kpiEl)kpiEl.innerHTML=
-    poKpi('Máquinas Activas',maqNms.length,'en el plan','#8B5CF6')+
-    poKpi('Horas Disponibles',Math.round(horasDisp)+'h','por máq · '+diasH.length+' días','#3B82F6')+
-    poKpi('Horas Requeridas',Math.round(items.reduce((s,i)=>s+(i.hrs||0),0))+'h','total plan','#F59E0B')+
-    poKpi('Días Hábiles',diasH.length,'en el mes seleccionado','#10B981');
+// ── Capacidad Mensual (pestaña PLANEACION del sheet Restricciones) ──
+const CAP_SID = '1P9-3iiJMyXQRqV22dL5TJ8n6L1lcgNM5WejOPMbHH6A';
+const CAP_URLS = ['PLANEACION%20','PLANEACION'].map(s =>
+  `https://docs.google.com/spreadsheets/d/${CAP_SID}/gviz/tq?tqx=out:csv&sheet=${s}`);
+const CAP_DATA = { loaded:false, mes:'', anio:'', proyeccion:[], params:{}, productos:[], costos:[] };
 
-  const tbody=document.getElementById('po-cap-tbody');
-  if(tbody)tbody.innerHTML=maqNms.length?maqNms.map(m=>{
-    const req=Math.round(maqMap[m]);const pct=horasDisp?Math.round(req/horasDisp*100):0;
-    const color=pct>100?'#EF4444':pct>85?'#F59E0B':'#10B981';
-    return `<tr><td style="font-weight:700">${m}</td><td style="text-align:right">${Math.round(horasDisp)}h</td><td style="text-align:right">${req}h</td><td style="text-align:right;font-weight:700;color:${color}">${pct}%</td><td>${pct>100?'<span class="badge-red">Saturada</span>':pct>85?'<span class="badge-yellow">En riesgo</span>':'<span class="badge-green">OK</span>'}</td></tr>`;
-  }).join(''):'<tr><td colspan="5" style="text-align:center;color:#4B5563;padding:24px">Genera el plan primero</td></tr>';
+// "3.476.000" → 3476000 · "13,5" → 13.5 · "$ 12,00" → 12 · "85%" → 85
+function capNum(s) {
+  s = String(s ?? '').replace(/[$%\s]/g, '').trim();
+  if (!s) return 0;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(',', '.');
+  return parseFloat(s) || 0;
+}
+// normaliza nombres para cruzar tablas (LYNNER→LINER, sin espacios/MM)
+function capNorm(s) {
+  return String(s||'').toUpperCase().replace(/LYNNER/g,'LINER').replace(/[^A-Z0-9]/g,'').replace(/MM/g,'');
+}
+
+async function loadCapacidadMensual(force) {
+  if (CAP_DATA.loaded && !force) { renderCapacidadMensual(); return; }
+  const tit = document.getElementById('cap-mes-titulo');
+  if (tit) tit.textContent = 'Cargando pestaña PLANEACION…';
+  let rows = null;
+  for (const u of CAP_URLS) {
+    try {
+      const res = await fetch(proxy(u + '&_t=' + Date.now()), { cache:'no-store' });
+      if (!res.ok) continue;
+      const txt = await res.text();
+      if (txt.trim().startsWith('<')) continue; // HTML de error
+      rows = Papa.parse(txt, { header:false, skipEmptyLines:false }).data;
+      if (rows && rows.length) break;
+    } catch(e) { console.warn('Capacidad: no cargó', e.message); }
+  }
+  if (!rows) { if (tit) tit.textContent = '⚠ No se pudo leer la pestaña PLANEACION del sheet Restricciones.'; return; }
+  parseCapacidad(rows);
+  CAP_DATA.loaded = true;
+  const ef = document.getElementById('cap-efic');
+  if (ef && CAP_DATA.params.eficiencia) ef.value = Math.round(CAP_DATA.params.eficiencia * 100);
+  renderCapacidadMensual();
+}
+
+function parseCapacidad(rows) {
+  const cell = (r,c) => String((rows[r]||[])[c] ?? '').trim();
+  CAP_DATA.proyeccion=[]; CAP_DATA.productos=[]; CAP_DATA.costos=[]; CAP_DATA.params={};
+  let iProy=-1, iPlan=-1, iCosto=-1;
+  rows.forEach((row,i) => {
+    const a = String(row[0]||'').trim().toUpperCase();
+    if (a === 'FECHA') { CAP_DATA.mes = cell(i,1); CAP_DATA.anio = capNum(cell(i,3)) || cell(i,3); }
+    if (a === 'PRODUCTO' && iProy<0) iProy = i;
+    if (a === 'DESCRIPCIÓN' || a === 'DESCRIPCION') iPlan = i;
+    if (a.startsWith('DIAS LABORALES')) { CAP_DATA.params.diasLV = capNum(cell(i,1)); CAP_DATA.params.turnosLV = capNum(cell(i,2)); }
+    if (a.startsWith('SABADOS')) { CAP_DATA.params.sabados = capNum(cell(i,1)); CAP_DATA.params.turnosSab = capNum(cell(i,2)); }
+    if (a.startsWith('TOTAL DIAS')) CAP_DATA.params.diasTotales = capNum(cell(i,1));
+    if (String(row[1]||'').trim().toUpperCase() === 'TOTAL' && !CAP_DATA.params.turnosTotales) CAP_DATA.params.turnosTotales = capNum(cell(i,2));
+    if (/%/.test(String(row[5]||'')) && !CAP_DATA.params.eficiencia) CAP_DATA.params.eficiencia = capNum(cell(i,5)) / 100;
+    if (a.startsWith('REFERENCIA / PRODUCTO')) iCosto = i;
+  });
+  // proyección del mes (A3:F12 aprox — hasta fila vacía o marcador PLANEACION)
+  if (iProy >= 0) for (let i=iProy+1; i<rows.length; i++) {
+    const nom = cell(i,0);
+    if (!nom || nom.toUpperCase() === 'PLANEACION') break;
+    CAP_DATA.proyeccion.push({ producto:nom, inventario:capNum(cell(i,1)), unidades:capNum(cell(i,2)),
+      pendientes:capNum(cell(i,3)), gramos:capNum(cell(i,4)), kilos:capNum(cell(i,5)) });
+  }
+  // tabla de planeación por producto
+  if (iPlan >= 0) for (let i=iPlan+1; i<rows.length; i++) {
+    const nom = cell(i,0);
+    if (!nom) { if (cell(i,8).toUpperCase()==='TOTAL' || !cell(i,1)) break; continue; }
+    if (nom.toUpperCase().startsWith('ASIGNACION')) break;
+    const cav = capNum(cell(i,1)), ciclo = capNum(cell(i,2));
+    if (!cav || !ciclo) continue;
+    CAP_DATA.productos.push({ desc:nom, cav, ciclo, proy:capNum(cell(i,5)),
+      operarios:capNum(cell(i,8)), maquina:cell(i,9) });
+  }
+  // costos Fylco vs Maquila (misma pestaña)
+  if (iCosto >= 0) for (let i=iCosto+1; i<rows.length; i++) {
+    const ref = cell(i,0);
+    if (!ref) break;
+    const prev = CAP_DATA.costos.find(c => capNorm(c.ref) === capNorm(ref));
+    const fy = capNum(cell(i,1)), mq = capNum(cell(i,2));
+    if (prev) { prev.fylco = prev.fylco || fy; prev.maquila = prev.maquila || mq; }
+    else CAP_DATA.costos.push({ ref, fylco:fy, maquila:mq, obs:cell(i,3) });
+  }
+}
+
+// "1" → [INY#1] · "1-2" → [INY#1, INY#2] · "TV1-TV2" → [TV#1, TV#2] · "Maquila" → []
+function capMaquinas(str) {
+  const s = String(str||'').trim().toUpperCase();
+  if (!s || s === 'MAQUILA') return [];
+  const out = [];
+  (s.match(/TV\s*#?\s*(\d+)/g) || []).forEach(m => out.push('TV#' + m.replace(/\D/g,'')));
+  if (!out.length) (s.match(/\d+/g) || []).forEach(n => out.push('INY#' + n));
+  return out;
+}
+
+function capCostoDe(desc) {
+  const n = capNorm(desc);
+  return CAP_DATA.costos.find(c => { const cn = capNorm(c.ref); return cn && (n.includes(cn) || cn.includes(n)); });
+}
+
+function renderCapacidadMensual() {
+  if (!CAP_DATA.loaded) { loadCapacidadMensual(); return; }
+  const P = CAP_DATA.params;
+  const ef = (parseInt(document.getElementById('cap-efic')?.value) || 85) / 100;
+  const tpd = parseInt(document.getElementById('cap-turnos-dia')?.value) || 3;
+  const efEl = document.getElementById('cap-efic-val'); if (efEl) efEl.textContent = Math.round(ef*100)+'%';
+  // turnos disponibles del mes por máquina según escenario de turnos/día
+  const turnosMaq = (P.diasLV||21)*tpd + (P.sabados||4)*Math.min(tpd,2);
+  const nota = document.getElementById('cap-esc-nota');
+  if (nota) nota.textContent = `${turnosMaq} turnos/máquina en el mes (${P.diasLV||21} días L-V × ${tpd} + ${P.sabados||4} sábados × ${Math.min(tpd,2)}) · sheet: ${P.turnosTotales||'—'} turnos, eficiencia ${Math.round((P.eficiencia||0.85)*100)}%`;
+  const tit = document.getElementById('cap-mes-titulo');
+  if (tit) tit.textContent = `Plan ${CAP_DATA.mes} ${CAP_DATA.anio} · pestaña PLANEACION · ${CAP_DATA.productos.length} productos`;
+
+  // cálculo por producto
+  const maqLoad = {};   // máquina → turnos requeridos
+  let hhTotal = 0, opTotal = 0, turnosReqIny = 0, turnosReqTV = 0;
+  const items = CAP_DATA.productos.map(p => {
+    const und8h = p.cav * 28800 / p.ciclo * ef;
+    const turnos = und8h > 0 ? p.proy / und8h : 0;
+    const dias = turnos / tpd;
+    const maqs = capMaquinas(p.maquina);
+    const esMaquila = !maqs.length;
+    const hh = (p.operarios||0) * turnosMaq * 8;
+    hhTotal += hh; opTotal += (p.operarios||0);
+    maqs.forEach(m => maqLoad[m] = (maqLoad[m]||0) + turnos/maqs.length);
+    if (!esMaquila) { if (maqs[0].startsWith('TV')) turnosReqTV += turnos; else turnosReqIny += turnos; }
+    return { ...p, und8h, turnos, dias, hh, maqs, esMaquila };
+  });
+
+  // sobrecarga por máquina → desborde a maquila (regla molde 2 / maquila overflow)
+  const overflow = [];
+  Object.keys(maqLoad).forEach(m => {
+    const exceso = maqLoad[m] - turnosMaq;
+    if (exceso <= 0.01) return;
+    // productos en esa máquina, el de más turnos aporta el desborde
+    const prods = items.filter(i => i.maqs.includes(m)).sort((a,b) => b.turnos - a.turnos);
+    if (!prods.length) return;
+    const p = prods[0];
+    const unidades = Math.round(exceso * p.und8h);
+    const costo = capCostoDe(p.desc);
+    overflow.push({ maquina:m, producto:p.desc, turnos:exceso, unidades,
+      costoMaquila: costo?.maquila ? unidades * costo.maquila : null,
+      costoFylco:   costo?.fylco  ? unidades * costo.fylco  : null,
+      tieneMaquila: !!(costo && costo.maquila) });
+  });
+
+  const maqNms = Object.keys(maqLoad).sort();
+  const nIny = maqNms.filter(m=>m.startsWith('INY')).length, nTV = maqNms.filter(m=>m.startsWith('TV')).length;
+  const dispIny = nIny * turnosMaq, dispTV = nTV * turnosMaq;
+  const pctIny = dispIny ? Math.round(turnosReqIny/dispIny*100) : 0;
+  const pctTV  = dispTV  ? Math.round(turnosReqTV/dispTV*100)  : 0;
+  const kilosMP = CAP_DATA.proyeccion.reduce((s,p) => s + (p.gramos ? p.unidades*p.gramos/1000 : 0), 0);
+
+  const kpiEl = document.getElementById('cap-kpis');
+  if (kpiEl) kpiEl.innerHTML =
+    poKpi('Ocupación Inyección', pctIny+'%', Math.round(turnosReqIny)+' de '+dispIny+' turnos · '+nIny+' máquinas', pctIny>100?'#EF4444':pctIny>85?'#F59E0B':'#10B981')+
+    poKpi('Ocupación Tapadoras', pctTV+'%', Math.round(turnosReqTV)+' de '+dispTV+' turnos · '+nTV+' máquinas', pctTV>100?'#EF4444':pctTV>85?'#F59E0B':'#10B981')+
+    poKpi('Turnos Requeridos', Math.round(turnosReqIny+turnosReqTV), 'inyección + tapadoras', '#8B5CF6')+
+    poKpi('Operarios Requeridos', opTotal, 'suma de la planeación', '#EC4899')+
+    poKpi('Horas Hombre', Math.round(hhTotal).toLocaleString('es-CO')+'h', 'operarios × '+turnosMaq+' turnos × 8h', '#F59E0B')+
+    poKpi('Materia Prima', Math.round(kilosMP).toLocaleString('es-CO')+' kg', 'según gramos × proyección', '#06B6D4');
+
+  // alertas: sobrecarga + cobertura
+  const alertEl = document.getElementById('cap-alertas');
+  if (alertEl) alertEl.innerHTML = overflow.map(o =>
+    `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:10px;padding:12px 14px;margin-bottom:8px;font-size:.75rem;color:#FCA5A5">
+      <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px"></i>
+      <strong>${o.maquina} sobrecargada:</strong> a ${o.producto} le faltan ${o.turnos.toFixed(1)} turnos (≈ ${o.unidades.toLocaleString('es-CO')} und).
+      ${o.tieneMaquila ? 'Sugerencia: pasar el excedente a <strong>maquila (molde alterno)</strong>'+(o.costoMaquila?' ≈ '+fCOP(o.costoMaquila):'') : 'Sugerencia: reasignar a máquina alterna o turnos extra (sin costo de maquila registrado).'}
+    </div>`).join('');
+
+  // tabla por producto
+  const tbody = document.getElementById('cap-prod-tbody');
+  if (tbody) tbody.innerHTML = items.map(p => {
+    const sat = !p.esMaquila && p.maqs.some(m => maqLoad[m] > turnosMaq + 0.01);
+    const estado = p.esMaquila ? '<span style="background:#F9731620;color:#F97316;border-radius:4px;padding:2px 8px;font-size:.68rem;font-weight:700">MAQUILA</span>'
+      : sat ? '<span class="badge-red">Excede máquina</span>' : '<span class="badge-green">OK</span>';
+    return `<tr>
+      <td style="font-weight:600">${p.desc}</td>
+      <td style="text-align:right">${p.cav}</td>
+      <td style="text-align:right">${p.ciclo.toLocaleString('es-CO')}</td>
+      <td style="text-align:right">${Math.round(p.und8h).toLocaleString('es-CO')}</td>
+      <td style="text-align:right;font-weight:600">${p.proy.toLocaleString('es-CO')}</td>
+      <td style="text-align:right;font-weight:700;color:#8B5CF6">${p.turnos.toFixed(1)}</td>
+      <td style="text-align:right">${p.dias.toFixed(1)}</td>
+      <td style="text-align:right">${p.operarios||'—'}</td>
+      <td><span style="background:#374151;border-radius:4px;padding:2px 7px;font-size:.68rem">${p.maquina||'—'}</span></td>
+      <td style="text-align:right">${p.hh?Math.round(p.hh).toLocaleString('es-CO')+'h':'—'}</td>
+      <td>${estado}</td></tr>`;
+  }).join('');
+
+  // panel maquila: fijas + overflow
+  const maqEl = document.getElementById('cap-maquila');
+  if (maqEl) {
+    const fijas = items.filter(i => i.esMaquila);
+    const lineas = [
+      ...fijas.map(f => { const c = capCostoDe(f.desc);
+        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #374151"><span>🔒 ${f.desc} <span style="color:#6B7280">(fija)</span></span><span style="font-weight:700">${f.proy.toLocaleString('es-CO')} und${c?.maquila?' · '+fCOP(f.proy*c.maquila):''}</span></div>`; }),
+      ...overflow.filter(o=>o.tieneMaquila).map(o =>
+        `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #374151"><span>⚠ ${o.producto} <span style="color:#6B7280">(desborde ${o.maquina})</span></span><span style="font-weight:700">${o.unidades.toLocaleString('es-CO')} und${o.costoMaquila?' · '+fCOP(o.costoMaquila):''}</span></div>`)
+    ];
+    maqEl.innerHTML = lineas.length ? lineas.join('') : '<div style="color:#4B5563;padding:12px 0">La planta cubre toda la proyección — no se requiere maquila este mes.</div>';
+  }
+
+  // cobertura: productos de la proyección sin fila en la planeación
+  const cobEl = document.getElementById('cap-cobertura');
+  if (cobEl) {
+    const sinPlan = CAP_DATA.proyeccion.filter(pr => pr.unidades > 0 &&
+      !items.some(i => { const a = capNorm(i.desc), b = capNorm(pr.producto); return a.includes(b) || b.includes(a); }));
+    cobEl.innerHTML = sinPlan.length
+      ? sinPlan.map(p => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #374151;color:#FCA5A5"><span>⚠ ${p.producto}</span><span style="font-weight:700">${p.unidades.toLocaleString('es-CO')} und sin plan</span></div>`).join('')
+      : '<div style="color:#10B981;padding:12px 0"><i class="fa-solid fa-circle-check" style="margin-right:6px"></i>Todos los productos de la proyección tienen fila de planeación.</div>';
+  }
+
+  // tabla y gráfico de carga por máquina
+  const capTbody = document.getElementById('po-cap-tbody');
+  if (capTbody) capTbody.innerHTML = maqNms.length ? maqNms.map(m => {
+    const req = maqLoad[m]; const pct = turnosMaq ? Math.round(req/turnosMaq*100) : 0;
+    const color = pct>100?'#EF4444':pct>85?'#F59E0B':'#10B981';
+    return `<tr><td style="font-weight:700">${m}</td><td style="text-align:right">${turnosMaq}</td><td style="text-align:right">${req.toFixed(1)}</td><td style="text-align:right;font-weight:700;color:${color}">${pct}%</td><td>${pct>100?'<span class="badge-red">Saturada</span>':pct>85?'<span class="badge-yellow">En riesgo</span>':'<span class="badge-green">OK</span>'}</td></tr>`;
+  }).join('') : '<tr><td colspan="5" style="text-align:center;color:#4B5563;padding:24px">Sin datos de la pestaña PLANEACION</td></tr>';
 
   destroyChart('po-cap-b');
-  const el=document.getElementById('po-chart-cap-barras');
-  if(el&&maqNms.length)CHARTS['po-cap-b']=new Chart(el.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(()=>Math.round(horasDisp)),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>{const p=horasDisp?maqMap[m]/horasDisp*100:0;return Math.round(maqMap[m]);}),backgroundColor:maqNms.map(m=>{const p=horasDisp?maqMap[m]/horasDisp*100:0;return p>100?'#EF444488':p>85?'#F59E0B88':'#10B98188';}),borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'}}},responsive:true,maintainAspectRatio:false}});
+  const el = document.getElementById('po-chart-cap-barras');
+  if (el && maqNms.length) CHARTS['po-cap-b'] = new Chart(el.getContext('2d'), { type:'bar',
+    data:{ labels:maqNms, datasets:[
+      { label:'Disponibles', data:maqNms.map(()=>turnosMaq), backgroundColor:'#3B82F644', borderColor:'#3B82F6', borderWidth:1, borderRadius:4 },
+      { label:'Requeridos', data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),
+        backgroundColor:maqNms.map(m=>{const p=turnosMaq?maqLoad[m]/turnosMaq*100:0;return p>100?'#EF444488':p>85?'#F59E0B88':'#10B98188';}), borderRadius:4 }]},
+    options:{ plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},
+      scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}}},
+      responsive:true, maintainAspectRatio:false }});
 }
 
 // ── Maquila Plan ────────────────────────────────────────
@@ -6616,7 +6876,7 @@ window.showSection=function(id){
     else{
       if(id==='po-tablero')renderTablieroPlan();
       else if(id==='po-plan')renderPlanMaestro();
-      else if(id==='po-capacidad')renderCapacidadPO();
+      else if(id==='po-capacidad')loadCapacidadMensual();
       else if(id==='po-maquila')renderMaquilaPlan();
       else if(id==='po-personal')renderPersonalPlan();
       else if(id==='po-horas')renderHorasCostosPO();
