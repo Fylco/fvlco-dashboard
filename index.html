@@ -6697,8 +6697,9 @@ function renderCapacidadMensual() {
 // la copia allí) y luego la hoja independiente HISTORICO_CAPACIDAD del Drive.
 const CAP_HIST_SID = '13jI4d9NhsDbHLj4nYV4NlAXToglTrC1wsC7AKGPFlFs';
 const CAP_HIST_URLS = [
+  // export (sin gviz): no tipa columnas, conserva textos como "TV1-TV2" o "Maquila"
+  `https://docs.google.com/spreadsheets/d/${CAP_HIST_SID}/export?format=csv`,
   `https://docs.google.com/spreadsheets/d/${CAP_SID}/gviz/tq?tqx=out:csv&sheet=HISTORICO_CAPACIDAD`,
-  `https://docs.google.com/spreadsheets/d/${CAP_HIST_SID}/gviz/tq?tqx=out:csv&gid=0`,
 ];
 const CAP_MESES_ORD = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
 const CAP_HIST = { rows: [], loaded: false };
