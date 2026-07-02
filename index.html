@@ -7030,8 +7030,7 @@ setTimeout(()=>loadPlanData().then(()=>{
 // INIT
 // =======================================================
 loadAll();
-// Auto-refresh silencioso cada 5 minutos
-setInterval(silentRefresh, 5 * 60 * 1000);
+// Auto-refresh desactivado — actualización manual con el botón "Actualizar"
 // Aplicar color inicial al nav-item activo por defecto
 (function(){
   const activeNav = document.querySelector('.nav-item.active');
