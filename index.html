@@ -963,7 +963,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <!-- Histórico mensual -->
       <div class="chart-card">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-          <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-clock-rotate-left" style="color:#F59E0B;margin-right:6px"></i>Histórico mensual — filas marcadas con MES/AÑO en PLANEACION</div>
+          <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-clock-rotate-left" style="color:#F59E0B;margin-right:6px"></i>Histórico mensual — hoja HISTORICO_CAPACIDAD</div>
           <select id="cap-hist-sel" onchange="capRenderHistorico()" style="background:#111827;border:1px solid #374151;border-radius:6px;padding:5px 10px;color:#EEEEEE;font-size:.73rem;outline:none"></select>
         </div>
         <div id="cap-hist-vacio" style="color:#4B5563;font-size:.75rem;padding:8px 0">Cargando histórico…</div>
@@ -6494,7 +6494,7 @@ async function loadCapacidadMensual(force) {
   const ef = document.getElementById('cap-efic');
   if (ef && CAP_DATA.params.eficiencia) ef.value = Math.round(CAP_DATA.params.eficiencia * 100);
   renderCapacidadMensual();
-  capRenderHistorico();
+  capLoadHistorico(!!force);
 }
 
 function parseCapacidad(rows) {
@@ -6520,28 +6520,16 @@ function parseCapacidad(rows) {
     CAP_DATA.proyeccion.push({ producto:nom, inventario:capNum(cell(i,1)), unidades:capNum(cell(i,2)),
       pendientes:capNum(cell(i,3)), gramos:capNum(cell(i,4)), kilos:capNum(cell(i,5)) });
   }
-  // tabla de planeación por producto — acumulativa: filas sin MES/AÑO (cols L/M)
-  // pertenecen al mes activo (B1/D1); filas marcadas son histórico de ese mes.
-  const mesActual = String(CAP_DATA.mes||'').toUpperCase().trim();
-  const anioActual = String(CAP_DATA.anio||'').trim();
-  CAP_DATA.todasFilas = [];
+  // tabla de planeación por producto (mes activo)
   if (iPlan >= 0) for (let i=iPlan+1; i<rows.length; i++) {
     const nom = cell(i,0);
+    if (!nom) { if (cell(i,8).toUpperCase()==='TOTAL' || !cell(i,1)) break; continue; }
     if (nom.toUpperCase().startsWith('ASIGNACION')) break;
-    if (!nom) continue; // filas vacías o TOTAL: seguir buscando bloques de otros meses
     const cav = capNum(cell(i,1)), ciclo = capNum(cell(i,2));
     if (!cav || !ciclo) continue;
-    // solo es marca de histórico si col L trae un mes válido; col M debe ser un año
-    const mesRaw = cell(i,11).toUpperCase().trim();
-    const esTag = CAP_MESES_ORD.includes(mesRaw);
-    const anioNum = Math.round(capNum(cell(i,12)));
-    const mesTag = esTag ? mesRaw : mesActual;
-    const anioTag = (esTag && anioNum > 2000) ? String(anioNum) : anioActual;
-    CAP_DATA.todasFilas.push({ desc:nom, cav, ciclo, und8hSheet:capNum(cell(i,3)),
-      proy:capNum(cell(i,5)), operarios:capNum(cell(i,8)), maquina:cell(i,9),
-      hhSheet:capNum(cell(i,10)), mes:mesTag, anio:String(anioTag) });
+    CAP_DATA.productos.push({ desc:nom, cav, ciclo, proy:capNum(cell(i,5)),
+      operarios:capNum(cell(i,8)), maquina:cell(i,9) });
   }
-  CAP_DATA.productos = CAP_DATA.todasFilas.filter(f => f.mes === mesActual && f.anio === anioActual);
   // costos Fylco vs Maquila (misma pestaña)
   if (iCosto >= 0) for (let i=iCosto+1; i<rows.length; i++) {
     const ref = cell(i,0);
@@ -6703,58 +6691,50 @@ function renderCapacidadMensual() {
       responsive:true, maintainAspectRatio:false }});
 }
 
-// ── Histórico mensual: leído de la misma pestaña PLANEACION ──
-// Cada fila de la tabla de planeación puede llevar MES (col L) y AÑO (col M).
-// Filas sin marcar pertenecen al mes activo (B1/D1). Sin scripts: el histórico
-// se acumula agregando filas en el sheet y marcándolas con su mes.
+// ── Histórico mensual: hoja de Google HISTORICO_CAPACIDAD ──
+// Formato largo, una fila por producto-mes. El dashboard intenta primero una
+// pestaña HISTORICO_CAPACIDAD dentro del sheet Restricciones (por si el usuario
+// la copia allí) y luego la hoja independiente HISTORICO_CAPACIDAD del Drive.
+const CAP_HIST_SID = '13jI4d9NhsDbHLj4nYV4NlAXToglTrC1wsC7AKGPFlFs';
+const CAP_HIST_URLS = [
+  `https://docs.google.com/spreadsheets/d/${CAP_SID}/gviz/tq?tqx=out:csv&sheet=HISTORICO_CAPACIDAD`,
+  `https://docs.google.com/spreadsheets/d/${CAP_HIST_SID}/gviz/tq?tqx=out:csv&gid=0`,
+];
 const CAP_MESES_ORD = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+const CAP_HIST = { rows: [], loaded: false };
 
-// turnos disponibles por máquina en un mes: días L-V × 3 + sábados × 2 (calendario real)
-function capTurnosMes(mes, anio) {
-  const mi = CAP_MESES_ORD.indexOf(String(mes).toUpperCase().trim());
-  const y = parseInt(anio);
-  if (mi < 0 || !y) return 71;
-  let lv = 0, sab = 0;
-  const nDias = new Date(y, mi+1, 0).getDate();
-  for (let d = 1; d <= nDias; d++) {
-    const dow = new Date(y, mi, d).getDay();
-    if (dow >= 1 && dow <= 5) lv++; else if (dow === 6) sab++;
+async function capLoadHistorico(force) {
+  if (CAP_HIST.loaded && !force) { capRenderHistorico(); return; }
+  for (const u of CAP_HIST_URLS) {
+    try {
+      const res = await fetch(proxy(u + '&_t=' + Date.now()), { cache:'no-store' });
+      if (!res.ok) continue;
+      const txt = await res.text();
+      if (txt.trim().startsWith('<')) continue;
+      const data = Papa.parse(txt, { header:true, skipEmptyLines:true }).data;
+      const rows = data.filter(r => r['MES'] && r['PRODUCTO']).map(r => {
+        let ef = capNum(r['EFICIENCIA']); if (ef > 1) ef /= 100;
+        return {
+          mes: String(r['MES']).toUpperCase().trim(), anio: String(capNum(r['AÑO']||r['ANO'])||'').trim(),
+          producto: r['PRODUCTO'], cav: capNum(r['CAVIDADES']), ciclo: capNum(r['CICLO']),
+          ef, undTurno: capNum(r['UND_TURNO_8H']), proy: capNum(r['PROYECCION']),
+          turnos: capNum(r['TURNOS']), dias: capNum(r['DIAS']), operarios: capNum(r['OPERARIOS']),
+          maquina: String(r['MAQUINA']||''), hh: capNum(r['HORAS_HOMBRE']), turnosDisp: capNum(r['TURNOS_DISP'])||71
+        };
+      });
+      if (rows.length) { CAP_HIST.rows = rows; break; }
+    } catch(e) { /* siguiente fuente */ }
   }
-  return lv*3 + sab*2;
-}
-
-// filas históricas → métricas por fila usando los valores del propio sheet
-function capHistRows() {
-  const filas = CAP_DATA.todasFilas || [];
-  // turnos disponibles reales de cada mes: se recuperan de HH = operarios × turnos × 8
-  // (respeta festivos que el calendario no conoce); fallback: calendario del mes
-  const dispMes = {};
-  filas.forEach(r => {
-    const k = r.mes + '|' + r.anio;
-    if (!dispMes[k] && r.operarios > 0 && r.hhSheet > 0) {
-      const t = Math.round(r.hhSheet / (r.operarios * 8));
-      if (t > 20 && t < 120) dispMes[k] = t;
-    }
-  });
-  return filas.map(r => {
-    const undTurno = r.und8hSheet || (r.cav * 28800 / r.ciclo * 0.85);
-    const turnos = undTurno > 0 ? r.proy / undTurno : 0;
-    const efDeriv = r.cav && r.ciclo ? undTurno / (r.cav * 28800 / r.ciclo) : 0;
-    const esActual = r.mes === String(CAP_DATA.mes||'').toUpperCase().trim() && r.anio === String(CAP_DATA.anio||'').trim();
-    const turnosDisp = esActual ? (CAP_DATA.params.turnosTotales||71)
-      : (dispMes[r.mes + '|' + r.anio] || capTurnosMes(r.mes, r.anio));
-    return { mes:r.mes, anio:r.anio, producto:r.desc, cav:r.cav, ciclo:r.ciclo,
-      ef:efDeriv, undTurno, proy:r.proy, turnos, dias:turnos/3,
-      operarios:r.operarios, maquina:r.maquina, hh:r.hhSheet, turnosDisp, esActual };
-  });
+  CAP_HIST.loaded = true;
+  capRenderHistorico();
 }
 
 function capRenderHistorico() {
   const body = document.getElementById('cap-hist-body'), vacio = document.getElementById('cap-hist-vacio');
   if (!body) return;
-  const histRows = capHistRows();
+  const histRows = CAP_HIST.rows;
   if (!histRows.length) { body.style.display = 'none'; if (vacio) { vacio.style.display = 'block';
-    vacio.textContent = 'Sin filas en la tabla de planeación. Para acumular histórico, marca las filas de meses cerrados con su MES (columna L) y AÑO (columna M) en la pestaña PLANEACION.'; } return; }
+    vacio.textContent = 'No se pudo leer la hoja HISTORICO_CAPACIDAD. Verifica que esté compartida como "Cualquier persona con el enlace → Lector".'; } return; }
   body.style.display = 'block'; if (vacio) vacio.style.display = 'none';
 
   // meses disponibles ordenados cronológicamente
