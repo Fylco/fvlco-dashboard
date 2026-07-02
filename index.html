@@ -2943,13 +2943,21 @@ function renderResumen() {
       if (e.includes('PROCESO')||e.includes('PROGRESO')) return {bg:'#EFF6FF',color:'#1D4ED8',border:'#93C5FD',label:'En Proceso'};
       return {bg:'#FFFBEB',color:'#B45309',border:'#FCD34D',label:'Pendiente'};
     };
+    // Búsqueda partial para SEGUIMIENTO: primero exacta, luego cualquier columna que contenga 'seguim'
+    const _getSegCol = r => {
+      const v = _colP(r,'SEGUIMIENTO','Seguimiento','seguimiento','SEGUIM.','SEGUIM');
+      if (v && v!=='—') return v;
+      const _nck = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+      const sk = Object.keys(r).find(k => _nck(k).includes('seguim'));
+      return sk ? (String(r[sk]||'').trim()||'—') : '—';
+    };
     const planesBody = hasPlanesData
       ? DATA.planesAccion.map(r => {
           const plan    = _colP(r,'PLAN DE ACCION','PLAN ACCION','PLAN DE ACCIÓN','PLAN');
           const fAccion = _colP(r,'FECHA DE ACCION','FECHA ACCION','FECHA DE ACCIÓN');
           const fCierre = _colP(r,'FECHA DE CIERRE','FECHA CIERRE');
           const resp    = _colP(r,'RESPONSABLE');
-          const seg     = _colP(r,'SEGUIMIENTO');
+          const seg     = _getSegCol(r);
           const valor   = _colP(r,'VALOR DE LA ACCION','VALOR DE LA ACCIÓN','VALOR ACCION','VALOR');
           const estado  = _colP(r,'ESTADO')||'PENDIENTE';
           const hoy     = new Date().toISOString().slice(0,10);
@@ -5484,16 +5492,26 @@ async function exportPDF(shareMode = false) {
         for(const k of keys){const nk=_nc2(k);const f=Object.keys(r).find(rk=>_nc2(rk)===nk);if(f&&r[f]!==undefined&&r[f]!==null&&r[f]!=='')return r[f];}
         return '—';
       };
+      // Búsqueda partial para SEGUIMIENTO en el PDF
+      const _getSegP = r => {
+        const v = _cP(r,'SEGUIMIENTO','Seguimiento','seguimiento','SEGUIM.','SEGUIM');
+        if (v && v!=='—') return v;
+        const _nckp = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+        const sk = Object.keys(r).find(k => _nckp(k).includes('seguim'));
+        return sk ? (String(r[sk]||'').trim()||'—') : '—';
+      };
+      // Columnas: Plan(50)+Seguimiento(46)+Responsable(24)+F.Acción(18)+F.Cierre(18)+Estado(26) = 182mm
       table(
-        ['Plan de Acción','F. Acción','F. Cierre','Responsable','Estado'],
+        ['Plan de Acción','Seguimiento','Responsable','F. Acción','F. Cierre','Estado'],
         planesData.map(r=>[
-          String(_cP(r,'PLAN DE ACCION','PLAN DE ACCIÓN','PLAN')).substring(0,42),
+          String(_cP(r,'PLAN DE ACCION','PLAN DE ACCIÓN','PLAN')).substring(0,40),
+          String(_getSegP(r)).substring(0,55),
+          String(_cP(r,'RESPONSABLE')).substring(0,20),
           String(_cP(r,'FECHA DE ACCION','FECHA DE ACCIÓN')),
           String(_cP(r,'FECHA DE CIERRE','FECHA CIERRE')),
-          String(_cP(r,'RESPONSABLE')).substring(0,18),
           String(_cP(r,'ESTADO')||'Pendiente'),
         ]),
-        [60,22,22,30,22]
+        [50,46,24,18,18,26]
       );
     }
 
