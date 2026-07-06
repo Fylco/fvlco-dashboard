@@ -4596,35 +4596,74 @@ async function exportCompactImage() {
 
 // Comparte el reporte como imagen PNG (Web Share API → WhatsApp en celular).
 // En PC / navegador sin soporte, descarga la imagen como respaldo.
+//
+// IMPORTANTE (bug corregido): navigator.share() SOLO funciona mientras está
+// vigente el "gesto de usuario" (transient activation, ~5s en Chrome). Generar
+// la imagen con html2canvas tarda más que eso, así que si compartimos DESPUÉS
+// del render, el navegador rechaza con "Must be handling a user gesture".
+// Solución: cacheamos la imagen ya generada; si el gesto expiró, un 2º toque
+// comparte al instante (sin await previo, con el gesto fresco del nuevo clic).
+let _rcShareCache = { key:null, file:null };
+
 async function shareCompactImage() {
-  const el = document.getElementById('rc-content');
+  const el  = document.getElementById('rc-content');
   const btn = document.getElementById('rc-share-btn');
   if (!el) return;
+  const sel   = document.getElementById('rc-f-dia');
+  const fecha = (sel && sel.value) ? sel.value : 'reporte';
+  const turno = (document.getElementById('rc-f-turno')?.value || '');
+  const key   = `${fecha}|${turno}`;
+  const fname = `Reporte_Compacto_${fecha}.png`;
+  const shareData = f => ({ files:[f], title:'Reporte de Producción FVLco', text:`Reporte de Producción FVLco — ${fecha}` });
+  const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
+
+  // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
+  //    previo, para no perder el gesto del clic actual (camino del 2º toque).
+  if (_rcShareCache.key === key && _rcShareCache.file &&
+      navigator.canShare && navigator.canShare({ files:[_rcShareCache.file] })) {
+    try {
+      await navigator.share(shareData(_rcShareCache.file));
+      return;
+    } catch(err) {
+      if (err && err.name === 'AbortError') return;   // el usuario canceló
+      // si vuelve a fallar, seguimos y regeneramos abajo
+    }
+  }
+
   const prev = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
   try {
-    const canvas = await html2canvas(el, { backgroundColor:'#FFFFFF', scale:4, useCORS:true });
-    const sel = document.getElementById('rc-f-dia');
-    const fecha = (sel && sel.value) ? sel.value : 'reporte';
-    const fname = `Reporte_Compacto_${fecha}.png`;
-    const blob  = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    const file  = new File([blob], fname, { type:'image/png' });
+    const canvas = await html2canvas(el, { backgroundColor:'#FFFFFF', scale:3, useCORS:true });
+    const blob   = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file   = new File([blob], fname, { type:'image/png' });
+    _rcShareCache = { key, file };   // guardar para poder compartir en el 2º toque
+
     if (navigator.canShare && navigator.canShare({ files:[file] })) {
-      // Celular: abre el menú nativo → elegir WhatsApp y el grupo
-      await navigator.share({ files:[file], title:'Reporte de Producción FVLco', text:`Reporte de Producción FVLco — ${fecha}` });
+      try {
+        // Camino feliz (móvil rápido): comparte directo en el 1er toque
+        await navigator.share(shareData(file));
+      } catch(err) {
+        if (err && err.name === 'AbortError') { /* cancelado, no hacer nada */ }
+        else if (isGestureErr(err)) {
+          // El render tardó y expiró el gesto, pero la imagen YA quedó lista:
+          // avisar para que un 2º toque la comparte al instante (rama de arriba).
+          alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
+        } else throw err;
+      }
     } else {
-      // PC / sin soporte: descargar y avisar
+      // PC / sin soporte de compartir archivos: descargar como respaldo
       const link = document.createElement('a');
       link.download = fname; link.href = canvas.toDataURL('image/png'); link.click();
       alert('Este dispositivo no permite compartir directamente. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.\n\nTip: desde el celular el botón Compartir abre WhatsApp automáticamente.');
     }
   } catch(err) {
-    if (!err || err.name !== 'AbortError') {  // AbortError = el usuario canceló
+    if (!err || err.name !== 'AbortError') {
       alert('No se pudo compartir: ' + ((err && err.message) || err));
       console.error(err);
     }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = prev; }
   }
-  if (btn) { btn.disabled = false; btn.innerHTML = prev; }
 }
 
 // =======================================================
