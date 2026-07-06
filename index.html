@@ -6749,41 +6749,46 @@ function renderCapacidadMensual() {
       responsive:true, maintainAspectRatio:false }});
 }
 
-// ── Histórico mensual: hoja de Google HISTORICO_CAPACIDAD ──
-// Formato largo, una fila por producto-mes. El dashboard intenta primero una
-// pestaña HISTORICO_CAPACIDAD dentro del sheet Restricciones (por si el usuario
-// la copia allí) y luego la hoja independiente HISTORICO_CAPACIDAD del Drive.
-const CAP_HIST_SID = '13jI4d9NhsDbHLj4nYV4NlAXToglTrC1wsC7AKGPFlFs';
-const CAP_HIST_URLS = [
-  // export (sin gviz): no tipa columnas, conserva textos como "TV1-TV2" o "Maquila"
-  `https://docs.google.com/spreadsheets/d/${CAP_HIST_SID}/export?format=csv`,
-  `https://docs.google.com/spreadsheets/d/${CAP_SID}/gviz/tq?tqx=out:csv&sheet=HISTORICO_CAPACIDAD`,
-];
+// ── Histórico mensual: hoja de Google "CAPACIDAD" (100% fórmulas) ──
+// Sheet con 4 bloques en una sola pestaña: MAQUINAS (activa/inactiva) |
+// PRODUCTOS (cavidades/ciclo maestro) | PARAMETROS (por mes) | CAPACIDAD
+// MENSUAL (el log — CAVIDADES, CICLO, UND_TURNO_8H, TURNOS, DIAS, HORAS_HOMBRE,
+// MAQUINA_ACTIVA y ESTADO son fórmulas VLOOKUP/IF dentro del propio sheet).
+// El dashboard solo lee los valores YA calculados por el sheet.
+const CAP_HIST_SID = '1sdoHXHcZ6_we0k1wPabGNFPGn9NTnCGQOV5qsZr6eOg';
+// export (sin gviz): no tipa columnas por mayoría, conserva textos como "TV1-TV2" o "Maquila"
+const CAP_HIST_URL = `https://docs.google.com/spreadsheets/d/${CAP_HIST_SID}/export?format=csv`;
 const CAP_MESES_ORD = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
 const CAP_HIST = { rows: [], loaded: false };
 
 async function capLoadHistorico(force) {
   if (CAP_HIST.loaded && !force) { capRenderHistorico(); return; }
-  for (const u of CAP_HIST_URLS) {
-    try {
-      const res = await fetch(proxy(u + '&_t=' + Date.now()), { cache:'no-store' });
-      if (!res.ok) continue;
+  try {
+    const res = await fetch(proxy(CAP_HIST_URL + '&_t=' + Date.now()), { cache:'no-store' });
+    if (res.ok) {
       const txt = await res.text();
-      if (txt.trim().startsWith('<')) continue;
-      const data = Papa.parse(txt, { header:true, skipEmptyLines:true }).data;
-      const rows = data.filter(r => r['MES'] && r['PRODUCTO']).map(r => {
-        let ef = capNum(r['EFICIENCIA']); if (ef > 1) ef /= 100;
-        return {
-          mes: String(r['MES']).toUpperCase().trim(), anio: String(capNum(r['AÑO']||r['ANO'])||'').trim(),
-          producto: r['PRODUCTO'], cav: capNum(r['CAVIDADES']), ciclo: capNum(r['CICLO']),
-          ef, undTurno: capNum(r['UND_TURNO_8H']), proy: capNum(r['PROYECCION']),
-          turnos: capNum(r['TURNOS']), dias: capNum(r['DIAS']), operarios: capNum(r['OPERARIOS']),
-          maquina: String(r['MAQUINA']||''), hh: capNum(r['HORAS_HOMBRE']), turnosDisp: capNum(r['TURNOS_DISP'])||71
-        };
-      });
-      if (rows.length) { CAP_HIST.rows = rows; break; }
-    } catch(e) { /* siguiente fuente */ }
-  }
+      if (!txt.trim().startsWith('<')) {
+        const rows = Papa.parse(txt, { header:false, skipEmptyLines:false }).data;
+        // localizar el bloque "CAPACIDAD MENSUAL": única tabla cuya col A dice "MES"
+        let iCap = -1;
+        rows.forEach((r,i) => { if (iCap<0 && String(r[0]||'').trim().toUpperCase()==='MES') iCap = i; });
+        const out = [];
+        if (iCap >= 0) for (let i=iCap+1; i<rows.length; i++) {
+          const r = rows[i];
+          if (!String(r[0]||'').trim()) break;
+          out.push({
+            mes: String(r[0]).toUpperCase().trim(), anio: String(Math.round(capNum(r[1]))||'').trim(),
+            producto: r[2], cav: capNum(r[6]), ciclo: capNum(r[7]),
+            ef: capNum(r[11]), undTurno: capNum(r[8]), proy: capNum(r[3]),
+            turnos: capNum(r[9]), dias: capNum(r[10]), operarios: capNum(r[4]),
+            maquina: String(r[5]||''), hh: capNum(r[13]), turnosDisp: capNum(r[12])||71,
+            estado: String(r[15]||'')
+          });
+        }
+        CAP_HIST.rows = out;
+      }
+    }
+  } catch(e) { /* deja CAP_HIST.rows como estaba */ }
   CAP_HIST.loaded = true;
   capRenderHistorico();
 }
