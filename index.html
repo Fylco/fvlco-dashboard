@@ -2187,10 +2187,20 @@ function calcRendimiento(rows) {
   let totProd=0, totTeo=0;
   Object.values(slots).forEach(s => {
     if (s.cicloEst > 0) {
-      totProd += s.undProd;
       const cavEff = s.cavTeor > 0 ? s.cavTeor : 1;
-      const tEfSeg = Math.max(0, (_TSEG[s.turno]||28800) - s.paroProgSeg);
-      totTeo += Math.round((tEfSeg / s.cicloEst) * cavEff);
+      // Rendimiento (Performance OEE) = producción real ÷ producción ideal
+      // durante el TIEMPO QUE LA MÁQUINA CORRIÓ (run time = turno − TODOS los
+      // paros). No se descuentan solo los paros programados: el tiempo perdido
+      // ya lo penaliza Disponibilidad, y volver a restarlo aquí sería DOBLE
+      // castigo (hunde el OEE). Un paro imprevisto reduce Disponibilidad, no
+      // Rendimiento; el Rendimiento solo mide la velocidad mientras produjo.
+      const runSeg = Math.max(0, (_TSEG[s.turno]||28800) - s.paroTotal*60);
+      if (runSeg > 0) {
+        totProd += s.undProd;
+        totTeo  += Math.round((runSeg / s.cicloEst) * cavEff);
+      }
+      // Slot totalmente parado (runSeg=0): sin tiempo de corrida no hay
+      // velocidad que medir → se excluye del Rendimiento (ya cuenta en Disp).
     }
     // Slots sin cicloEst → excluidos (no asumimos 100%)
   });
@@ -4262,7 +4272,12 @@ function renderReporteDiario() {
     g.tReal   = (cavR>0&&cReal>0)?(g.undProd/cavR*cReal)/60:0;
     g.tProg   = g.horas*60;
     g.disp    = g.tProg>0?Math.min(100,Math.max(0,(g.tProg-g.paro)/g.tProg*100)):null;
-    g.rend    = g.undProg>0?Math.min(100,g.undProd/g.undProg*100):null;
+    // RENDIMIENTO (Performance OEE) = producción ÷ ideal durante RUN TIME (turno
+    // − TODOS los paros). No usa undProg (meta de plan) para no penalizar dos
+    // veces el tiempo perdido (eso ya lo hace Disponibilidad) → evita OEE bajo.
+    const _runSegRd=Math.max(0,g.horas*3600-(g.paro||0)*60);
+    const _undTeoRunRd=(cEst>0&&_cavTd>0&&_runSegRd>0)?Math.round((_runSegRd/cEst)*_cavTd):0;
+    g.rend    = _undTeoRunRd>0?Math.min(100,g.undProd/_undTeoRunRd*100):null;
     const nc_rd = oeeByMaq[g.maq]?._nc||0;
     g.cal = g.undProd>0 ? Math.min(100,Math.max(0,(g.undProd-nc_rd)/g.undProd*100)) : null;
     g.oee = (g.disp!=null&&g.rend!=null&&g.cal!=null)?(g.disp*g.rend*g.cal)/10000:null;
@@ -4818,8 +4833,10 @@ function renderReporteCompacto() {
     const cavT = g.cavTeor || cavR || 0;        // cavidades teóricas
     const cEst = g.cicloEst || 0;              // ciclo estándar SOLO — sin fallback a cicloReal
     const cReal= g.cicloReal || g.cicloEst || 0;// ciclo real
-    // #3 UNIDADES TEÓRICAS = (tiempo efectivo ÷ ciclo estándar) × cav teóricas
-    //    Si no hay ciclo estándar ni cav teóricas, no hay objetivo → usar undProd (rendim=100%).
+    // #3 UNIDADES PROGRAMADAS (meta del PLAN) = (turno − paros programados) ÷
+    //    ciclo estándar × cav teóricas. Es la meta de PLANEACIÓN del turno
+    //    (columnas Und. Programadas / Faltantes / % Cumplimiento). NO se usa
+    //    para el Rendimiento OEE (ver #5).
     const horasEfectivasSeg = Math.max(0, g.horas*3600 - (g.paroProg||0)*60);
     g.undProg = (cEst>0 && cavT>0 && horasEfectivasSeg>0) ? Math.round((horasEfectivasSeg/cEst)*cavT) : g.undProd;
     g.falt    = g.undProg - g.undProd;
@@ -4834,9 +4851,13 @@ function renderReporteCompacto() {
     // máquina, así que sí reduce la disponibilidad real del turno.
     g.disp = g.tProg>0 ? Math.min(100, Math.max(0, (g.tProg-g.paro)/g.tProg*100)) : null;
 
-    // #5 RENDIMIENTO = unidades producidas ÷ unidades teóricas (tope 100%:
-    //    si corre más rápido que el ciclo estándar no puede superar el ideal)
-    g.rend = g.undProg>0 ? Math.min(100, g.undProd/g.undProg*100) : null;
+    // #5 RENDIMIENTO (Performance OEE) = producción ÷ producción ideal durante
+    //    el RUN TIME (turno − TODOS los paros). Distinto de undProg (plan): el
+    //    tiempo perdido ya lo penaliza Disponibilidad, restarlo otra vez aquí
+    //    sería doble castigo y hundiría el OEE. Mide velocidad mientras corrió.
+    const runSeg  = Math.max(0, g.horas*3600 - (g.paro||0)*60);
+    const undTeoRun = (cEst>0 && cavT>0 && runSeg>0) ? Math.round((runSeg/cEst)*cavT) : 0;
+    g.rend = undTeoRun>0 ? Math.min(100, g.undProd/undTeoRun*100) : null;
 
     // #6 CALIDAD = (producidas − NC) ÷ producidas — misma fórmula que calcCalidad.
     //    NC = el reportado por ESTA máquina ese día (respeta máquina, no orden).
