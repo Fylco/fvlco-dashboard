@@ -309,6 +309,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </button>
       </div>
       <div class="section-title">Indicadores Clave</div>
+      <div id="cov-note-resumen"></div>
       <div id="resumen-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px"></div>
       <div id="resumen-alertas" style="margin-bottom:20px"></div>
       <!-- 2×2: todos los gráficos con columnas iguales y min-width:0 para responsividad correcta -->
@@ -357,7 +358,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-clear" onclick="clearFilters('oee');renderOEE()">Limpiar</button>
       </div>
       <!-- Gauges -->
+      <div id="cov-note-oee"></div>
       <div id="oee-gauges" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px"></div>
+      <div id="oee-extra-kpis" style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:20px"></div>
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px">
         <div class="chart-card"><div class="section-title">Tendencia OEE</div><div style="height:240px"><canvas id="oee-trend"></canvas></div></div>
         <div class="chart-card"><div class="section-title">OEE por Máquina</div><div style="height:240px"><canvas id="oee-maq"></canvas></div></div>
@@ -2245,9 +2248,53 @@ function buildNcByOrdenByDay(ncRows) {
   return map;
 }
 
+// ── Cobertura de datos por año-mes ──────────────────────────────────────
+// En los primeros meses de captura NO se registraban los paros (ene-feb 2026:
+// 100 y 20 min en TODO el mes) y los No Conformes solo existen desde abril
+// 2026. Sin esta corrección esos meses muestran Disponibilidad/Calidad ≈100%
+// FALSO: no hubo cero paros ni cero NC, simplemente no se anotaban. La regla
+// es por DATOS, no por fechas fijas: un mes tiene cobertura de paros si
+// registró ≥480 min (una jornada) en total; tiene cobertura de NC desde el
+// primer mes con algún NC anotado. Los meses sin cobertura se EXCLUYEN del
+// indicador (muestra '—' si todo el período filtrado carece de cobertura).
+function buildCoverage() {
+  const paroYM = {}, prodYM = new Set();
+  (DATA.prod||[]).forEach(r => {
+    const ym = String(r._fechaKey||'').slice(0,7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;   // ignora fechas mal formadas ("202-07-…")
+    prodYM.add(ym);
+    paroYM[ym] = (paroYM[ym]||0) + (r._paro||0);
+  });
+  DATA.covParo = new Set([...prodYM].filter(ym => (paroYM[ym]||0) >= 480));
+  const ncFirst = (DATA.nc||[]).map(r => String(r._fechaKey||'').slice(0,7))
+    .filter(ym => /^\d{4}-\d{2}$/.test(ym)).sort()[0] || '';
+  DATA.covNC = new Set(ncFirst ? [...prodYM].filter(ym => ym >= ncFirst) : []);
+}
+const _ymOf = r => String(r._fechaKey||'').slice(0,7);
+// Si la detección no encontró NINGÚN mes cubierto (p.ej. hoja NC no cargó),
+// se asume cobertura total para no dejar el dashboard vacío.
+const _covParoRow = r => !DATA.covParo || DATA.covParo.size===0 || DATA.covParo.has(_ymOf(r));
+const _covNCRow   = r => !DATA.covNC   || DATA.covNC.size===0   || DATA.covNC.has(_ymOf(r));
+
+// Nota visible cuando el período filtrado incluye meses sin cobertura.
+function coverageNote(rows) {
+  if (!DATA.covParo) return '';
+  const yms = [...new Set(rows.map(_ymOf).filter(ym => /^\d{4}-\d{2}$/.test(ym)))].sort();
+  const fmtYM = ym => { const [y,m] = ym.split('-'); return MESES_CAP[+m-1] + ' ' + y; };
+  const sinParo = DATA.covParo.size ? yms.filter(ym => !DATA.covParo.has(ym)) : [];
+  const sinNC   = DATA.covNC.size   ? yms.filter(ym => !DATA.covNC.has(ym))   : [];
+  if (!sinParo.length && !sinNC.length) return '';
+  const parts = [];
+  if (sinParo.length) parts.push(`sin registro de paros: <b>${sinParo.map(fmtYM).join(', ')}</b> (excluidos de Disponibilidad y Rendimiento)`);
+  if (sinNC.length)   parts.push(`sin registro de No Conformes: <b>${sinNC.map(fmtYM).join(', ')}</b> (excluidos de Calidad)`);
+  return `<div style="background:rgba(245,158,11,.08);border:1px solid #F59E0B44;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:.74rem;color:#FBBF24;line-height:1.5">
+    <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px"></i>Cobertura de datos — ${parts.join(' · ')}. El OEE de esos meses no es comparable.</div>`;
+}
+
 // % Calidad = (Σ prod_orden - NC_orden) / Σ prod_orden × 100
 // Agrupa por orden para evitar doble conteo de NC al haber múltiples filas por orden.
 function calcCalidad(rows) {
+  rows = rows.filter(_covNCRow);   // meses sin registro de NC no pueden afirmar 100%
   const ordenes = [...new Set(rows.map(r => r._orden).filter(Boolean))];
   let tp=0, tn=0;
   ordenes.forEach(o => {
@@ -2259,9 +2306,10 @@ function calcCalidad(rows) {
   return Math.min(100, Math.max(0, ((tp-tn)/tp)*100));
 }
 
-// % Rendimiento — corregido: undProd / undProg por slot (turno disponible - paros programados)
-// Agrupa por maq+diaTurno+turno igual que el Reporte Compacto.
+// % Rendimiento (Performance OEE) = producción real / producción ideal durante
+// el RUN TIME (turno − TODOS los paros). Agrupa por fecha+maq+turno.
 function calcRendimiento(rows) {
+  rows = rows.filter(_covParoRow);  // sin paros registrados el run-time es ficticio
   const _esProg = rz => /programado/i.test(String(rz||''));
   const _TSEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   const slots = {};
@@ -2324,6 +2372,7 @@ function calcRendimiento(rows) {
 // máquina ese rato, así que sí reduce la disponibilidad real del turno.
 // Tiempo programado por turno: 480 min (T1/2/3, 8h) o 720 min (T4/5, 12h).
 function calcDisponibilidad(rows) {
+  rows = rows.filter(_covParoRow);  // meses sin registro de paros no pueden afirmar 100%
   const TMIN = {'1':480,'2':480,'3':480,'4':720,'5':720};
   const slots = {};
   rows.forEach(r => {
@@ -2391,6 +2440,7 @@ async function loadAll() {
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
     DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay  = buildNcByOrdenByDay(DATA.nc || []);
+    buildCoverage();
 
     setProgress(46, 'Cargando Plan Referencias...');
     await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
@@ -2443,6 +2493,7 @@ async function silentRefresh() {
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
+    buildCoverage();
     await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
     await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
     await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
@@ -2672,6 +2723,8 @@ function renderResumen() {
     kpiCard('Días sin Accidente', accDias!==null?accDias:'—','#F59E0B','Seguridad laboral','fa-solid fa-helmet-safety') +
     kpiCard('Unidades Producidas', fmt(sum(d,'_cant')),'#A78BFA',`${d.length} registros${mesLabel}`,'fa-solid fa-industry') +
     kpiCard('Tiempo Paro', fmt(sum(d,'_paro'))+' min','#EF4444',`${(sum(d,'_paro')/60).toFixed(0)} horas perdidas`,'fa-solid fa-clock');
+  const _covElR = document.getElementById('cov-note-resumen');
+  if (_covElR) _covElR.innerHTML = coverageNote(d);
 
   // ── Semáforo Plan vs Real + Clientes incumplidos ────────────────────────
   const meses = mesSel ? [mesSel] : MESES_CAP;
@@ -3296,6 +3349,51 @@ function renderOEE() {
       <div style="font-size:1.6rem;font-weight:800;color:${g.col};margin-top:4px">${pct(g.val)}</div>
     </div>`).join('');
   gData.forEach(g=>makeGauge(g.id,g.val,g.col));
+  const _covElO = document.getElementById('cov-note-oee');
+  if (_covElO) _covElO.innerHTML = coverageNote(d);
+
+  // ── Indicadores adicionales (derivados de BD Reporte Producción) ────────
+  // MTTR/MTBF/velocidad usan solo meses con cobertura de paros; PPM usa la
+  // misma Calidad ya calculada (cobertura de NC incluida).
+  {
+    const dPar = d.filter(_covParoRow);
+    const eventos = dPar.filter(r => (r._paro||0) > 0).length;
+    const paroTot = dPar.reduce((s,r) => s + (r._paro||0), 0);
+    // Tiempo programado = Σ duración nominal de los slots (fecha|maq|turno), igual que Disponibilidad
+    const _sd = {};
+    dPar.forEach(r => {
+      const k = `${r._fechaKey||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+      _sd[k] = (String(r._turno)==='4'||String(r._turno)==='5') ? 720 : 480;
+    });
+    const progMin = Object.values(_sd).reduce((a,b)=>a+b,0);
+    const runMin  = Math.max(0, progMin - paroTot);
+    const mttr    = eventos>0 ? paroTot/eventos : null;          // min de paro por evento
+    const mtbf    = eventos>0 ? runMin/eventos/60 : null;        // horas de corrida entre paros
+    const udsHora = runMin>0 ? sum(dPar,'_cant')/(runMin/60) : null;
+    // Uso de cavidades = cavidades reales vs teóricas, ponderado por producción
+    let cavN=0, cavD=0;
+    d.forEach(r => {
+      const cr = pNum(r['CAVIDADES']), ct = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0), c = r._cant||0;
+      if (cr>0 && ct>0 && c>0) { cavN += Math.min(cr,ct)*c; cavD += ct*c; }
+    });
+    const usoCav = cavD>0 ? cavN/cavD*100 : null;
+    // Adherencia al ciclo = ciclo estándar vs ciclo real, ponderado por producción
+    let cicN=0, cicD=0;
+    d.forEach(r => {
+      const ce = pNum(r['T. CICLO EST']), cr = pNum(r['T. CICLO REAL'])||pNum(r['CICLO REAL']), c = r._cant||0;
+      if (ce>0 && cr>0 && cr<600 && c>0) { cicN += ce*c; cicD += cr*c; }
+    });
+    const adhCiclo = cicD>0 ? Math.min(150, cicN/cicD*100) : null;
+    const ppm = cal!=null ? Math.round((1 - cal/100)*1e6) : null;
+    const _ek = document.getElementById('oee-extra-kpis');
+    if (_ek) _ek.innerHTML =
+      kpiCard('MTTR', mttr!=null?mttr.toFixed(0)+' min':'—','#EF4444',`${eventos} eventos de paro`,'fa-solid fa-screwdriver-wrench') +
+      kpiCard('MTBF', mtbf!=null?mtbf.toFixed(1)+' h':'—','#06B6D4','corrida media entre paros','fa-solid fa-heart-pulse') +
+      kpiCard('Uso de Cavidades', usoCav!=null?usoCav.toFixed(1)+'%':'—','#8B5CF6','reales vs teóricas del molde','fa-solid fa-border-all') +
+      kpiCard('Adherencia al Ciclo', adhCiclo!=null?adhCiclo.toFixed(1)+'%':'—','#F59E0B','ciclo estándar vs real','fa-solid fa-stopwatch') +
+      kpiCard('No Conformes', ppm!=null?fmt(ppm)+' PPM':'—','#EC4899','partes por millón','fa-solid fa-magnifying-glass-chart') +
+      kpiCard('Velocidad Real', udsHora!=null?fmt(Math.round(udsHora))+' u/h':'—','#10B981','unidades por hora de corrida','fa-solid fa-gauge-high');
+  }
 
   // Trend — aggregate by mes+dia, usando cálculo corregido de Rend y Disp
   const avgArr = arr => { const v=arr.filter(x=>x>0&&x<=100); return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
@@ -3316,7 +3414,8 @@ function renderOEE() {
       const nc = Math.min(dayNcByOrden[o]||0, prod);
       calNum += prod - nc; calDen += prod;
     });
-    day.calValue  = calDen > 0 ? (calNum/calDen)*100 : null;
+    // Sin cobertura de NC en el mes del día → Calidad desconocida, no 100%
+    day.calValue  = (calDen > 0 && day.rows.some(_covNCRow)) ? (calNum/calDen)*100 : null;
     day.rendValue = calcRendimiento(day.rows);
     day.dispValue = calcDisponibilidad(day.rows);
   });
@@ -4298,7 +4397,10 @@ function renderReporteDiario() {
 
   const ncMesLow = fMes.toLowerCase();
   DATA.nc.forEach(r => {
-    const rawMaq = String(r['MÁQUINA'] ?? r['MAQUINA'] ?? '').trim();
+    // _maq primero (derivado en el parseo, robusto): el header de la hoja NC
+    // llega con encoding dañado ("MÃ�QUINA") y el lookup textual nunca coincide,
+    // lo que dejaba NC=0 y Calidad=100% fija en las tarjetas por máquina.
+    const rawMaq = String(r._maq ?? r['MÁQUINA'] ?? r['MAQUINA'] ?? '').trim();
     const maqKey = maqNorm[rawMaq.toLowerCase()];
     if (!rawMaq || !maqKey) return;
     const mes = String(r['MES '] || r['MES'] || '').trim().toLowerCase();
@@ -4329,7 +4431,10 @@ function renderReporteDiario() {
   // ── KPIs por máquina: misma metodología que Reporte Compacto ────────────
   // Construir estructura por máquina desde effRowsRd (ya deduplicado T4/T5)
   const _mRd = {};
-  effRowsRd.forEach(r => {
+  // Solo meses con cobertura de paros: sin paros registrados, Disp/Rend por
+  // máquina saldrían 100% falso (igual que en las funciones núcleo).
+  const _rowsOEERd = effRowsRd.filter(_covParoRow);
+  _rowsOEERd.forEach(r => {
     const maq = String(r._maq||'—');
     if (!_mRd[maq]) _mRd[maq] = {
       maq, rows:[], dtSet:{}, porTurno:{},
@@ -4337,13 +4442,17 @@ function renderReporteDiario() {
     };
     const g = _mRd[maq], t = String(r._turno||''), dia = String(r._fechaKey||r._diaTurno||''); // fecha COMPLETA para dtSet (horas por día real)
     g.rows.push(r);
-    if (!g.porTurno[t]) g.porTurno[t] = {prod:0,paro:0,paroProg:0,paroNoProg:0};
-    g.porTurno[t].prod += pNum(r._cant);
-    g.porTurno[t].paro += pNum(r._paro);
+    // Clave día|turno (no solo turno): el tope de 480/720 min es POR TURNO DE UN
+    // DÍA; agregado por turno sobre un mes entero recortaba paro legítimo
+    // (jul: 17.794 → 5.800 min) e inflaba la Disponibilidad por máquina.
+    const _ptk = dia + '|' + t;
+    if (!g.porTurno[_ptk]) g.porTurno[_ptk] = {prod:0,paro:0,paroProg:0,paroNoProg:0};
+    g.porTurno[_ptk].prod += pNum(r._cant);
+    g.porTurno[_ptk].paro += pNum(r._paro);
     if (pNum(r._paro) > 0) {
       const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-      if (/programado/i.test(rz)) g.porTurno[t].paroProg += pNum(r._paro);
-      else g.porTurno[t].paroNoProg += pNum(r._paro);
+      if (/programado/i.test(rz)) g.porTurno[_ptk].paroProg += pNum(r._paro);
+      else g.porTurno[_ptk].paroNoProg += pNum(r._paro);
     }
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia]||=new Set()).add(t); }
     if (!g.cavTeor)   g.cavTeor   = _cavTeorOf(r);
@@ -4372,9 +4481,10 @@ function renderReporteDiario() {
   // Métricas por máquina (idéntico al Compacto)
   const _mRdArr = Object.values(_mRd);
   _mRdArr.forEach(g => {
-    Object.keys(g.porTurno).forEach(t => {
+    Object.keys(g.porTurno).forEach(k => {
+      const t = k.split('|').pop();   // clave = día|turno → tope por turno de CADA día
       const mp=(t==='4'||t==='5')?720:480;
-      if(g.porTurno[t].paro>mp){const sc=mp/g.porTurno[t].paro;g.porTurno[t].paroProg*=sc;g.porTurno[t].paroNoProg*=sc;g.porTurno[t].paro=mp;}
+      if(g.porTurno[k].paro>mp){const sc=mp/g.porTurno[k].paro;g.porTurno[k].paroProg*=sc;g.porTurno[k].paroNoProg*=sc;g.porTurno[k].paro=mp;}
     });
     g.paro       = Object.values(g.porTurno).reduce((s,v)=>s+v.paro,0);
     g.paroProg   = Object.values(g.porTurno).reduce((s,v)=>s+v.paroProg,0);
@@ -4402,7 +4512,8 @@ function renderReporteDiario() {
     const _undTeoRunRd=(cEst>0&&_cavTd>0&&_runSegRd>0)?Math.round((_runSegRd/cEst)*_cavTd):0;
     g.rend    = _undTeoRunRd>0?Math.min(100,g.undProd/_undTeoRunRd*100):null;
     const nc_rd = oeeByMaq[g.maq]?._nc||0;
-    g.cal = g.undProd>0 ? Math.min(100,Math.max(0,(g.undProd-nc_rd)/g.undProd*100)) : null;
+    // Calidad solo si el período tiene cobertura de NC (si no, '—' en vez de 100%)
+    g.cal = (g.undProd>0 && g.rows.some(_covNCRow)) ? Math.min(100,Math.max(0,(g.undProd-nc_rd)/g.undProd*100)) : null;
     g.oee = (g.disp!=null&&g.rend!=null&&g.cal!=null)?(g.disp*g.rend*g.cal)/10000:null;
   });
   // Resumen: mismos promedios que Compacto
@@ -4429,7 +4540,7 @@ function renderReporteDiario() {
   const infoProm = `T.Perdido: ${_totParo.toFixed(0)} min · Planeadas: ${Math.round(totUndTeo).toLocaleString()} · ${_woRd.length} máq.`;
   const elT = document.getElementById('rd-oee-tiempo');
   const elU = document.getElementById('rd-oee-unid');
-  if (elT) elT.innerHTML = _oeeCard('OEE Global del Período', toF(_oGlob), toF(_dGlob), toF(_rGlob), toF(_cGlob), infoGlob);
+  if (elT) elT.innerHTML = coverageNote(rows) + _oeeCard('OEE Global del Período', toF(_oGlob), toF(_dGlob), toF(_rGlob), toF(_cGlob), infoGlob);
   if (elU) elU.innerHTML = _oeeCard('Prom. OEE por Máquina', _oeePromMaq, _dispProm, _rendProm, _calProm, infoProm);
 
   let totalProg = 0, totalProd = 0;
@@ -4859,6 +4970,11 @@ function renderReporteCompacto() {
   }
   const fKey   = (diaEl?.value || (fechas.length?fechas[fechas.length-1]:'')).trim();
   const fTurno = (document.getElementById('rc-f-turno')?.value || '').trim();
+  // Cobertura de datos del mes del día seleccionado: días de meses sin registro
+  // de paros/NC muestran '—' en vez de un 100% falso.
+  const _ymRc = String(fKey).slice(0,7);
+  const _cvParoRc = !DATA.covParo || !DATA.covParo.size || DATA.covParo.has(_ymRc);
+  const _cvNCRc   = !DATA.covNC   || !DATA.covNC.size   || DATA.covNC.has(_ymRc);
 
   // Filtrar a UN día específico (fecha completa) + turno opcional
   const rows = (DATA.prod||[]).filter(r =>
@@ -5011,7 +5127,7 @@ function renderReporteCompacto() {
     // #4 DISPONIBILIDAD = (Tiempo Programado − Paro TOTAL) ÷ Tiempo Programado.
     // Todo paro (programado o no) cuenta: un paro programado igual detiene la
     // máquina, así que sí reduce la disponibilidad real del turno.
-    g.disp = g.tProg>0 ? Math.min(100, Math.max(0, (g.tProg-g.paro)/g.tProg*100)) : null;
+    g.disp = (_cvParoRc && g.tProg>0) ? Math.min(100, Math.max(0, (g.tProg-g.paro)/g.tProg*100)) : null;
 
     // #5 RENDIMIENTO (Performance OEE) = producción ÷ producción ideal durante
     //    el RUN TIME (turno − TODOS los paros). Distinto de undProg (plan): el
@@ -5019,13 +5135,13 @@ function renderReporteCompacto() {
     //    sería doble castigo y hundiría el OEE. Mide velocidad mientras corrió.
     const runSeg  = g.horas*3600 - Math.min((g.paro||0)*60, g.horas*3600); // paro topado al tiempo programado
     const undTeoRun = (cEst>0 && cavT>0 && runSeg>0) ? Math.round((runSeg/cEst)*cavT) : 0;
-    g.rend = undTeoRun>0 ? Math.min(100, g.undProd/undTeoRun*100) : null;
+    g.rend = (_cvParoRc && undTeoRun>0) ? Math.min(100, g.undProd/undTeoRun*100) : null;
 
     // #6 CALIDAD = (producidas − NC) ÷ producidas — misma fórmula que calcCalidad.
     //    NC = el reportado por ESTA máquina ese día (respeta máquina, no orden).
     const nc = ncByMaqDia[g.maq] || 0;
     g.nc  = nc;
-    g.cal = g.undProd>0 ? Math.min(100, Math.max(0, (g.undProd-nc)/g.undProd*100)) : null;
+    g.cal = (_cvNCRc && g.undProd>0) ? Math.min(100, Math.max(0, (g.undProd-nc)/g.undProd*100)) : null;
 
     // #7 OEE = Disponibilidad × Rendimiento × Calidad
     g.oee = (g.disp!=null && g.rend!=null && g.cal!=null) ? (g.disp*g.rend*g.cal)/10000 : null;
