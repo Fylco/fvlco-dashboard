@@ -1172,6 +1172,96 @@ const BD_PRODUCTOS_CSV = `https://docs.google.com/spreadsheets/d/${_SID2}/export
 const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + encodeURIComponent(u) : u;
 
 // =======================================================
+// 🔒 ACCESO — clave validada EN EL SERVIDOR (backend Proxy.gs)
+//   La clave NO está en este archivo: vive en las Propiedades del Script
+//   del backend. Aquí solo va la URL pública del Web App (no es secreta).
+//   → Pega abajo la URL /exec que te dio el deploy de Proxy.gs.
+// =======================================================
+const API_URL_DEFAULT = ''; // ej: 'https://script.google.com/macros/s/AKfy.../exec'
+function apiUrl(){ return (localStorage.getItem('fvlco_api_url') || API_URL_DEFAULT || '').trim(); }
+
+// Trae un CSV a través del proxy autenticado. Devuelve un objeto
+// {ok, text()} compatible con los llamados existentes (res.ok / res.text()).
+async function pfetch(url){
+  const api = apiUrl();
+  if(!api){ return fetch(proxy(url), { cache:'no-store' }); } // modo dev sin backend
+  const pw = sessionStorage.getItem('fvlco_pw') || '';
+  let body;
+  try{
+    const r = await fetch(api, { method:'POST', body: JSON.stringify({ action:'fetch', pw, url }) });
+    body = await r.text();
+  }catch(e){ throw new Error('Sin conexión con el servidor de datos.'); }
+  if(body.indexOf('__FVLCO_AUTH_FAIL__') === 0){
+    sessionStorage.removeItem('fvlco_pw');
+    showLogin('La sesión expiró o la clave es incorrecta. Ingresa de nuevo.');
+    throw new Error('auth');
+  }
+  if(body.indexOf('__FVLCO_ERR__') === 0){ throw new Error(body); }
+  return { ok:true, status:200, text: async ()=> body };
+}
+
+async function apiLogin(pw){
+  const api = apiUrl();
+  if(!api) return false;
+  try{
+    const r = await fetch(api, { method:'POST', body: JSON.stringify({ action:'login', pw }) });
+    const t = await r.text();
+    return t.indexOf('__FVLCO_AUTH_FAIL__') !== 0 && t.indexOf('__FVLCO_ERR__') !== 0;
+  }catch(e){ return false; }
+}
+
+function showLogin(msg){
+  const existing = document.getElementById('fvlco-login');
+  if(existing){ if(msg){ const em=document.getElementById('fvlco-login-err'); if(em) em.textContent=msg; } return; }
+  const ov = document.getElementById('overlay'); if(ov) ov.style.display='none';
+  const o = document.createElement('div');
+  o.id = 'fvlco-login';
+  o.style.cssText = 'position:fixed;inset:0;z-index:999999;background:#0B0F19;display:flex;align-items:center;justify-content:center;font-family:Tahoma,Arial,sans-serif';
+  o.innerHTML = `
+    <div style="background:#1F2937;border:1px solid #374151;border-radius:16px;padding:40px 36px;max-width:360px;width:90%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.6)">
+      <div style="font-size:2.5rem;margin-bottom:10px">🔒</div>
+      <div style="font-size:1.15rem;font-weight:700;color:#EEEEEE;margin-bottom:4px">FVLco · Acceso</div>
+      <div style="font-size:.8rem;color:#6B7280;margin-bottom:22px">Ingresa la clave para ver el tablero</div>
+      <input id="fvlco-login-pw" type="password" placeholder="Clave" autocomplete="current-password"
+        style="width:100%;background:#111827;border:1px solid #374151;border-radius:8px;padding:12px 16px;color:#EEEEEE;font-size:.95rem;font-family:inherit;outline:none;box-sizing:border-box;text-align:center;letter-spacing:.15em"/>
+      <div id="fvlco-login-err" style="color:#EF4444;font-size:.75rem;margin-top:8px;min-height:18px"></div>
+      <button id="fvlco-login-btn" style="width:100%;margin-top:14px;background:#2563EB;border:none;color:#fff;border-radius:8px;padding:12px;cursor:pointer;font-family:inherit;font-size:.9rem;font-weight:600">Ingresar</button>
+    </div>`;
+  document.body.appendChild(o);
+  const inp = document.getElementById('fvlco-login-pw');
+  const btn = document.getElementById('fvlco-login-btn');
+  const err = document.getElementById('fvlco-login-err');
+  if(msg) err.textContent = msg;
+  const submit = async ()=>{
+    const pw = inp.value; if(!pw) return;
+    btn.disabled=true; btn.textContent='Verificando…'; err.textContent='';
+    const ok = await apiLogin(pw);
+    if(ok){ sessionStorage.setItem('fvlco_pw', pw); o.remove(); startApp(); }
+    else { btn.disabled=false; btn.textContent='Ingresar'; inp.value=''; err.textContent='Clave incorrecta.'; inp.focus(); }
+  };
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
+  btn.addEventListener('click', submit);
+  setTimeout(()=>inp.focus(), 100);
+}
+
+let _appStarted = false;
+function startApp(){
+  if(_appStarted) return; _appStarted = true;
+  const ov = document.getElementById('overlay'); if(ov) ov.style.display='';
+  loadAll();
+  setTimeout(()=>loadPlanData().then(()=>{
+    const sel=document.getElementById('po-mes-sel');
+    if(sel)sel.value=new Date().getMonth()+1;
+  }).catch(e=>console.warn('Plan preload:',e)),2000);
+}
+
+function bootWithAuth(){
+  if(!apiUrl()){ console.warn('FVLco: sin API_URL_DEFAULT → modo dev (acceso directo a sheets públicos).'); startApp(); return; }
+  if(sessionStorage.getItem('fvlco_pw')){ startApp(); return; }
+  showLogin();
+}
+
+// =======================================================
 // RECURSOS — Máquinas y Personal (datos del sheet Restricciones)
 // =======================================================
 const RECURSOS_DEFAULT = {
@@ -1892,7 +1982,7 @@ async function fetchCSV(url, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const bust = `&_t=${Date.now()}_${attempt}`;
-      const res = await fetch(proxy(url + bust), { cache: 'no-store' });
+      const res = await pfetch(url + bust);
       if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
       return Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
     } catch (e) {
@@ -1910,7 +2000,7 @@ let _bdProdLoaded = false;
 async function loadBdProductos() {
   if (_bdProdLoaded) return;
   try {
-    const res = await fetch(proxy(BD_PRODUCTOS_CSV + `&_t=${Date.now()}`), { cache: 'no-store' });
+    const res = await pfetch(BD_PRODUCTOS_CSV + `&_t=${Date.now()}`);
     if (!res.ok) return;
     const txt = await res.text();
     const rows = Papa.parse(txt, { header: false, skipEmptyLines: true }).data;
@@ -1929,7 +2019,7 @@ async function loadBdProductos() {
 // Cada bloque: Fecha / Referencia / Cantidad. Se parsea sin header.
 async function loadMaquilas() {
   try {
-    const res = await fetch(proxy(MAQUILAS_CSV + `&_t=${Date.now()}`), { cache: 'no-store' });
+    const res = await pfetch(MAQUILAS_CSV + `&_t=${Date.now()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const rows = Papa.parse(await res.text(), { header: false, skipEmptyLines: false }).data;
     DATA.maquilas = parseMaquilas(rows);
@@ -2176,7 +2266,7 @@ function calcRendimiento(rows) {
   const _TSEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   const slots = {};
   rows.forEach(r => {
-    const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+    const sk = `${r._fechaKey||r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`; // fecha COMPLETA (no solo día): evita colapsar el mismo día de meses distintos en un solo slot
     if (!slots[sk]) slots[sk] = {undProd:0, cicloEst:0, cavTeor:0, paroProgSeg:0, paroTotal:0, turno:String(r._turno||'')};
     const s = slots[sk];
     s.undProd += r._cant||0;
@@ -2209,7 +2299,12 @@ function calcRendimiento(rows) {
       // ya lo penaliza Disponibilidad, y volver a restarlo aquí sería DOBLE
       // castigo (hunde el OEE). Un paro imprevisto reduce Disponibilidad, no
       // Rendimiento; el Rendimiento solo mide la velocidad mientras produjo.
-      const runSeg = Math.max(0, (_TSEG[s.turno]||28800) - s.paroTotal*60);
+      // Cap del paro a la duración del turno (igual que Disponibilidad): un paro
+      // sobre-contado o duplicado en varias filas del mismo slot NO puede volver
+      // negativo el run time ni disparar la meta teórica. Sin este tope, slots con
+      // paro > turno hundían el run time y disparaban el Rendimiento (>100% → clamp).
+      const _turnoSeg = _TSEG[s.turno]||28800;
+      const runSeg = _turnoSeg - Math.min(s.paroTotal*60, _turnoSeg);
       if (runSeg > 0) {
         totProd += s.undProd;
         totTeo  += Math.round((runSeg / s.cicloEst) * cavEff);
@@ -2232,7 +2327,7 @@ function calcDisponibilidad(rows) {
   const TMIN = {'1':480,'2':480,'3':480,'4':720,'5':720};
   const slots = {};
   rows.forEach(r => {
-    const sk = `${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
+    const sk = `${r._fechaKey||r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`; // fecha COMPLETA (no solo día): evita colapsar el mismo día de meses distintos en un solo slot
     if (!slots[sk]) slots[sk] = { paro:0, turno:String(r._turno||'') };
     slots[sk].paro += r._paro||0;
   });
@@ -3570,7 +3665,7 @@ function renderParos() {
     kpiCard('Tiempo Total Paro',fmt(totalMin)+' min','#EF4444',`${(totalMin/60).toFixed(0)} horas`,'fa-solid fa-pause')+
     kpiCard('Eventos de Paro',withParo.length,'#F59E0B','Registros con paro','fa-solid fa-triangle-exclamation')+
     kpiCard('Paro Promedio',fmt(withParo.length?totalMin/withParo.length:0,1)+' min','#F97316','Por evento','fa-solid fa-hourglass')+
-    kpiCard('Tiempo Procesado',fmt(sum(d,'TIEMPO CAJA MIN'))+' min','#8B5CF6','Total ciclos','fa-solid fa-industry');
+    kpiCard('Tiempo Procesado',fmt(sum(d.filter(r=>r['TIEMPO CAJA MIN']<720),'TIEMPO CAJA MIN'))+' min','#8B5CF6','Total ciclos','fa-solid fa-industry'); // <720min: excluye valores basura del "primer reporte sin referencia" (hasta 66M min)
 
   // Pareto por razón
   const razon={};
@@ -4064,6 +4159,18 @@ function _rdFilter(rows, fMes, fDia, fTurno, fMaq) {
 }
 
 function renderReporteDiario() {
+  // Default: último mes con datos. El desglose por día usa claves día|máquina|turno
+  // (sin mes); si se ven varios meses juntos, el mismo número de día de meses
+  // distintos colapsaría en un slot. Acotar a un mes lo evita (igual que el
+  // Reporte Compacto arranca en el último día).
+  const _mesSelEl = document.getElementById('rd-f-mes');
+  if (_mesSelEl && !_mesSelEl.dataset.def) {
+    _mesSelEl.dataset.def = '1';
+    const _last = (DATA.prod||[]).map(r=>r._fechaKey).filter(Boolean).sort().pop();
+    const _lastRow = _last ? (DATA.prod||[]).find(r=>r._fechaKey===_last) : null;
+    const _mn = _lastRow && _lastRow._mesTurno ? String(_lastRow._mesTurno).toLowerCase() : '';
+    if (_mn) [..._mesSelEl.options].forEach(o => { if (o.text.toLowerCase() === _mn) _mesSelEl.value = o.value; });
+  }
   const fMes   = (document.getElementById('rd-f-mes')?.value   || '').trim();
   const fDia   = (document.getElementById('rd-f-dia')?.value   || '').trim();
   const fTurno = (document.getElementById('rd-f-turno')?.value || '').trim();
@@ -4096,9 +4203,9 @@ function renderReporteDiario() {
   //   • Paro CORRECTIVO / no programado → NO se descuenta; el turno permanece en 8h
   //     y el gap (programado − real) muestra las unidades perdidas por ese paro imprevisto.
   const esProgramado = razon => /programado/i.test(String(razon || ''));
-  const slotCap = {}; // key: dia|maq|turno → { undProg, cantTotal, paroProgSeg }
+  const slotCap = {}; // key: FECHA|maq|turno → { undProg, cantTotal, paroProgSeg }
   rows.forEach(r => {
-    const dia   = r._diaTurno || '?';
+    const dia   = r._fechaKey || r._diaTurno || '?';   // fecha COMPLETA: evita colapsar el mismo día de meses distintos
     const maq   = String(r._maq || '?');
     const turno = String(r._turno || '?');
     const sKey  = `${dia}|${maq}|${turno}`;
@@ -4112,7 +4219,7 @@ function renderReporteDiario() {
   });
   // Segunda pasada: calcular undProg una vez que paroProgSeg está completo por slot
   rows.forEach(r => {
-    const dia   = r._diaTurno || '?';
+    const dia   = r._fechaKey || r._diaTurno || '?';   // fecha COMPLETA (misma clave que la 1ª pasada)
     const maq   = String(r._maq || '?');
     const turno = String(r._turno || '?');
     const sKey  = `${dia}|${maq}|${turno}`;
@@ -4134,12 +4241,13 @@ function renderReporteDiario() {
   // undProg se distribuye proporcionalmente al cant producido dentro del slot
   const groups = {};
   rows.forEach(r => {
-    const dia   = r._diaTurno || '?';
+    const fk    = r._fechaKey || r._diaTurno || '?';   // fecha COMPLETA para la clave (no mezcla meses)
+    const dia   = r._diaTurno || '?';                  // número de día solo para mostrar "Día N"
     const maq   = String(r._maq || '?');
     const turno = String(r._turno || '?');
     const prod  = r._prod || '?';
-    const key   = `${dia}|${maq}|${turno}|${prod}`;
-    if (!groups[key]) groups[key] = { dia, maq, turno, prod, est:0, cavTeor:1, cavReal:1, undProg:0, cantSum:0 };
+    const key   = `${fk}|${maq}|${turno}|${prod}`;
+    if (!groups[key]) groups[key] = { fk, dia, maq, turno, prod, est:0, cavTeor:1, cavReal:1, undProg:0, cantSum:0 };
     const g = groups[key];
     if (!g.est) {
       const est = pNum(r['T. CICLO EST']);
@@ -4153,7 +4261,7 @@ function renderReporteDiario() {
   });
   // Asignar undProg proporcional al slot del turno
   Object.values(groups).forEach(g => {
-    const sKey = `${g.dia}|${g.maq}|${g.turno}`;
+    const sKey = `${g.fk}|${g.maq}|${g.turno}`;
     const s    = slotCap[sKey];
     if (!s || !s.undProg) { g.undProg = g.cantSum; return; }
     const frac   = s.cantTotal > 0 ? g.cantSum / s.cantTotal : 1;
@@ -4164,7 +4272,7 @@ function renderReporteDiario() {
   const oeeByMaq = {};
   rows.forEach(r => {
     const maq   = String(r._maq || '?');
-    const dia   = String(r._diaTurno || '');
+    const dia   = String(r._fechaKey || r._diaTurno || '');   // fecha COMPLETA: cuenta cada día real (no colapsa meses en las horas de turno)
     const turno = String(r._turno || '');
     if (!oeeByMaq[maq]) oeeByMaq[maq] = { dtMap:{}, hParo:0, cant:0, segReal:0, _nc:0 };
     const m = oeeByMaq[maq];
@@ -4227,7 +4335,7 @@ function renderReporteDiario() {
       maq, rows:[], dtSet:{}, porTurno:{},
       cavTeor:0, cicloEst:0, cavReal:0, cicloReal:0, undProd:0, paroProg:0, paroNoProg:0
     };
-    const g = _mRd[maq], t = String(r._turno||''), dia = String(r._diaTurno||'');
+    const g = _mRd[maq], t = String(r._turno||''), dia = String(r._fechaKey||r._diaTurno||''); // fecha COMPLETA para dtSet (horas por día real)
     g.rows.push(r);
     if (!g.porTurno[t]) g.porTurno[t] = {prod:0,paro:0,paroProg:0,paroNoProg:0};
     g.porTurno[t].prod += pNum(r._cant);
@@ -4248,14 +4356,14 @@ function renderReporteDiario() {
   const _scRd = {};
   const _TSEG2 = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   effRowsRd.forEach(r => {
-    const sk = `${r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
+    const sk = `${r._fechaKey||r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
     if (!_scRd[sk]) _scRd[sk] = {undProg:0,cantTotal:0,paroProgSeg:0};
     _scRd[sk].cantTotal += pNum(r._cant);
     if (/programado/i.test(String(r['RAZON PARO']||r['RAZÓN PARO']||''))) _scRd[sk].paroProgSeg += pNum(r._paro)*60;
   });
   effRowsRd.forEach(r => {
     const maq=String(r._maq||'?'), turno=String(r._turno||'?');
-    const sk=`${r._diaTurno||'?'}|${maq}|${turno}`, s=_scRd[sk];
+    const sk=`${r._fechaKey||r._diaTurno||'?'}|${maq}|${turno}`, s=_scRd[sk];
     if (!s.undProg && maq!=='?') {
       const est=pNum(r['T. CICLO EST']);
       if (est>0) s.undProg=Math.round((Math.max((_TSEG2[turno]||28800)-(s.paroProgSeg||0),0)/est)*_cavTeorOf(r));
@@ -4290,7 +4398,7 @@ function renderReporteDiario() {
     // RENDIMIENTO (Performance OEE) = producción ÷ ideal durante RUN TIME (turno
     // − TODOS los paros). No usa undProg (meta de plan) para no penalizar dos
     // veces el tiempo perdido (eso ya lo hace Disponibilidad) → evita OEE bajo.
-    const _runSegRd=Math.max(0,g.horas*3600-(g.paro||0)*60);
+    const _runSegRd=g.horas*3600-Math.min((g.paro||0)*60,g.horas*3600); // paro topado al tiempo programado
     const _undTeoRunRd=(cEst>0&&_cavTd>0&&_runSegRd>0)?Math.round((_runSegRd/cEst)*_cavTd):0;
     g.rend    = _undTeoRunRd>0?Math.min(100,g.undProd/_undTeoRunRd*100):null;
     const nc_rd = oeeByMaq[g.maq]?._nc||0;
@@ -4327,7 +4435,7 @@ function renderReporteDiario() {
   let totalProg = 0, totalProd = 0;
   const sortedKeys = Object.keys(groups).sort((a,b) => {
     const pa = a.split('|'), pb = b.split('|');
-    return pa[1].localeCompare(pb[1]) || pa[2].localeCompare(pb[2]) || Number(pa[0])-Number(pb[0]) || pa[3].localeCompare(pb[3]);
+    return pa[1].localeCompare(pb[1]) || pa[2].localeCompare(pb[2]) || pa[0].localeCompare(pb[0]) || pa[3].localeCompare(pb[3]);
   });
 
   let bodyRows = '';
@@ -4909,7 +5017,7 @@ function renderReporteCompacto() {
     //    el RUN TIME (turno − TODOS los paros). Distinto de undProg (plan): el
     //    tiempo perdido ya lo penaliza Disponibilidad, restarlo otra vez aquí
     //    sería doble castigo y hundiría el OEE. Mide velocidad mientras corrió.
-    const runSeg  = Math.max(0, g.horas*3600 - (g.paro||0)*60);
+    const runSeg  = g.horas*3600 - Math.min((g.paro||0)*60, g.horas*3600); // paro topado al tiempo programado
     const undTeoRun = (cEst>0 && cavT>0 && runSeg>0) ? Math.round((runSeg/cEst)*cavT) : 0;
     g.rend = undTeoRun>0 ? Math.min(100, g.undProd/undTeoRun*100) : null;
 
@@ -5206,7 +5314,9 @@ const SECTION_RENDERS = {
   paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, maquilas:renderMaquilas, descripcion:renderDescripcion
 };
 // Secciones protegidas con clave
-const PROTECTED = { costos: 'fvlco2026', forecast: 'fvlco2026' };
+// Toda la app queda tras el login del servidor (ver showLogin/bootWithAuth),
+// así que ya NO se guarda ninguna clave por sección en este archivo.
+const PROTECTED = {};
 const UNLOCKED  = new Set();
 
 function showSection(id) {
@@ -5886,7 +5996,11 @@ function renderForecast() {
 // =======================================================
 // FORECAST DE VENTAS — funciones fv* (integradas desde forecast.html)
 // =======================================================
-const FV_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ4-F6K4w3h8-Q_ugbDyaeApNv6KYj0BbwNXq5SVAbVbheJP49jYKQB9EPJ9h5NO6_XJizXaI1YsRxR/pub?gid=999968463&single=true&output=csv';
+// Pedidos para el forecast. Antes usaba una URL "publicada en la web"
+// (/d/e/2PACX…) que dejará de servir al hacer el sheet privado. Ahora
+// apunta al libro real (_SID2, mismo gid) y va por el proxy autenticado.
+// ⚠ VERIFICAR: confirmar que este gid corresponde a la hoja de pedidos.
+const FV_CSV = 'https://docs.google.com/spreadsheets/d/1vZTs6xImawkKwiWEPmFaY4y6LrVRKrMaAHKuCz0dy98/export?format=csv&gid=999968463';
 const FV_COLORS = { actual:'#e2e8f0', sma:'#38bdf8', wma:'#a78bfa', reg:'#34d399', exp:'#fb923c', holt:'#f87171' };
 const FV_MODEL_NAMES = { sma:'P. Móvil Simple', wma:'P. Móvil Ponderado', reg:'Regresión Lineal', exp:'Suav. Exponencial', holt:'Holt (Tendencia)' };
 let fvCharts = {};
@@ -6334,7 +6448,7 @@ async function loadPlanData() {
   const load = async (key, withHeader) => {
     try {
       const url = PLAN_SHEETS[key] + '&_t=' + Date.now();
-      const res = await fetch(proxy(url), { cache:'no-store' });
+      const res = await pfetch(url);
       if (!res.ok) return;
       const txt = await res.text();
       PLAN_DATA[key] = Papa.parse(txt, { header: withHeader, skipEmptyLines: true }).data;
@@ -6357,7 +6471,7 @@ async function sincronizarSheetInv() {
   btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-rotate fa-spin"></i> Sincronizando...';
   try {
     const url = PLAN_SHEETS.inventarioMP + '&_t=' + Date.now();
-    const res = await fetch(proxy(url), { cache:'no-store' });
+    const res = await pfetch(url);
     if (res.ok) {
       const d = Papa.parse(await res.text(), { header:true, skipEmptyLines:true }).data;
       const local = getLocalMovs();
@@ -6577,7 +6691,7 @@ async function loadCapacidadMensual(force) {
   let rows = null;
   for (const u of CAP_URLS) {
     try {
-      const res = await fetch(proxy(u + '&_t=' + Date.now()), { cache:'no-store' });
+      const res = await pfetch(u + '&_t=' + Date.now());
       if (!res.ok) continue;
       const txt = await res.text();
       if (txt.trim().startsWith('<')) continue; // HTML de error
@@ -6803,7 +6917,7 @@ const CAP_HIST = { rows: [], loaded: false };
 async function capLoadHistorico(force) {
   if (CAP_HIST.loaded && !force) { capRenderHistorico(); return; }
   try {
-    const res = await fetch(proxy(CAP_HIST_URL + '&_t=' + Date.now()), { cache:'no-store' });
+    const res = await pfetch(CAP_HIST_URL + '&_t=' + Date.now());
     if (res.ok) {
       const txt = await res.text();
       if (!txt.trim().startsWith('<')) {
@@ -7104,16 +7218,11 @@ window.showSection=function(id){
   }
 };
 
-// Preload plan data in background
-setTimeout(()=>loadPlanData().then(()=>{
-  const sel=document.getElementById('po-mes-sel');
-  if(sel)sel.value=new Date().getMonth()+1;
-}).catch(e=>console.warn('Plan preload:',e)),2000);
-
 // =======================================================
-// INIT
+// INIT — la carga real (loadAll + preload) ocurre dentro de startApp(),
+// que solo se ejecuta tras validar la clave contra el servidor.
 // =======================================================
-loadAll();
+bootWithAuth();
 // Auto-refresh desactivado — actualización manual con el botón "Actualizar"
 // Aplicar color inicial al nav-item activo por defecto
 (function(){
