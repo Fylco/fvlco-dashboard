@@ -2258,17 +2258,34 @@ function buildNcByOrdenByDay(ncRows) {
 // primer mes con algún NC anotado. Los meses sin cobertura se EXCLUYEN del
 // indicador (muestra '—' si todo el período filtrado carece de cobertura).
 function buildCoverage() {
-  const paroYM = {}, prodYM = new Set();
+  const paroYM = {}, prodByYM = {}, prodYM = new Set();
   (DATA.prod||[]).forEach(r => {
     const ym = String(r._fechaKey||'').slice(0,7);
     if (!/^\d{4}-\d{2}$/.test(ym)) return;   // ignora fechas mal formadas ("202-07-…")
     prodYM.add(ym);
-    paroYM[ym] = (paroYM[ym]||0) + (r._paro||0);
+    paroYM[ym]   = (paroYM[ym]||0)   + (r._paro||0);
+    prodByYM[ym] = (prodByYM[ym]||0) + (r._cant||0);
   });
   DATA.covParo = new Set([...prodYM].filter(ym => (paroYM[ym]||0) >= 480));
+  DATA.prodByYM = prodByYM;
   const ncFirst = (DATA.nc||[]).map(r => String(r._fechaKey||'').slice(0,7))
     .filter(ym => /^\d{4}-\d{2}$/.test(ym)).sort()[0] || '';
   DATA.covNC = new Set(ncFirst ? [...prodYM].filter(ym => ym >= ncFirst) : []);
+  // NC SIN ORDEN (p.ej. "REPROCESO"): producción retenida por Calidad en revisión
+  // POSTERIOR (al día siguiente, ya almacenada) porque no cumple parámetros de
+  // aceptación del cliente. No trae ORDEN ni máquina productiva, así que no
+  // entra al cruce por orden de calcCalidad → se acumula por año-mes para
+  // repartirla proporcional a la producción del período filtrado.
+  const sinOrden = {};
+  (DATA.nc||[]).forEach(r => {
+    if (r._orden) return;
+    const nc = pNum(r['CANTIDAD NC']);
+    if (!(nc > 0)) return;
+    const ym = String(r._fechaKey||'').slice(0,7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    sinOrden[ym] = (sinOrden[ym]||0) + nc;
+  });
+  DATA.ncSinOrdenByYM = sinOrden;
 }
 const _ymOf = r => String(r._fechaKey||'').slice(0,7);
 // Si la detección no encontró NINGÚN mes cubierto (p.ej. hoja NC no cargó),
@@ -2303,6 +2320,22 @@ function calcCalidad(rows) {
     tp += prod; tn += nc;
   });
   if (tp <= 0) return null;
+  // NC sin orden (REPROCESO: retención de Calidad en revisión posterior, ya
+  // almacenado) — sin orden ni máquina no se puede cruzar directo; se asigna
+  // al período proporcional a la parte de la producción del mes que cae en el
+  // filtro actual (filtro de mes completo → todo el NC del mes; filtro de una
+  // máquina/día → solo su fracción de la producción del mes).
+  if (DATA.ncSinOrdenByYM) {
+    const prodFiltYm = {};
+    rows.forEach(r => {
+      const ym = _ymOf(r);
+      if (/^\d{4}-\d{2}$/.test(ym)) prodFiltYm[ym] = (prodFiltYm[ym]||0) + (r._cant||0);
+    });
+    Object.entries(prodFiltYm).forEach(([ym, p]) => {
+      const ncYm = DATA.ncSinOrdenByYM[ym]||0, totYm = (DATA.prodByYM||{})[ym]||0;
+      if (ncYm > 0 && totYm > 0) tn += ncYm * (p/totYm);
+    });
+  }
   return Math.min(100, Math.max(0, ((tp-tn)/tp)*100));
 }
 
@@ -3414,8 +3447,15 @@ function renderOEE() {
       const nc = Math.min(dayNcByOrden[o]||0, prod);
       calNum += prod - nc; calDen += prod;
     });
+    // NC sin orden (REPROCESO): fracción del mes proporcional a la producción del día
+    if (DATA.ncSinOrdenByYM && calDen > 0) {
+      const ym = _ymOf(day.rows[0]||{});
+      const ncYm = DATA.ncSinOrdenByYM[ym]||0, totYm = (DATA.prodByYM||{})[ym]||0;
+      const dayProd = day.rows.reduce((s,r)=>s+(r._cant||0),0);
+      if (ncYm > 0 && totYm > 0) calNum -= ncYm * (dayProd/totYm);
+    }
     // Sin cobertura de NC en el mes del día → Calidad desconocida, no 100%
-    day.calValue  = (calDen > 0 && day.rows.some(_covNCRow)) ? (calNum/calDen)*100 : null;
+    day.calValue  = (calDen > 0 && day.rows.some(_covNCRow)) ? Math.max(0,(calNum/calDen))*100 : null;
     day.rendValue = calcRendimiento(day.rows);
     day.dispValue = calcDisponibilidad(day.rows);
   });
