@@ -369,6 +369,22 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div class="section-title">Detalle por Máquina</div>
         <table class="tbl" id="oee-tbl"></table>
       </div>
+      <!-- Glosario de indicadores -->
+      <div class="chart-card" style="margin-top:18px">
+        <div class="section-title"><i class="fa-solid fa-book-open" style="margin-right:8px;color:#8B5CF6"></i>¿Qué significa cada indicador?</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px 24px;font-size:.78rem;line-height:1.55;color:#D1D5DB">
+          <div><b style="color:#8B5CF6">OEE</b> (Eficiencia Global del Equipo) — El indicador maestro: <b>Disponibilidad × Rendimiento × Calidad</b>. Dice qué porcentaje del tiempo programado se convirtió en producto bueno a la velocidad ideal. Un OEE de 60% significa que se aprovechó el 60% del potencial de la planta. Clase mundial: ≥ 85%.</div>
+          <div><b style="color:#3B82F6">Disponibilidad</b> — Del tiempo programado para producir, cuánto estuvo la máquina realmente operando. Los paros (daños, alistamientos, falta de material) la reducen. Fórmula: (tiempo programado − paros) ÷ tiempo programado. Meta: ≥ 90%.</div>
+          <div><b style="color:#10B981">Rendimiento</b> — Mientras la máquina estuvo operando, qué tan cerca trabajó de su velocidad ideal (ciclo estándar × cavidades del molde). Ciclos lentos y microparadas lo reducen. Fórmula: producción real ÷ producción ideal del tiempo de operación. Meta: ≥ 85%.</div>
+          <div><b style="color:#F59E0B">Calidad</b> — De todo lo producido, qué porcentaje salió bueno a la primera. Los No Conformes y el material retenido para REPROCESO la reducen. Fórmula: (producido − no conforme) ÷ producido. Meta: ≥ 99%.</div>
+          <div><b style="color:#EF4444">MTTR</b> (Tiempo Medio de Reparación) — Cuando ocurre un paro, cuántos minutos tarda en promedio resolverse y volver a producir. Entre más bajo, mejor: indica mantenimiento y respuesta ágiles.</div>
+          <div><b style="color:#06B6D4">MTBF</b> (Tiempo Medio Entre Fallas) — Cuántas horas corre una máquina en promedio entre un paro y el siguiente. Entre más alto, mejor: indica equipos confiables y procesos estables.</div>
+          <div><b style="color:#8B5CF6">Uso de Cavidades</b> — Los moldes tienen varias cavidades; si algunas se tapan o dañan se produce menos por ciclo. Mide cuántas cavidades trabajaron frente a las que el molde tiene en teoría. 100% = molde completo produciendo.</div>
+          <div><b style="color:#F59E0B">Adherencia al Ciclo</b> — Compara el tiempo de ciclo real de la inyectora contra el ciclo estándar del producto. 100% = se cumple el estándar; menos de 100% = la máquina está ciclando más lento de lo que debería.</div>
+          <div><b style="color:#EC4899">PPM</b> (Partes Por Millón) — Los No Conformes expresados por cada millón de unidades producidas. Es la misma Calidad vista con lupa: 10.000 PPM equivale a 1% de defectos. Estándar exigente de clientes: &lt; 5.000 PPM.</div>
+          <div><b style="color:#10B981">Velocidad Real</b> — Unidades buenas producidas por cada hora que la máquina estuvo efectivamente corriendo. Útil para comparar la capacidad real contra la teórica al planear producción.</div>
+        </div>
+      </div>
     </div>
 
     <!-- ======================================= REPORTE DIARIO == -->
