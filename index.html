@@ -7305,15 +7305,13 @@ function renderCapacidadMensual() {
       responsive:true, maintainAspectRatio:false }});
 }
 
-// ── Histórico mensual: hoja de Google "CAPACIDAD" (100% fórmulas) ──
-// Sheet con 4 bloques en una sola pestaña: MAQUINAS (activa/inactiva) |
-// PRODUCTOS (cavidades/ciclo maestro) | PARAMETROS (por mes) | CAPACIDAD
-// MENSUAL (el log — CAVIDADES, CICLO, UND_TURNO_8H, TURNOS, DIAS, HORAS_HOMBRE,
-// MAQUINA_ACTIVA y ESTADO son fórmulas VLOOKUP/IF dentro del propio sheet).
-// El dashboard solo lee los valores YA calculados por el sheet.
-const CAP_HIST_SID = '1sdoHXHcZ6_we0k1wPabGNFPGn9NTnCGQOV5qsZr6eOg';
+// ── Histórico mensual: hoja HISTORICO_CAPACIDAD (formato largo) ──
+// Columnas: MES | AÑO | PRODUCTO | CAVIDADES | CICLO | EFICIENCIA |
+// UND_TURNO_8H | PROYECCION | TURNOS | DIAS | OPERARIOS | MAQUINA |
+// HORAS_HOMBRE | TURNOS_DISP | DIAS_MES
+const CAP_HIST_SID = '13jI4d9NhsDbHLj4nYV4NlAXToglTrC1wsC7AKGPFlFs';
 // export (sin gviz): no tipa columnas por mayoría, conserva textos como "TV1-TV2" o "Maquila"
-const CAP_HIST_URL = `https://docs.google.com/spreadsheets/d/${CAP_HIST_SID}/export?format=csv`;
+const CAP_HIST_URL = `https://docs.google.com/spreadsheets/d/${CAP_HIST_SID}/export?format=csv&gid=1612430213`;
 const CAP_MESES_ORD = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
 const CAP_HIST = { rows: [], loaded: false };
 
@@ -7334,11 +7332,12 @@ async function capLoadHistorico(force) {
           if (!String(r[0]||'').trim()) break;
           out.push({
             mes: String(r[0]).toUpperCase().trim(), anio: String(Math.round(capNum(r[1]))||'').trim(),
-            producto: r[2], cav: capNum(r[6]), ciclo: capNum(r[7]),
-            ef: capNum(r[11]), undTurno: capNum(r[8]), proy: capNum(r[3]),
-            turnos: capNum(r[9]), dias: capNum(r[10]), operarios: capNum(r[4]),
-            maquina: String(r[5]||''), hh: capNum(r[13]), turnosDisp: capNum(r[12])||71,
-            estado: String(r[15]||'')
+            producto: r[2], cav: capNum(r[3]), ciclo: capNum(r[4]),
+            ef: (capNum(r[5])>1 ? capNum(r[5])/100 : capNum(r[5])), // "85%" → 0.85
+            undTurno: capNum(r[6]), proy: capNum(r[7]),
+            turnos: capNum(r[8]), dias: capNum(r[9]), operarios: capNum(r[10]),
+            maquina: String(r[11]||''), hh: capNum(r[12]), turnosDisp: capNum(r[13])||71,
+            estado: ''
           });
         }
         CAP_HIST.rows = out;
