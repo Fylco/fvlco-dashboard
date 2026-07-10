@@ -6607,10 +6607,18 @@ const PLAN_SHEETS = {
   restricciones:'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=880116194',
   inventarioMP: 'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=1815112932',
 };
-// PROGRAMACION 2026 — Plan vs Real (pestaña por mes → gid)
-const PROG_SID  = '1dYm44LKn6TQm2fWLY5ZG9_kI_GMGwWcTm7Wq_wDrKs8';
-const PROG_TABS = { 7:'275529424' }; // Julio; agregar más meses aquí
-let   PROG_BLOCKS = [];
+// PROGRAMACION anual — Plan vs Real
+// Cada enero: crear "PROGRAMACION 20XX", compartir como lector,
+// y agregar su ID en PROG_FILES + gids de pestañas en PROG_TABS.
+const PROG_FILES = {
+  2026: '1dYm44LKn6TQm2fWLY5ZG9_kI_GMGwWcTm7Wq_wDrKs8',
+  // 2027: 'PEGAR-AQUI-ID-DEL-ARCHIVO-2027',
+};
+const PROG_TABS = {
+  2026: { 7:'275529424' }, // agregar: 8:'gid-agosto', 9:'gid-sep', ...
+  // 2027: { 1:'gid-enero', 2:'gid-feb', ... },
+};
+let PROG_BLOCKS = [];
 const PLAN_DATA = { pedidos:[], restricciones:[], inventarioMP:[], plan:[], maquila:[] };
 const PLAN_CFG  = {
   MAQUILA_FIJA:     ['TTE15_V2','TAPON'],
@@ -6646,9 +6654,10 @@ async function loadPlanData() {
     load('restricciones', false),
     load('inventarioMP', true),
   ]);
-  // cargar programacion 2026
-  const mes = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
-  await loadProgData(mes);
+  // cargar programacion anual
+  const _mesNow = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
+  const _anioNow = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
+  await loadProgData(_mesNow, _anioNow);
   // merge local inventory movements
   const local = getLocalMovs();
   PLAN_DATA.inventarioMP = [...PLAN_DATA.inventarioMP.map((r,i)=>({...r,_id:'s'+i,_src:'sheets'})),
@@ -6726,7 +6735,7 @@ function recalcularPlan() {
   const sel=document.getElementById('po-plan-f-cliente');
   if(sel){ sel.innerHTML='<option value="">Todos los clientes</option>'+clientes.map(c=>`<option>${c}</option>`).join(''); }
 
-  loadProgData(mes).then(renderProgreso);
+  loadProgData(mes, anio).then(renderProgreso);
   renderTablieroPlan(); renderPlanMaestro();
   renderMaquilaPlan(); renderPersonalPlan(); renderHorasCostosPO();
   renderLoteMinimoPO(); renderInventarioMP();
@@ -6795,10 +6804,12 @@ function poKpi(title,val,sub,color){
 function fCOP(v){if(v===undefined||v===null)return'—';return'$'+Math.round(v).toLocaleString('es-CO');}
 
 // ── PROGRAMACION 2026 — carga y parseo ─────────────────
-async function loadProgData(mes) {
-  const gid = PROG_TABS[mes];
-  if (!gid) { PROG_BLOCKS = []; renderProgreso(); return; }
-  const url = `https://docs.google.com/spreadsheets/d/${PROG_SID}/export?format=csv&gid=${gid}&_t=${Date.now()}`;
+async function loadProgData(mes, anio) {
+  anio = anio || parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
+  const sid = PROG_FILES[anio];
+  const gid = (PROG_TABS[anio]||{})[mes];
+  if (!sid || !gid) { PROG_BLOCKS = []; renderProgreso(); return; }
+  const url = `https://docs.google.com/spreadsheets/d/${sid}/export?format=csv&gid=${gid}&_t=${Date.now()}`;
   try {
     const res = await pfetch(url);
     if (!res.ok) { PROG_BLOCKS = []; renderProgreso(); return; }
