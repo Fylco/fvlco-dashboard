@@ -6975,7 +6975,8 @@ function renderProgreso() {
     return;
   }
 
-  if (badgeEl) badgeEl.textContent = `· ${PROG_BLOCKS.length} producto(s) · ${new Date().toLocaleTimeString('es-CO')}`;
+  if (badgeEl) { const nP = PROG_BLOCKS.filter(b=>!/MAQUILA/i.test(b.maquina)).length;
+    badgeEl.textContent = `· ${nP} producto(s) en planta · ${new Date().toLocaleTimeString('es-CO')}`; }
 
   const alertas = [], sugerencias = [];
 
@@ -6992,6 +6993,7 @@ function renderProgreso() {
     </tr></thead><tbody>`;
 
   PROG_BLOCKS.forEach(b => {
+    if (/MAQUILA/i.test(b.maquina)) return; // maquila: no es capacidad de planta
     const idx     = _idxHoy(b.fechas);
     const planHoy = b.acumPlan[idx] || b.totalPlaneada || 0;
 
@@ -7129,8 +7131,9 @@ function renderProgClientes() {
       // solo entregas DEL MES seleccionado (las previas/posteriores no se muestran)
       if (!p.f || (mesIni && p.f < mesIni) || (mesFin && p.f > mesFin)) return;
       const b = findBlock(p.producto);
+      const esMaquila = b && /MAQUILA/i.test(b.maquina);
       let estado = 'gris', cobertura = null;
-      if (b) {
+      if (b && !esMaquila) {
         cumReq += p.cant;
         const idx = b.fechas.findIndex(fs => { const d=_parseFechaES(fs); return d && d.getTime()===p.f.getTime(); });
         const useIdx = idx>=0 ? idx : b.fechas.length-1;
@@ -7138,7 +7141,7 @@ function renderProgClientes() {
         cobertura = cumReq>0 ? prod/cumReq*100 : 100;
         estado = cobertura>=100 ? 'verde' : cobertura>=90 ? 'amarillo' : 'rojo';
       }
-      evaluados.push({...p, estado, cobertura, vencida: p.f < hoy});
+      evaluados.push({...p, estado, cobertura, esMaquila, vencida: p.f < hoy});
     });
   });
 
@@ -7171,7 +7174,7 @@ function renderProgClientes() {
           <td style="padding:7px 8px;text-align:right;font-weight:600;color:#F3F4F6">${p.cant.toLocaleString('es-CO')}</td>
           <td style="padding:7px 8px;text-align:center">${p.cobertura!=null
             ? `<span style="font-weight:700;color:${p.estado==='verde'?'#10B981':p.estado==='amarillo'?'#F59E0B':'#EF4444'}">${Math.min(999,Math.round(p.cobertura))}% cubierto</span>`
-            : '<span style="color:#6B7280">sin plan</span>'}</td>
+            : (p.esMaquila ? '<span style="color:#F97316;font-size:.68rem">maquila</span>' : '<span style="color:#6B7280">sin plan</span>')}</td>
           <td style="padding:7px 14px;text-align:center;font-size:.95rem">${emoji[p.estado]}</td>
         </tr>`).join('')}
       </table>
