@@ -6846,6 +6846,18 @@ function progNorm(s) {
   return String(s||'').toUpperCase().replace(/LYNNER/g,'LINER').replace(/MM/g,'').replace(/[^A-Z0-9]/g,'');
 }
 
+// busca la celda cuyo texto empieza con `label` y devuelve la siguiente celda
+// NO vacía (el sheet tiene celdas combinadas que corren las columnas)
+function _progAfter(row, label) {
+  const i = row.findIndex(c => String(c||'').trim().toUpperCase().startsWith(label));
+  if (i < 0) return '';
+  for (let j = i+1; j < Math.min(i+5, row.length); j++) {
+    const v = String(row[j]||'').trim();
+    if (v) return v;
+  }
+  return '';
+}
+
 function parseProgBlocks(rows) {
   const blocks = [];
   PROG_PEDIDOS = [];
@@ -6870,29 +6882,27 @@ function parseProgBlocks(rows) {
 
     if (lblU === 'PRODUCTO') {
       if (cur && cur.producto && cur.fechas.length) blocks.push(cur);
-      // ciclo: "13,5" se parte en dos celdas por locale → unir r[5]+'.'+r[6]
-      const ciclo = r[6] && /^\d+$/.test(String(r[6]).trim())
-        ? parseFloat(String(r[5]).trim() + '.' + String(r[6]).trim())
-        : pNum(r[5]) || 0;
-      cur = { producto: String(r[1]||'').trim(), cavidades: pNum(r[3])||0,
-              ciclo, rendimiento: pNum(String(r[8]||'').replace('%','').replace(',','.'))/100||0.95,
+      cur = { producto: String(r[1]||'').trim(),
+              cavidades: pNum(_progAfter(r,'CAVIDADES'))||0,
+              ciclo: pNum(_progAfter(r,'CICLO'))||0,
+              rendimiento: (pNum(_progAfter(r,'RENDIMIENTO'))||95)/100,
               maquina:'', requerida:0, fechas:[], acumPlan:[], acumReal:[],
               totalPlaneada:0, totalReal:0, diaCumpl:'' };
     }
     if (!cur) continue;
 
     if (lblU.startsWith('CANTIDAD REQUERIDA')) {
-      cur.requerida = pNum(r[1]) || 0;
-      if (String(r[8]||'').trim() === 'MAQUINA') cur.maquina = String(r[9]||'').trim();
+      cur.requerida = pNum(_progAfter(r,'CANTIDAD REQUERIDA')) || 0;
+      cur.maquina   = String(_progAfter(r,'MAQUINA')||'').trim();
     }
     if (lblU === 'FECHA')      cur.fechas   = r.slice(1).map(v=>String(v).trim()).filter(v=>v);
     if (lblU === 'ACUMULADO')  cur.acumPlan = r.slice(1).map(v=>pNum(v)||0);
     if (lblU === 'ACUM REAL')  cur.acumReal = r.slice(1).map(v=>pNum(v));
     if (lblU.startsWith('SUMA TOTAL PLANEADA')) {
-      cur.totalPlaneada = pNum(r[1])||0;
-      cur.totalReal     = pNum(r[3])||0;
+      cur.totalPlaneada = pNum(_progAfter(r,'SUMA TOTAL PLANEADA'))||0;
+      cur.totalReal     = pNum(_progAfter(r,'SUMA TOTAL REAL'))||0;
     }
-    if (lblU.startsWith('DIA DE CUMPLIMIENTO')) cur.diaCumpl = String(r[1]||'').trim();
+    if (lblU.startsWith('DIA DE CUMPLIMIENTO')) cur.diaCumpl = String(_progAfter(r,'DIA DE CUMPLIMIENTO')||'').trim();
   }
   if (cur && cur.producto && cur.fechas.length) blocks.push(cur);
   // aplanar pedidos: una entrada por columna con cliente y cantidad válidos
@@ -7033,7 +7043,7 @@ function renderProgreso() {
 
     html += `<tr style="border-bottom:1px solid #1F2937;background:${bgRow}">
       <td style="padding:9px 14px;font-weight:600;color:#F3F4F6">${b.producto}</td>
-      <td style="text-align:center;padding:9px 8px;color:#9CA3AF;font-size:.72rem">INY#${b.maquina||'—'}</td>
+      <td style="text-align:center;padding:9px 8px;color:#9CA3AF;font-size:.72rem">${/^\d+$/.test(String(b.maquina).trim()) ? 'INY#'+b.maquina : (b.maquina||'—')}</td>
       <td style="text-align:right;padding:9px 8px;color:#D1D5DB">${(b.requerida||0).toLocaleString('es-CO')}</td>
       <td style="text-align:right;padding:9px 8px;color:#9CA3AF">${planHoy.toLocaleString('es-CO')}</td>
       <td style="text-align:right;padding:9px 8px;font-weight:700;color:#F3F4F6">${realHoy.toLocaleString('es-CO')}</td>
@@ -7103,24 +7113,31 @@ function renderProgClientes() {
     const f = _parseFechaES(p.fechaStr);
     (porProducto[progNorm(p.producto)] = porProducto[progNorm(p.producto)]||[]).push({...p, f});
   });
+  const mesFin = PROG_BLOCKS[0] ? _parseFechaES(PROG_BLOCKS[0].fechas[PROG_BLOCKS[0].fechas.length-1]) : null;
   Object.values(porProducto).forEach(peds => {
     peds.sort((a,b)=> (a.f?.getTime()||0) - (b.f?.getTime()||0));
     let cumReq = 0;
     peds.forEach(p => {
+      // solo entregas DEL MES seleccionado (las previas/posteriores no se muestran)
+      if (!p.f || (mesIni && p.f < mesIni) || (mesFin && p.f > mesFin)) return;
       const b = findBlock(p.producto);
-      const previa = p.f && mesIni && p.f < mesIni;
       let estado = 'gris', cobertura = null;
-      if (!previa && b && p.f) {
+      if (b) {
         cumReq += p.cant;
         const idx = b.fechas.findIndex(fs => { const d=_parseFechaES(fs); return d && d.getTime()===p.f.getTime(); });
-        const useIdx = idx>=0 ? idx : b.fechas.length-1; // entrega posterior al mes → fin de mes
+        const useIdx = idx>=0 ? idx : b.fechas.length-1;
         const prod = proyectar(b, useIdx);
         cobertura = cumReq>0 ? prod/cumReq*100 : 100;
         estado = cobertura>=100 ? 'verde' : cobertura>=90 ? 'amarillo' : 'rojo';
       }
-      evaluados.push({...p, previa, estado, cobertura, vencida: p.f && p.f<hoy && !previa});
+      evaluados.push({...p, estado, cobertura, vencida: p.f < hoy});
     });
   });
+
+  if (!evaluados.length) {
+    el.innerHTML = '<p style="color:#6B7280;font-size:.78rem;padding:14px 4px">Sin entregas a clientes programadas dentro de este mes.</p>';
+    return;
+  }
 
   // agrupar por cliente; peor estado primero
   const ordEst = { rojo:0, amarillo:1, verde:2, gris:3 };
@@ -7144,9 +7161,9 @@ function renderProgClientes() {
           <td style="padding:7px 14px;color:#D1D5DB">${p.producto}</td>
           <td style="padding:7px 8px;text-align:center;color:${p.vencida?'#EF4444':'#9CA3AF'}">${p.fechaStr||'—'}${p.vencida?' ⚠':''}</td>
           <td style="padding:7px 8px;text-align:right;font-weight:600;color:#F3F4F6">${p.cant.toLocaleString('es-CO')}</td>
-          <td style="padding:7px 8px;text-align:center">${p.previa
-            ? '<span style="color:#6B7280;font-size:.68rem">entrega previa al mes</span>'
-            : (p.cobertura!=null ? `<span style="font-weight:700;color:${p.estado==='verde'?'#10B981':p.estado==='amarillo'?'#F59E0B':'#EF4444'}">${Math.min(999,Math.round(p.cobertura))}% cubierto</span>` : '<span style="color:#6B7280">sin plan</span>')}</td>
+          <td style="padding:7px 8px;text-align:center">${p.cobertura!=null
+            ? `<span style="font-weight:700;color:${p.estado==='verde'?'#10B981':p.estado==='amarillo'?'#F59E0B':'#EF4444'}">${Math.min(999,Math.round(p.cobertura))}% cubierto</span>`
+            : '<span style="color:#6B7280">sin plan</span>'}</td>
           <td style="padding:7px 14px;text-align:center;font-size:.95rem">${emoji[p.estado]}</td>
         </tr>`).join('')}
       </table>
