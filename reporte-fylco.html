@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Reporte de Producción — FYLCO</title>
+<style>
+  :root{
+    --azul:#1f3864;
+    --azul-claro:#2e4d7b;
+    --gris:#f2f4f8;
+    --borde:#d5dbe6;
+    --verde:#25D366;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;
+    background:#eef1f6;color:#1a2230;padding:14px;padding-bottom:100px;
+    max-width:900px;margin:0 auto;
+  }
+  header{
+    background:var(--azul);color:#fff;border-radius:16px;
+    padding:18px;margin-bottom:16px;text-align:center;
+    box-shadow:0 4px 14px rgba(31,56,100,.25);
+  }
+  header h1{margin:0;font-size:26px;letter-spacing:2px}
+  header p{margin:5px 0 0;font-size:14px;opacity:.9}
+
+  /* ---- Tarjetas (una máquina por tarjeta) ---- */
+  #cards{display:grid;gap:14px;grid-template-columns:1fr}
+  @media(min-width:640px){#cards{grid-template-columns:1fr 1fr}}
+
+  .card{
+    background:#fff;border-radius:16px;padding:16px;
+    box-shadow:0 2px 10px rgba(0,0,0,.07);border:1px solid #e6eaf2;
+  }
+  .card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .maq{font-size:20px;font-weight:800;color:var(--azul)}
+  .maq input{
+    font-size:20px;font-weight:800;color:var(--azul);width:120px;
+    border:2px dashed var(--borde);border-radius:10px;padding:6px 8px;
+  }
+  .del{
+    background:#fff;border:1px solid var(--borde);color:#c0392b;border-radius:10px;
+    width:40px;height:40px;font-size:20px;cursor:pointer;line-height:1;flex-shrink:0;
+  }
+  label{display:block;font-size:13px;font-weight:700;color:#5a6577;margin:12px 0 5px;text-transform:uppercase;letter-spacing:.3px}
+  label:first-of-type{margin-top:0}
+  select,input,textarea{
+    font-family:inherit;font-size:16px;border:1.5px solid var(--borde);
+    border-radius:12px;padding:13px;width:100%;background:#fff;color:#1a2230;
+  }
+  select{background:#fff;height:50px}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--azul-claro);box-shadow:0 0 0 3px rgba(46,77,123,.15)}
+  textarea{resize:vertical;min-height:52px}
+
+  .dual{display:flex;gap:12px}
+  .dual > div{flex:1}
+  .std-box{
+    display:flex;align-items:center;justify-content:center;
+    background:var(--gris);border:1.5px solid var(--borde);border-radius:12px;
+    height:50px;font-size:18px;font-weight:800;color:var(--azul);
+  }
+
+  /* ---- Barra de acciones fija abajo ---- */
+  .barra{
+    position:fixed;left:0;right:0;bottom:0;
+    display:flex;gap:10px;padding:12px 14px;
+    background:rgba(238,241,246,.96);backdrop-filter:blur(6px);
+    border-top:1px solid var(--borde);z-index:20;
+    max-width:900px;margin:0 auto;
+  }
+  button.btn{
+    flex:1;border:none;border-radius:14px;padding:16px 12px;
+    font-size:16px;font-weight:800;cursor:pointer;color:#fff;
+    box-shadow:0 3px 10px rgba(0,0,0,.15);
+  }
+  .add{background:var(--azul-claro);flex:0 0 auto;padding:16px 18px}
+  .share{background:var(--verde)}
+  .msg{margin:6px 2px 0;font-size:14px;text-align:center;color:#556;min-height:20px;font-weight:600}
+  footer{margin-top:16px;text-align:center;font-size:12px;color:#889}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FYLCO</h1>
+  <p>Reporte de Producción</p>
+</header>
+
+<div id="cards"></div>
+
+<div class="msg" id="msg"></div>
+<footer>La fecha y la hora se agregan automáticamente al compartir.<br>Solo se comparten las máquinas que reportes.</footer>
+
+<div class="barra">
+  <button class="btn add" onclick="agregarMaquina()">➕ Máquina</button>
+  <button class="btn share" onclick="compartir()">📷 Compartir por WhatsApp</button>
+</div>
+
+<script>
+/* ---------- Productos (según la tabla de FYLCO) ---------- */
+const PRODUCTOS = [
+  {cod:"VTE15*24", desc:"VALVULA TERRA 15MM * 24", std:"17,0"},
+  {cod:"TTE15",    desc:"TAPA TERRA 15MM", std:"13,0"},
+  {cod:"VFO38",    desc:"VALVULA FRONTAL 38MM", std:"20,0"},
+  {cod:"VLA38",    desc:"VALVULA LATERAL 38MM", std:"16,5"},
+  {cod:"TSL38",    desc:"TAPA 38 SIN LINER 38MM", std:"20,0"},
+  {cod:"TCL38",    desc:"TAPA 38 CON LINER 38MM", std:"20,0"},
+  {cod:"STA38",    desc:"SUBTAPA 38MM", std:"20,0"},
+  {cod:"CTE15",    desc:"CONJUNTO TERRA 15MM", std:"3,0"},
+  {cod:"CCL38",    desc:"CONJUNTO 38MM LATERAL CON LINER", std:"7,0"},
+  {cod:"CSL38",    desc:"CONJUNTO 38MM LATERAL SIN LINER", std:"7,0"},
+  {cod:"CAN",      desc:"CANASTILLAS", std:"14,0"},
+  {cod:"VTE15*48", desc:"VALVULA TERRA 15MM * 48", std:"18,0"},
+  {cod:"VTE15*32", desc:"VALVULA TERRA 15MM * 32", std:"18,0"},
+  {cod:"NOOP",     desc:"MAQUINA NO OPERATIVA", std:"No operativa"},
+];
+
+/* ---------- Máquinas reales de la planta ---------- */
+const MAQUINAS_INICIALES = ["INY#1","INY#2","INY#3","INY#4","INY#5","INY#6","INY#7","TV#1","TV#2","TV#3","TV#4"];
+
+let filas = MAQUINAS_INICIALES.map(m => ({maquina:m, editable:false, producto:"", real:"", novedad:""}));
+
+/* ---------- Render de las tarjetas ---------- */
+function render(){
+  const cont = document.getElementById("cards");
+  cont.innerHTML = "";
+  filas.forEach((f,i)=>{
+    const card = document.createElement("div");
+    card.className = "card";
+
+    // Encabezado: nombre máquina + eliminar
+    const head = document.createElement("div");
+    head.className = "card-head";
+    const maq = document.createElement("div");
+    maq.className = "maq";
+    if(f.editable){
+      const inp = document.createElement("input");
+      inp.value = f.maquina; inp.placeholder = "Máquina";
+      inp.oninput = e => filas[i].maquina = e.target.value;
+      maq.appendChild(inp);
+    } else {
+      maq.textContent = f.maquina;
+    }
+    head.appendChild(maq);
+    const del = document.createElement("button");
+    del.className = "del"; del.textContent = "✕"; del.title = "Quitar máquina";
+    del.onclick = () => { filas.splice(i,1); render(); };
+    head.appendChild(del);
+    card.appendChild(head);
+
+    // Producto
+    card.appendChild(lbl("Producto"));
+    const sel = document.createElement("select");
+    sel.add(new Option("— Seleccionar —",""));
+    PRODUCTOS.forEach(p => sel.add(new Option(p.desc, p.cod)));
+    sel.value = f.producto;
+    sel.onchange = e => { filas[i].producto = e.target.value; render(); };
+    card.appendChild(sel);
+
+    // Ciclo real + Ciclo estándar (lado a lado)
+    const dual = document.createElement("div");
+    dual.className = "dual";
+
+    const dReal = document.createElement("div");
+    dReal.appendChild(lbl("Ciclo real"));
+    const inpR = document.createElement("input");
+    inpR.type = "text"; inpR.inputMode = "decimal"; inpR.placeholder = "0,0";
+    inpR.value = f.real;
+    inpR.oninput = e => filas[i].real = e.target.value;
+    dReal.appendChild(inpR);
+    dual.appendChild(dReal);
+
+    const dStd = document.createElement("div");
+    dStd.appendChild(lbl("Ciclo estándar"));
+    const std = document.createElement("div");
+    std.className = "std-box";
+    const p = PRODUCTOS.find(x=>x.cod===f.producto);
+    std.textContent = p ? p.std : "—";
+    dStd.appendChild(std);
+    dual.appendChild(dStd);
+
+    card.appendChild(dual);
+
+    // Novedad
+    card.appendChild(lbl("Novedad"));
+    const ta = document.createElement("textarea");
+    ta.rows = 2; ta.placeholder = "Escribir novedad...";
+    ta.value = f.novedad;
+    ta.oninput = e => filas[i].novedad = e.target.value;
+    card.appendChild(ta);
+
+    cont.appendChild(card);
+  });
+}
+function lbl(t){ const l = document.createElement("label"); l.textContent = t; return l; }
+
+function agregarMaquina(){
+  filas.push({maquina:"", editable:true, producto:"", real:"", novedad:""});
+  render();
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+/* ---------- Generar imagen del reporte ---------- */
+function generarImagen(){
+  const now = new Date();
+  const fecha = now.toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"});
+  const hora  = now.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+
+  const S = 2;
+  const cols = [
+    {t:"MÁQUINA", w:95,  a:"left"},
+    {t:"PRODUCTO", w:300, a:"left"},
+    {t:"CICLO REAL", w:95, a:"center"},
+    {t:"CICLO ESTÁNDAR", w:120, a:"center"},
+    {t:"NOVEDAD", w:250, a:"left"},
+  ];
+  const pad = 24;
+  const contentW = cols.reduce((a,c)=>a+c.w,0);
+  const W = pad*2 + contentW;
+  const lineH = 20, cellPad = 8;
+
+  const meas = document.createElement("canvas").getContext("2d");
+  const font = "14px 'Segoe UI',Arial,sans-serif";
+  const fontB = "bold 14px 'Segoe UI',Arial,sans-serif";
+  meas.font = font;
+
+  function wrap(text, maxW){
+    text = (text||"").toString().trim();
+    if(!text) return [""];
+    const words = text.split(/\s+/);
+    const lines = []; let line = "";
+    words.forEach(w=>{
+      const test = line ? line+" "+w : w;
+      if(meas.measureText(test).width > maxW && line){ lines.push(line); line = w; }
+      else line = test;
+    });
+    if(line) lines.push(line);
+    return lines;
+  }
+
+  // solo máquinas reportadas (con producto, ciclo real o novedad)
+  const reportadas = filas.filter(f =>
+    (f.producto && f.producto !== "") ||
+    (f.real && f.real.trim() !== "") ||
+    (f.novedad && f.novedad.trim() !== "")
+  );
+  if(reportadas.length === 0){ return null; }
+
+  const rows = reportadas.map(f=>{
+    const p = PRODUCTOS.find(x=>x.cod===f.producto);
+    return {
+      maquina: f.maquina || "—",
+      producto: p ? p.desc : "—",
+      real: f.real || "—",
+      std: p ? p.std : "—",
+      novedad: f.novedad || "—",
+    };
+  });
+
+  const rowLines = rows.map(r=>{
+    const lp = wrap(r.producto, cols[1].w-cellPad*2).length;
+    const ln = wrap(r.novedad, cols[4].w-cellPad*2).length;
+    return Math.max(1, lp, ln);
+  });
+
+  const headerBlock = 92;
+  const theadH = 34;
+  const rowsH = rowLines.reduce((a,n)=> a + (n*lineH + cellPad*2), 0);
+  const H = headerBlock + theadH + rowsH + pad;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W*S; canvas.height = H*S;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(S,S);
+  ctx.textBaseline = "top";
+
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle = "#1f3864"; ctx.fillRect(0,0,W,headerBlock);
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.font = "bold 30px 'Segoe UI',Arial,sans-serif";
+  ctx.fillText("FYLCO", W/2, 16);
+  ctx.font = "15px 'Segoe UI',Arial,sans-serif";
+  ctx.fillText("Reporte de Producción", W/2, 52);
+  ctx.font = "13px 'Segoe UI',Arial,sans-serif";
+  ctx.fillText(fecha + "  •  " + hora, W/2, 72);
+
+  let y = headerBlock;
+  ctx.fillStyle = "#1f3864"; ctx.fillRect(pad, y, contentW, theadH);
+  ctx.fillStyle = "#ffffff"; ctx.font = fontB;
+  let x = pad;
+  cols.forEach(c=>{
+    ctx.textAlign = c.a === "center" ? "center" : "left";
+    const tx = c.a === "center" ? x + c.w/2 : x + cellPad;
+    ctx.fillText(c.t, tx, y + 9);
+    x += c.w;
+  });
+
+  y += theadH;
+  ctx.font = font;
+  rows.forEach((r,i)=>{
+    const n = rowLines[i];
+    const rh = n*lineH + cellPad*2;
+    if(i%2===1){ ctx.fillStyle = "#f2f4f8"; ctx.fillRect(pad, y, contentW, rh); }
+    ctx.strokeStyle = "#d5dbe6"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, y+rh); ctx.lineTo(pad+contentW, y+rh); ctx.stroke();
+
+    x = pad;
+    const vals = [r.maquina, r.producto, r.real, r.std, r.novedad];
+    vals.forEach((v,ci)=>{
+      const c = cols[ci];
+      const lines = (ci===1 || ci===4) ? wrap(v, c.w-cellPad*2) : [v];
+      ctx.fillStyle = ci===0 ? "#1f3864" : "#1a2230";
+      ctx.font = (ci===0 || ci===3) ? fontB : font;
+      ctx.textAlign = c.a === "center" ? "center" : "left";
+      const tx = c.a === "center" ? x + c.w/2 : x + cellPad;
+      lines.forEach((ln,li)=> ctx.fillText(ln, tx, y + cellPad + li*lineH));
+      x += c.w;
+    });
+    y += rh;
+  });
+
+  ctx.strokeStyle = "#c3ccdb"; ctx.lineWidth = 1;
+  ctx.strokeRect(pad, headerBlock, contentW, theadH + rowsH);
+
+  return canvas;
+}
+
+/* ---------- Compartir ---------- */
+function msg(t){ document.getElementById("msg").textContent = t; }
+
+async function compartir(){
+  msg("Generando imagen...");
+  const canvas = generarImagen();
+  if(!canvas){ msg("⚠ Reporta al menos una máquina (elige producto, ciclo real o novedad)."); return; }
+  const stamp = new Date().toLocaleString("es-CO").replace(/[/:, ]/g,"-");
+  const nombre = "Reporte-FYLCO-"+stamp+".png";
+
+  canvas.toBlob(async (blob)=>{
+    if(!blob){ msg("No se pudo generar la imagen."); return; }
+    const file = new File([blob], nombre, {type:"image/png"});
+
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file], title:"Reporte FYLCO", text:"Reporte de Producción FYLCO"});
+        msg("✔ Compartido.");
+        return;
+      }catch(e){
+        if(e && e.name === "AbortError"){ msg(""); return; }
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nombre; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    msg("Imagen descargada. Ábrela y adjúntala en WhatsApp 📎");
+    window.open("https://wa.me/", "_blank");
+  }, "image/png");
+}
+
+render();
+</script>
+</body>
+</html>
