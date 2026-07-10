@@ -906,6 +906,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div id="prog-alertas" style="margin-bottom:12px"></div>
         <div id="prog-tabla" style="overflow-x:auto;background:#111827;border-radius:10px;border:1px solid #1F2937"></div>
         <div id="prog-sugerencias" style="margin-top:14px"></div>
+        <div style="font-size:.88rem;font-weight:700;color:#F3F4F6;margin:26px 0 14px;display:flex;align-items:center;gap:8px">
+          <i class="fa-solid fa-handshake" style="color:#3B82F6"></i> Cumplimiento por Cliente — Entregas del Mes
+        </div>
+        <div id="prog-clientes"></div>
       </div>
     </div>
 
@@ -6617,7 +6621,24 @@ const PROG_FILES = {
 };
 const PROG_MES = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
                   'JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+// export?format=csv IGNORA &sheet=nombre (siempre exporta la 1ª pestaña):
+// el gid real de cada pestaña se resuelve leyendo /htmlview (público, con CORS)
+const PROG_GIDMAP = {};
+async function progGids(sid) {
+  if (PROG_GIDMAP[sid]) return PROG_GIDMAP[sid];
+  try {
+    const res = await pfetch(`https://docs.google.com/spreadsheets/d/${sid}/htmlview`);
+    if (!res.ok) return {};
+    const txt = await res.text();
+    const map = {};
+    [...txt.matchAll(/\{name: "([^"]+)", pageUrl: "[^"]*", gid: "(\d+)"/g)]
+      .forEach(m => map[m[1].trim().toUpperCase()] = m[2]);
+    if (Object.keys(map).length) PROG_GIDMAP[sid] = map;
+    return map;
+  } catch(e) { return {}; }
+}
 let PROG_BLOCKS = [];
+let PROG_PEDIDOS = []; // pedidos por cliente (bloques CLIENTE/FECHA ENTREGA/CANTIDAD)
 const PLAN_DATA = { pedidos:[], restricciones:[], inventarioMP:[], plan:[], maquila:[] };
 const PLAN_CFG  = {
   MAQUILA_FIJA:     ['TTE15_V2','TAPON'],
@@ -6808,7 +6829,9 @@ async function loadProgData(mes, anio) {
   const sid  = PROG_FILES[anio];
   const hoja = PROG_MES[mes];
   if (!sid || !hoja) { PROG_BLOCKS = []; renderProgreso(); return; }
-  const url = `https://docs.google.com/spreadsheets/d/${sid}/export?format=csv&sheet=${encodeURIComponent(hoja)}&_t=${Date.now()}`;
+  const gid = (await progGids(sid))[hoja];
+  if (!gid) { PROG_BLOCKS = []; renderProgreso(); return; }
+  const url = `https://docs.google.com/spreadsheets/d/${sid}/export?format=csv&gid=${gid}&_t=${Date.now()}`;
   try {
     const res = await pfetch(url);
     if (!res.ok) { PROG_BLOCKS = []; renderProgreso(); return; }
@@ -6818,16 +6841,35 @@ async function loadProgData(mes, anio) {
   renderProgreso();
 }
 
+// normaliza nombre de producto para cruzar bloques de plan vs bloques de cliente
+function progNorm(s) {
+  return String(s||'').toUpperCase().replace(/LYNNER/g,'LINER').replace(/MM/g,'').replace(/[^A-Z0-9]/g,'');
+}
+
 function parseProgBlocks(rows) {
   const blocks = [];
-  let cur = null;
+  PROG_PEDIDOS = [];
+  let cur = null, prevProdCell = ''; // col B de la fila anterior (título de bloque cliente)
   for (const r of rows) {
-    if (!r || !r[0]) continue;
+    if (!r) continue;
+    // bloques de cliente: fila título (col A vacía, col B = producto) + CLIENTE/FECHA ENTREGA/CANTIDAD
+    if (!String(r[0]||'').trim()) { prevProdCell = String(r[1]||'').trim(); continue; }
+    if (!r[0]) continue;
     const lbl  = String(r[0]).trim();
     const lblU = lbl.toUpperCase();
 
+    if (lblU === 'CLIENTE' && prevProdCell) {
+      PROG_PEDIDOS.push({ producto: prevProdCell, _clientes: r.slice(1).map(v=>String(v||'').trim()) });
+    }
+    if (lblU === 'FECHA ENTREGA' && PROG_PEDIDOS.length) {
+      PROG_PEDIDOS[PROG_PEDIDOS.length-1]._fechas = r.slice(1).map(v=>String(v||'').trim());
+    }
+    if (lblU === 'CANTIDAD' && PROG_PEDIDOS.length) {
+      PROG_PEDIDOS[PROG_PEDIDOS.length-1]._cants = r.slice(1).map(v=>pNum(v));
+    }
+
     if (lblU === 'PRODUCTO') {
-      if (cur && cur.producto) blocks.push(cur);
+      if (cur && cur.producto && cur.fechas.length) blocks.push(cur);
       // ciclo: "13,5" se parte en dos celdas por locale → unir r[5]+'.'+r[6]
       const ciclo = r[6] && /^\d+$/.test(String(r[6]).trim())
         ? parseFloat(String(r[5]).trim() + '.' + String(r[6]).trim())
@@ -6852,7 +6894,18 @@ function parseProgBlocks(rows) {
     }
     if (lblU.startsWith('DIA DE CUMPLIMIENTO')) cur.diaCumpl = String(r[1]||'').trim();
   }
-  if (cur && cur.producto) blocks.push(cur);
+  if (cur && cur.producto && cur.fechas.length) blocks.push(cur);
+  // aplanar pedidos: una entrada por columna con cliente y cantidad válidos
+  const flat = [];
+  PROG_PEDIDOS.forEach(p => {
+    (p._clientes||[]).forEach((cli,i) => {
+      const cant = (p._cants||[])[i];
+      if (!cli || cli.toUpperCase()==='SUMA' || !cant) return;
+      flat.push({ producto: p.producto, cliente: cli,
+                  fechaStr: (p._fechas||[])[i]||'', cant });
+    });
+  });
+  PROG_PEDIDOS = flat;
   return blocks;
 }
 
@@ -6892,12 +6945,15 @@ function renderProgreso() {
 
   if (!PROG_BLOCKS.length) {
     const mes = parseInt(document.getElementById('po-mes-sel')?.value);
+    const anioV = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
     tablaEl.innerHTML = `<p style="color:#6B7280;font-size:.8rem;padding:20px 16px">${
-      PROG_TABS[mes] ? 'Cargando datos de programación… (el sheet debe ser público de lectura)' :
-      'Datos de programación aún no disponibles para este mes.'
+      PROG_FILES[anioV] ? 'Cargando datos de programación… (el sheet debe ser público de lectura)' :
+      'Datos de programación aún no disponibles para este año.'
     }</p>`;
     if (alertasEl) alertasEl.innerHTML = '';
     if (sugEl) sugEl.innerHTML = '';
+    const cliEl0 = document.getElementById('prog-clientes');
+    if (cliEl0) cliEl0.innerHTML = '';
     return;
   }
 
@@ -7004,6 +7060,97 @@ function renderProgreso() {
       </div>
       ${sugerencias.map(s=>`<div style="font-size:.78rem;color:#D1D5DB;padding:7px 0;border-bottom:1px solid #374151">${s}</div>`).join('')}
     </div>` : '';
+
+  renderProgClientes();
+}
+
+// ── Cumplimiento por Cliente ────────────────────────────
+function renderProgClientes() {
+  const el = document.getElementById('prog-clientes');
+  if (!el) return;
+  if (!PROG_PEDIDOS.length) {
+    el.innerHTML = '<p style="color:#6B7280;font-size:.78rem;padding:14px 4px">El sheet de programación no tiene bloques CLIENTE / FECHA ENTREGA / CANTIDAD para este mes.</p>';
+    return;
+  }
+
+  // índice de bloques de plan por nombre normalizado
+  const byNorm = {};
+  PROG_BLOCKS.forEach(b => { byNorm[progNorm(b.producto)] = b; });
+  const findBlock = nom => {
+    const n = progNorm(nom);
+    if (byNorm[n]) return byNorm[n];
+    const k = Object.keys(byNorm).find(x => x===n || x.includes(n) || n.includes(x));
+    return k ? byNorm[k] : null;
+  };
+
+  // producción proyectada de un bloque al día idx (real hasta hoy + plan de ahí en adelante)
+  const proyectar = (b, idx) => {
+    let realHoy = 0, lastIdx = -1;
+    (b.acumReal||[]).forEach((v,i)=>{ if (v!=null && v>0) { realHoy=v; lastIdx=i; } });
+    if (idx < 0) return 0;
+    if (idx <= lastIdx) return b.acumReal[idx] || 0;
+    return realHoy + ((b.acumPlan[idx]||0) - (lastIdx>=0 ? (b.acumPlan[lastIdx]||0) : 0));
+  };
+
+  // primer día del mes según el propio sheet
+  const mesIni = PROG_BLOCKS[0] ? _parseFechaES(PROG_BLOCKS[0].fechas[0]) : null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+
+  // evaluar cada pedido: demanda acumulada del producto vs producción proyectada a esa fecha
+  const evaluados = [];
+  const porProducto = {};
+  PROG_PEDIDOS.forEach(p => {
+    const f = _parseFechaES(p.fechaStr);
+    (porProducto[progNorm(p.producto)] = porProducto[progNorm(p.producto)]||[]).push({...p, f});
+  });
+  Object.values(porProducto).forEach(peds => {
+    peds.sort((a,b)=> (a.f?.getTime()||0) - (b.f?.getTime()||0));
+    let cumReq = 0;
+    peds.forEach(p => {
+      const b = findBlock(p.producto);
+      const previa = p.f && mesIni && p.f < mesIni;
+      let estado = 'gris', cobertura = null;
+      if (!previa && b && p.f) {
+        cumReq += p.cant;
+        const idx = b.fechas.findIndex(fs => { const d=_parseFechaES(fs); return d && d.getTime()===p.f.getTime(); });
+        const useIdx = idx>=0 ? idx : b.fechas.length-1; // entrega posterior al mes → fin de mes
+        const prod = proyectar(b, useIdx);
+        cobertura = cumReq>0 ? prod/cumReq*100 : 100;
+        estado = cobertura>=100 ? 'verde' : cobertura>=90 ? 'amarillo' : 'rojo';
+      }
+      evaluados.push({...p, previa, estado, cobertura, vencida: p.f && p.f<hoy && !previa});
+    });
+  });
+
+  // agrupar por cliente; peor estado primero
+  const ordEst = { rojo:0, amarillo:1, verde:2, gris:3 };
+  const clientes = {};
+  evaluados.forEach(e => (clientes[e.cliente]=clientes[e.cliente]||[]).push(e));
+  const emoji = { verde:'🟢', amarillo:'🟡', rojo:'🔴', gris:'⚪' };
+
+  el.innerHTML = Object.entries(clientes)
+    .map(([cli,peds]) => ({ cli, peds, peor: Math.min(...peds.map(p=>ordEst[p.estado])) }))
+    .sort((a,b)=>a.peor-b.peor)
+    .map(({cli,peds,peor}) => {
+      const tot = peds.reduce((s,p)=>s+p.cant,0);
+      const peorEmoji = ['🔴','🟡','🟢','⚪'][peor];
+      return `<div style="background:#111827;border:1px solid #1F2937;border-radius:10px;margin-bottom:12px;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#1F2937;flex-wrap:wrap;gap:6px">
+        <div style="font-weight:700;color:#F3F4F6;font-size:.84rem">${peorEmoji} ${cli}</div>
+        <div style="font-size:.72rem;color:#9CA3AF">${peds.length} entrega(s) · ${tot.toLocaleString('es-CO')} und</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+        ${peds.sort((a,b)=>(a.f?.getTime()||0)-(b.f?.getTime()||0)).map(p=>`<tr style="border-top:1px solid #1F2937${p.estado==='rojo'?';background:rgba(127,29,29,.18)':''}">
+          <td style="padding:7px 14px;color:#D1D5DB">${p.producto}</td>
+          <td style="padding:7px 8px;text-align:center;color:${p.vencida?'#EF4444':'#9CA3AF'}">${p.fechaStr||'—'}${p.vencida?' ⚠':''}</td>
+          <td style="padding:7px 8px;text-align:right;font-weight:600;color:#F3F4F6">${p.cant.toLocaleString('es-CO')}</td>
+          <td style="padding:7px 8px;text-align:center">${p.previa
+            ? '<span style="color:#6B7280;font-size:.68rem">entrega previa al mes</span>'
+            : (p.cobertura!=null ? `<span style="font-weight:700;color:${p.estado==='verde'?'#10B981':p.estado==='amarillo'?'#F59E0B':'#EF4444'}">${Math.min(999,Math.round(p.cobertura))}% cubierto</span>` : '<span style="color:#6B7280">sin plan</span>')}</td>
+          <td style="padding:7px 14px;text-align:center;font-size:.95rem">${emoji[p.estado]}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;}).join('');
 }
 
 // ── Tablero Plan ────────────────────────────────────────
