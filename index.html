@@ -896,6 +896,17 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div class="chart-card"><div class="section-title">Capacidad vs Requerida</div><div style="height:200px"><canvas id="po-chart-capacidad"></canvas></div></div>
         <div class="chart-card" style="grid-column:1/-1"><div class="section-title">Top productos — Unidades pendientes</div><div style="height:220px"><canvas id="po-chart-productos"></canvas></div></div>
       </div>
+
+      <!-- ── PLAN vs REAL — PROGRAMACION 2026 ── -->
+      <div style="margin-top:28px">
+        <div style="font-size:.88rem;font-weight:700;color:#F3F4F6;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+          <i class="fa-solid fa-chart-gantt" style="color:#10B981"></i> Avance Real vs Plan — Producción del Mes
+          <span id="prog-badge" style="font-size:.68rem;font-weight:400;color:#6B7280;margin-left:4px"></span>
+        </div>
+        <div id="prog-alertas" style="margin-bottom:12px"></div>
+        <div id="prog-tabla" style="overflow-x:auto;background:#111827;border-radius:10px;border:1px solid #1F2937"></div>
+        <div id="prog-sugerencias" style="margin-top:14px"></div>
+      </div>
     </div>
 
     <!-- ======================================================= PO: PLAN MAESTRO == -->
@@ -6596,6 +6607,10 @@ const PLAN_SHEETS = {
   restricciones:'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=880116194',
   inventarioMP: 'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=1815112932',
 };
+// PROGRAMACION 2026 — Plan vs Real (pestaña por mes → gid)
+const PROG_SID  = '1dYm44LKn6TQm2fWLY5ZG9_kI_GMGwWcTm7Wq_wDrKs8';
+const PROG_TABS = { 7:'275529424' }; // Julio; agregar más meses aquí
+let   PROG_BLOCKS = [];
 const PLAN_DATA = { pedidos:[], restricciones:[], inventarioMP:[], plan:[], maquila:[] };
 const PLAN_CFG  = {
   MAQUILA_FIJA:     ['TTE15_V2','TAPON'],
@@ -6631,6 +6646,9 @@ async function loadPlanData() {
     load('restricciones', false),
     load('inventarioMP', true),
   ]);
+  // cargar programacion 2026
+  const mes = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
+  await loadProgData(mes);
   // merge local inventory movements
   const local = getLocalMovs();
   PLAN_DATA.inventarioMP = [...PLAN_DATA.inventarioMP.map((r,i)=>({...r,_id:'s'+i,_src:'sheets'})),
@@ -6708,6 +6726,7 @@ function recalcularPlan() {
   const sel=document.getElementById('po-plan-f-cliente');
   if(sel){ sel.innerHTML='<option value="">Todos los clientes</option>'+clientes.map(c=>`<option>${c}</option>`).join(''); }
 
+  loadProgData(mes).then(renderProgreso);
   renderTablieroPlan(); renderPlanMaestro();
   renderMaquilaPlan(); renderPersonalPlan(); renderHorasCostosPO();
   renderLoteMinimoPO(); renderInventarioMP();
@@ -6774,6 +6793,208 @@ function poKpi(title,val,sub,color){
   </div>`;
 }
 function fCOP(v){if(v===undefined||v===null)return'—';return'$'+Math.round(v).toLocaleString('es-CO');}
+
+// ── PROGRAMACION 2026 — carga y parseo ─────────────────
+async function loadProgData(mes) {
+  const gid = PROG_TABS[mes];
+  if (!gid) { PROG_BLOCKS = []; renderProgreso(); return; }
+  const url = `https://docs.google.com/spreadsheets/d/${PROG_SID}/export?format=csv&gid=${gid}&_t=${Date.now()}`;
+  try {
+    const res = await pfetch(url);
+    if (!res.ok) { PROG_BLOCKS = []; renderProgreso(); return; }
+    const rows = Papa.parse(await res.text(), { skipEmptyLines: false }).data;
+    PROG_BLOCKS = parseProgBlocks(rows);
+  } catch(e) { console.warn('Prog no cargó:', e); PROG_BLOCKS = []; }
+  renderProgreso();
+}
+
+function parseProgBlocks(rows) {
+  const blocks = [];
+  let cur = null;
+  for (const r of rows) {
+    if (!r || !r[0]) continue;
+    const lbl  = String(r[0]).trim();
+    const lblU = lbl.toUpperCase();
+
+    if (lblU === 'PRODUCTO') {
+      if (cur && cur.producto) blocks.push(cur);
+      // ciclo: "13,5" se parte en dos celdas por locale → unir r[5]+'.'+r[6]
+      const ciclo = r[6] && /^\d+$/.test(String(r[6]).trim())
+        ? parseFloat(String(r[5]).trim() + '.' + String(r[6]).trim())
+        : pNum(r[5]) || 0;
+      cur = { producto: String(r[1]||'').trim(), cavidades: pNum(r[3])||0,
+              ciclo, rendimiento: pNum(String(r[8]||'').replace('%','').replace(',','.'))/100||0.95,
+              maquina:'', requerida:0, fechas:[], acumPlan:[], acumReal:[],
+              totalPlaneada:0, totalReal:0, diaCumpl:'' };
+    }
+    if (!cur) continue;
+
+    if (lblU.startsWith('CANTIDAD REQUERIDA')) {
+      cur.requerida = pNum(r[1]) || 0;
+      if (String(r[8]||'').trim() === 'MAQUINA') cur.maquina = String(r[9]||'').trim();
+    }
+    if (lblU === 'FECHA')      cur.fechas   = r.slice(1).map(v=>String(v).trim()).filter(v=>v);
+    if (lblU === 'ACUMULADO')  cur.acumPlan = r.slice(1).map(v=>pNum(v)||0);
+    if (lblU === 'ACUM REAL')  cur.acumReal = r.slice(1).map(v=>pNum(v));
+    if (lblU.startsWith('SUMA TOTAL PLANEADA')) {
+      cur.totalPlaneada = pNum(r[1])||0;
+      cur.totalReal     = pNum(r[3])||0;
+    }
+    if (lblU.startsWith('DIA DE CUMPLIMIENTO')) cur.diaCumpl = String(r[1]||'').trim();
+  }
+  if (cur && cur.producto) blocks.push(cur);
+  return blocks;
+}
+
+function _parseFechaES(s) {
+  const p = String(s||'').split('/');
+  if (p.length !== 3) return null;
+  return new Date(+p[2], +p[1]-1, +p[0]);
+}
+
+function _idxHoy(fechas) {
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  let last = 0;
+  for (let i = 0; i < fechas.length; i++) {
+    const f = _parseFechaES(fechas[i]);
+    if (!f) continue;
+    if (f.getTime() === hoy.getTime()) return i;
+    if (f < hoy) last = i;
+  }
+  return last; // último día pasado si hoy no está (fin de mes)
+}
+
+function _domingosRestantes(fechas, desdeIdx) {
+  let c = 0;
+  for (let i = desdeIdx+1; i < fechas.length; i++) {
+    const f = _parseFechaES(fechas[i]);
+    if (f && f.getDay() === 0) c++;
+  }
+  return c;
+}
+
+function renderProgreso() {
+  const alertasEl = document.getElementById('prog-alertas');
+  const tablaEl   = document.getElementById('prog-tabla');
+  const sugEl     = document.getElementById('prog-sugerencias');
+  const badgeEl   = document.getElementById('prog-badge');
+  if (!tablaEl) return;
+
+  if (!PROG_BLOCKS.length) {
+    const mes = parseInt(document.getElementById('po-mes-sel')?.value);
+    tablaEl.innerHTML = `<p style="color:#6B7280;font-size:.8rem;padding:20px 16px">${
+      PROG_TABS[mes] ? 'Cargando datos de programación… (el sheet debe ser público de lectura)' :
+      'Datos de programación aún no disponibles para este mes.'
+    }</p>`;
+    if (alertasEl) alertasEl.innerHTML = '';
+    if (sugEl) sugEl.innerHTML = '';
+    return;
+  }
+
+  if (badgeEl) badgeEl.textContent = `· ${PROG_BLOCKS.length} producto(s) · ${new Date().toLocaleTimeString('es-CO')}`;
+
+  const alertas = [], sugerencias = [];
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:.78rem">
+    <thead><tr style="background:#1F2937;border-bottom:2px solid #374151">
+      <th style="text-align:left;padding:9px 14px;color:#9CA3AF;font-weight:600">Producto</th>
+      <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Máq.</th>
+      <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Requerido</th>
+      <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Plan acum. hoy</th>
+      <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Real acum.</th>
+      <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Cumpl.%</th>
+      <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Estado</th>
+      <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Día cumplim.</th>
+    </tr></thead><tbody>`;
+
+  PROG_BLOCKS.forEach(b => {
+    const idx     = _idxHoy(b.fechas);
+    const planHoy = b.acumPlan[idx] || b.totalPlaneada || 0;
+
+    // real: último valor no nulo de acumReal
+    let realHoy = 0, lastRealIdx = -1;
+    (b.acumReal||[]).forEach((v,i) => { if (v != null && v > 0) { realHoy = v; lastRealIdx = i; } });
+
+    const cumpl    = planHoy > 0 ? (realHoy / planHoy * 100) : (realHoy > 0 ? 100 : 0);
+    const sem      = cumpl >= 97 ? '🟢' : cumpl >= 88 ? '🟡' : '🔴';
+    const semColor = cumpl >= 97 ? '#10B981' : cumpl >= 88 ? '#F59E0B' : '#EF4444';
+    const bgRow    = cumpl < 88 ? 'rgba(127,29,29,.18)' : cumpl < 97 ? 'rgba(120,53,15,.15)' : 'transparent';
+
+    // ── cálculo de sugerencias ──
+    if (cumpl < 97 && b.requerida > 0 && b.cavidades > 0 && b.ciclo > 0) {
+      const diasTransc   = lastRealIdx >= 0 ? lastRealIdx + 1 : 1;
+      const ritmo        = realHoy / diasTransc;                          // und/día promedio
+      const faltante     = b.requerida - realHoy;
+      const diasRest     = b.fechas.length - (lastRealIdx + 1);
+      const undPorTurno  = Math.floor(b.cavidades * (28800 / b.ciclo) * b.rendimiento);
+      const undPorDia3T  = undPorTurno * 3;
+      const undPorDia2T  = undPorTurno * 2;
+
+      if (diasRest > 0) {
+        // ¿alcanza con turnos normales (L-V 3T, S 2T)?
+        const turnosNorm = diasRest * 3; // estimado conservador
+        if (undPorTurno * turnosNorm < faltante) {
+          alertas.push({ tipo:'rojo', prod: b.producto,
+            msg:`Faltan <b>${faltante.toLocaleString('es-CO')}</b> unidades con solo <b>${diasRest} día(s)</b> hábiles. No alcanza con turnos normales.` });
+        } else if (cumpl < 97) {
+          alertas.push({ tipo:'amarillo', prod: b.producto,
+            msg:`Va <b>${(planHoy-realHoy).toLocaleString('es-CO')} unidades</b> por debajo del acumulado plan. Aún recuperable.` });
+        }
+
+        // turnos extra para recuperar
+        const extraUnd   = planHoy - realHoy;
+        const extraTurnos = extraUnd > 0 ? Math.ceil(extraUnd / undPorTurno) : 0;
+        if (extraTurnos > 0) {
+          sugerencias.push(`⏰ <b>${b.producto}</b>: ${extraTurnos} turno(s) extra para ponerse al día (~${Math.ceil(extraTurnos/3)} día(s) extra). Produce ${undPorTurno.toLocaleString('es-CO')} und/turno.`);
+        }
+
+        // domingos disponibles
+        const doms = _domingosRestantes(b.fechas, lastRealIdx);
+        if (doms > 0) {
+          const ganDom = doms * undPorDia2T;
+          sugerencias.push(`📅 <b>${b.producto}</b>: trabajar ${doms} domingo(s) aporta +${ganDom.toLocaleString('es-CO')} unidades (${undPorDia2T.toLocaleString('es-CO')}/dom · 2 turnos).`);
+        }
+
+        // proyección al ritmo actual
+        if (ritmo > 0) {
+          const diasParaCumplir = Math.ceil(faltante / ritmo);
+          const fechaProyect    = new Date();
+          fechaProyect.setDate(fechaProyect.getDate() + diasParaCumplir);
+          sugerencias.push(`📈 <b>${b.producto}</b>: al ritmo actual (${Math.round(ritmo).toLocaleString('es-CO')} und/día) cumplirías el <b>${fechaProyect.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</b>.`);
+        }
+      }
+    }
+
+    html += `<tr style="border-bottom:1px solid #1F2937;background:${bgRow}">
+      <td style="padding:9px 14px;font-weight:600;color:#F3F4F6">${b.producto}</td>
+      <td style="text-align:center;padding:9px 8px;color:#9CA3AF;font-size:.72rem">INY#${b.maquina||'—'}</td>
+      <td style="text-align:right;padding:9px 8px;color:#D1D5DB">${(b.requerida||0).toLocaleString('es-CO')}</td>
+      <td style="text-align:right;padding:9px 8px;color:#9CA3AF">${planHoy.toLocaleString('es-CO')}</td>
+      <td style="text-align:right;padding:9px 8px;font-weight:700;color:#F3F4F6">${realHoy.toLocaleString('es-CO')}</td>
+      <td style="text-align:center;padding:9px 8px;font-weight:700;color:${semColor}">${cumpl.toFixed(1)}%</td>
+      <td style="text-align:center;padding:9px 8px;font-size:1.05rem">${sem}</td>
+      <td style="text-align:center;padding:9px 8px;font-size:.72rem;color:#9CA3AF">${b.diaCumpl||'—'}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  tablaEl.innerHTML = html;
+
+  // alertas
+  if (alertasEl) alertasEl.innerHTML = alertas.map(a=>`
+    <div style="background:${a.tipo==='rojo'?'rgba(127,29,29,.5)':'rgba(120,53,15,.5)'};border-left:4px solid ${a.tipo==='rojo'?'#EF4444':'#F59E0B'};border-radius:6px;padding:9px 14px;margin-bottom:8px;font-size:.78rem;color:#F3F4F6">
+      ${a.tipo==='rojo'?'🔴':'🟡'} <b>${a.prod}</b>: ${a.msg}
+    </div>`).join('');
+
+  // sugerencias
+  if (sugEl) sugEl.innerHTML = sugerencias.length ? `
+    <div style="background:#1F2937;border:1px solid #374151;border-radius:10px;padding:16px">
+      <div style="font-weight:700;color:#F3F4F6;margin-bottom:12px;font-size:.82rem;display:flex;align-items:center;gap:6px">
+        <i class="fa-solid fa-lightbulb" style="color:#F59E0B"></i> Sugerencias para cumplir el plan
+      </div>
+      ${sugerencias.map(s=>`<div style="font-size:.78rem;color:#D1D5DB;padding:7px 0;border-bottom:1px solid #374151">${s}</div>`).join('')}
+    </div>` : '';
+}
 
 // ── Tablero Plan ────────────────────────────────────────
 function renderTablieroPlan() {
