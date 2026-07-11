@@ -409,6 +409,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
         <button class="btn-clear" onclick="clearFilters('rd');renderReporteDiario()">Limpiar</button>
       </div>
+      <div id="rd-dup-note"></div>
       <!-- OEE ensayo -->
       <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr;gap:16px;margin-bottom:18px;align-items:start">
         <div class="chart-card" id="rd-oee-tiempo"></div>
@@ -1627,7 +1628,7 @@ const MESES_CAP = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 // =======================================================
 // STATE
 // =======================================================
-let DATA = { prod: [], nc: [], planRef: [], ventas: [], accid: [], ncByOrden: {}, forecastVentas: [] };
+let DATA = { prod: [], nc: [], planRef: [], ventas: [], accid: [], ncByOrden: {}, forecastVentas: [], dupes: [] };
 let CHARTS = {};
 let SEL_DIAS      = new Set();
 let SEL_RAZONES   = new Set();
@@ -2160,6 +2161,21 @@ function normalizeProd(r) {
     }
   }
 
+  // ── Timestamp exacto del reporte + número de caja, crudos ANTES de la
+  // conversión numérica masiva (que convierte "8/7/2026 18:01:03" en 8).
+  // Los usa dedupeProd() para detectar reportes de caja repetidos.
+  {
+    const _fhRaw = String(out['FECHA Y HORA'] || '').trim();
+    const _fh = _fhRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (_fh) {
+      let _fd = parseInt(_fh[1]), _fm = parseInt(_fh[2]), _fy = parseInt(_fh[3]);
+      if (_fm > 12 && _fd <= 12) { const _t = _fd; _fd = _fm; _fm = _t; }  // export en-US MM/DD
+      if (_fy < 100) _fy += 2000;
+      out._ts = new Date(_fy, _fm - 1, _fd, parseInt(_fh[4] || 0), parseInt(_fh[5] || 0), parseInt(_fh[6] || 0)).getTime();
+    } else out._ts = null;
+    out._caja = String(out['NUMERO DE CAJA'] ?? '').trim();
+  }
+
   const PCT_FIELDS = ['% RENDIMIENTO','% DISPONIBILIDAD','OEE FINAL','% CALIDAD'];
 
   // Campos de CICLO (decimales): guardar raw antes de la conversión masiva.
@@ -2257,6 +2273,54 @@ function normalizeProd(r) {
   out._fechaKey = _fechaKey;     // YYYY-MM-DD ordenable (día de trabajo único)
   out._fechaLabel = _fechaLabel; // "18 de junio de 2026"
   return out;
+}
+
+// ── Deduplicación de reportes de caja ────────────────────────────────────
+// El sistema de captura permite reenviar la misma caja (doble envío, o una
+// corrección sin borrar la fila anterior). Eso infla CANT REPORTADA en TODAS
+// las vistas: ej. 8-jul maq 4, caja 11 orden 1260 reportada 3×8.000 → el
+// turno quedó con 52.000 producidas sobre 51.200 programables (imposible).
+// Regla por grupo (orden, máquina, caja):
+//   1. Reportes a <10 min uno del otro → corrección/reenvío: vale el ÚLTIMO.
+//   2. Misma cantidad repetida en el mismo día+turno → vale solo el último.
+// Los splits legítimos (caja llenada entre dos turnos con parciales, ej.
+// 6.000 T2 + 2.000 T3) no cumplen ninguna regla y se conservan intactos.
+// Los descartados se sacan de DATA.prod y quedan en DATA.dupes, visibles en
+// Reporte Diario para que se corrijan en el sheet de origen.
+function dedupeProd(rows) {
+  const groups = {};
+  rows.forEach(r => {
+    if (!r._caja || !(r._cant > 0) || !r._orden) return;
+    const k = `${r._orden}|${r._maq}|${r._caja}`;
+    (groups[k] = groups[k] || []).push(r);
+  });
+  const dupes = [];
+  const VENTANA_MS = 10 * 60 * 1000;
+  const marcar = (r, motivo) => { r._dup = motivo; dupes.push(r); };
+  Object.values(groups).forEach(g => {
+    if (g.length < 2) return;
+    g.sort((a, b) => (a._ts || 0) - (b._ts || 0));
+    // Pase 1: reenvíos/correcciones en <10 min → se conserva el más reciente
+    for (let i = 0; i < g.length - 1; i++) {
+      const a = g[i], b = g[i + 1];
+      if (a._dup || a._ts == null || b._ts == null) continue;
+      if (b._ts - a._ts <= VENTANA_MS) marcar(a, 'corrección/reenvío a <10 min');
+    }
+    // Pase 2: misma caja con la misma cantidad en el mismo día+turno
+    const seen = {};
+    for (let i = g.length - 1; i >= 0; i--) {   // desde el último: el más reciente se conserva
+      const r = g[i];
+      if (r._dup) continue;
+      const k2 = `${r._fechaKey}|${r._turno}|${r._cant}`;
+      if (seen[k2]) marcar(r, 'caja repetida con igual cantidad en el mismo turno');
+      else seen[k2] = true;
+    }
+  });
+  if (dupes.length) {
+    console.warn(`dedupeProd: ${dupes.length} reportes duplicados excluidos (${fmt(dupes.reduce((s,d)=>s+d._cant,0))} und). Detalle:`);
+    console.table(dupes.map(d => ({ fecha: d._fechaKey, maq: d._maq, orden: d._orden, caja: d._caja, cant: d._cant, motivo: d._dup })));
+  }
+  return dupes;
 }
 
 function buildNcByOrden(ncRows) {
@@ -2506,6 +2570,8 @@ async function loadAll() {
     setProgress(10, 'Cargando Producción...');
     const prodParsed = await fetchCSV(SHEETS.produccion);
     DATA.prod = prodParsed.data.map(normalizeProd);
+    DATA.dupes = dedupeProd(DATA.prod);
+    DATA.prod  = DATA.prod.filter(r => !r._dup);
 
     // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
     setProgress(28, 'Cargando No Conformes...');
@@ -2562,6 +2628,8 @@ async function silentRefresh() {
   try {
     const prodParsed = await fetchCSV(SHEETS.produccion);
     DATA.prod = prodParsed.data.map(normalizeProd);
+    DATA.dupes = dedupeProd(DATA.prod);
+    DATA.prod  = DATA.prod.filter(r => !r._dup);
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
@@ -4368,6 +4436,40 @@ function renderReporteDiario() {
 
   const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, fMaq);
   const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+
+  // ── Aviso de reportes duplicados excluidos (mismos filtros del panel) ──
+  const dupEl = document.getElementById('rd-dup-note');
+  if (dupEl) {
+    const fMesLow = fMes.toLowerCase();
+    const dups = (DATA.dupes || []).filter(d =>
+      (!fMesLow || String(d._mesTurno || d._mes || '').toLowerCase() === fMesLow) &&
+      (!fDia   || String(d._diaTurno || '') === fDia) &&
+      (!fTurno || String(d._turno || '') === fTurno) &&
+      (!fMaq   || String(d._maq || '') === fMaq));
+    if (!dups.length) { dupEl.innerHTML = ''; }
+    else {
+      const tot = dups.reduce((s, d) => s + (d._cant || 0), 0);
+      dupEl.innerHTML = `<details style="background:#FFFBEB;border:1px solid #FCD34D;border-left:4px solid #D97706;border-radius:8px;padding:10px 14px;margin-bottom:16px">
+        <summary style="cursor:pointer;color:#92400E;font-size:.82rem;font-weight:700">
+          ⚠️ ${dups.length} reporte(s) duplicado(s) detectados y EXCLUIDOS de los totales (${fmt(tot)} und) — clic para ver el detalle y corregirlos en el sheet
+        </summary>
+        <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:.78rem;color:#78350F">
+          <tr style="text-align:left;border-bottom:1px solid #FCD34D">
+            <th style="padding:4px 8px">Fecha</th><th style="padding:4px 8px">Máquina</th><th style="padding:4px 8px">Orden</th>
+            <th style="padding:4px 8px">Caja</th><th style="padding:4px 8px;text-align:right">Cant. excluida</th><th style="padding:4px 8px">Motivo</th>
+          </tr>
+          ${dups.map(d => `<tr style="border-bottom:1px solid #FDE68A">
+            <td style="padding:4px 8px">${d._fechaLabel || d._fechaKey || '—'}</td>
+            <td style="padding:4px 8px">${d._maq}</td><td style="padding:4px 8px">${d._orden}</td>
+            <td style="padding:4px 8px">${d._caja}</td>
+            <td style="padding:4px 8px;text-align:right;font-weight:700">${fmt(d._cant)}</td>
+            <td style="padding:4px 8px">${d._dup}</td>
+          </tr>`).join('')}
+        </table>
+        <div style="font-size:.72rem;color:#92400E;margin-top:8px">Se conserva el reporte más reciente de cada caja. Para que el dato quede limpio de raíz, elimine la fila duplicada en la hoja BD REPORTES PRODUCCIÓN.</div>
+      </details>`;
+    }
+  }
 
   // Todos los turnos se suman; no hay filtrado T4/T5
   const effRowsRd = rows.slice();
