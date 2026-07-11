@@ -1299,7 +1299,7 @@ function startApp(){
 }
 
 function bootWithAuth(){
-  if(!apiUrl()){ console.warn('FVLco: sin API_URL_DEFAULT → modo dev (acceso directo a sheets públicos).'); startApp(); return; }
+  if(!apiUrl()){ startApp(); return; }  // sin proxy configurado: acceso directo a sheets públicos
   if(sessionStorage.getItem('fvlco_pw')){ startApp(); return; }
   showLogin();
 }
