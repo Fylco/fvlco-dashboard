@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="theme-color" content="#0B0F19"/>
 <title>FVLco · Dashboard Operaciones</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
@@ -34,7 +35,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 ::-webkit-scrollbar-track { background: #1F2937; }
 ::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 3px; }
 .sidebar { width: 240px; min-height: 100vh; background: #111827; border-right: 1px solid #374151; position: fixed; top: 0; left: 0; z-index: 50; transition: transform .3s; display: flex; flex-direction: column; }
-.sidebar.collapsed { transform: translateX(-240px); }
+.sidebar.collapsed { transform: translateX(-100%); }
 .main { margin-left: 240px; min-height: 100vh; transition: margin .3s; }
 .main.expanded { margin-left: 0; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 8px; cursor: pointer; transition: all .2s; color: #6B7280; font-size: .82rem; font-weight: 500; margin: 2px 8px; }
@@ -90,24 +91,50 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .razon-item input[type=checkbox]:checked ~ span { color:#FBBF24; }
 .razon-item:has(input:checked) { background:rgba(239,68,68,.18); border-color:#EF4444; color:#FBBF24; }
 .razon-count { font-size:.6rem; color:#6B7280; background:#111827; padding:1px 5px; border-radius:8px; }
+.tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-240px); }
-  .sidebar.open { transform: translateX(0); }
+  .sidebar { transform: translateX(-100%); width: 280px; }
+  .sidebar.open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,.6); }
   .main { margin-left: 0; }
   .overlay-sidebar { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 40; display: none; }
   .overlay-sidebar.show { display: block; }
+  /* Menú con áreas táctiles más grandes */
+  .nav-item { padding: 12px 14px; font-size: .9rem; margin: 3px 10px; }
+  .nav-item.active { padding-left: 11px; }
+  .nav-item .nav-icon { width: 34px; height: 34px; font-size: .95rem; }
+  .nav-group-header { padding: 12px 14px; font-size: .78rem; }
   /* Todas las grillas fijas (KPIs, gráficos en pares, etc.) pasan a 1 columna.
      Selector por atributo porque las grillas están inline en el HTML. */
-  [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
-  #content { padding: 14px !important; }
-  #main-topbar { padding: 10px 12px !important; }
-  .kpi-card { padding: 13px 14px !important; }
-  .chart-card { padding: 14px !important; }
-  .kpi-card .days-counter, .days-counter { font-size: 3rem !important; }
-  .tbl { font-size: .72rem; }
-  .tbl th, .tbl td { padding: 6px 8px; }
-  #global-filter-group { width: 100%; }
-  #page-title { font-size: .82rem; }
+  [style*="grid-template-columns"] { grid-template-columns: 1fr !important; gap: 12px !important; }
+  /* ...pero los KPIs sí caben de a 2 por fila — menos scroll vertical */
+  [style*="grid-template-columns"]:has(> .kpi-card) { grid-template-columns: repeat(2, minmax(0,1fr)) !important; gap: 10px !important; }
+  .kpi-card { padding: 12px !important; min-width: 0; }
+  .kpi-card > div:first-child { font-size: .62rem !important; white-space: normal; }
+  .kpi-card > div:nth-child(2) { font-size: 1.15rem !important; line-height: 1.2 !important; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-card > div:nth-child(3) { font-size: .65rem !important; }
+  #sec-resumen .kpi-card { padding: 12px !important; min-height: 0; }
+  .kpi-card .days-counter, .days-counter { font-size: 2.6rem !important; }
+  #content { padding: 12px 10px !important; }
+  .chart-card { padding: 12px 10px !important; }
+  /* Barra superior compacta: título + botones de ícono, filtros en fila deslizable */
+  #main-topbar { padding: 8px 10px !important; gap: 6px !important; }
+  #main-topbar .btn-txt, #last-update, .gf-label { display: none !important; }
+  #page-title { font-size: .85rem; }
+  /* Los botones suben a la fila del título; los filtros quedan en una
+     segunda fila deslizable — la barra pasa de 3 filas a 2 */
+  #main-topbar > div:last-child { display: contents !important; }
+  #global-filter-group { order: 5; width: 100%; flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  #global-filter-group > * { flex-shrink: 0; }
+  /* Controles más grandes y cómodos al tacto (16px evita el zoom automático de iOS) */
+  select, .multi-sel-btn, .btn-filter, .btn-clear, .btn-x, .fp-select { font-size: 16px !important; padding: 8px 12px !important; }
+  .ms-item { font-size: .85rem; padding: 9px 12px; }
+  .razon-item { font-size: .78rem; padding: 7px 12px; }
+  /* Tablas legibles: scroll horizontal propio en vez de recortarse */
+  .tbl { font-size: .8rem; }
+  .tbl th, .tbl td { padding: 8px 10px; }
+  .filter-panel { position: static; max-height: none; }
+  .filter-bar { gap: 8px; }
+  .filter-bar select { flex: 1 1 40%; min-width: 120px; }
 }
 @media (max-width: 420px) {
   html { font-size: 108%; }
@@ -261,7 +288,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span id="global-filter-group" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
+        <span class="gf-label" style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
         <select id="g-mes" onchange="applyGlobalFilter()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:4px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Tahoma,Arial,sans-serif">
           <option value="">Todos los meses</option>
         </select>
@@ -273,10 +300,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </span>
       <span id="last-update" style="font-size:.7rem;color:#4B5563"></span>
       <button onclick="reloadAll()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">
-        <i class="fa-solid fa-rotate-right"></i> Actualizar
+        <i class="fa-solid fa-rotate-right"></i><span class="btn-txt"> Actualizar</span>
       </button>
       <button onclick="exportPDF()" id="btn-pdf" style="background:#DC2626;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif;font-weight:600;display:flex;align-items:center;gap:6px">
-        <i class="fa-solid fa-file-pdf"></i> Descargar PDF
+        <i class="fa-solid fa-file-pdf"></i><span class="btn-txt"> Descargar PDF</span>
       </button>
     </div>
   </div>
@@ -7932,6 +7959,41 @@ window.showSection=function(id){
 // que solo se ejecuta tras validar la clave contra el servidor.
 // =======================================================
 bootWithAuth();
+
+// =======================================================
+// Tablas responsivas: cualquier tabla sin contenedor con
+// overflow-x se envuelve en .tbl-scroll para que en celular
+// se deslice horizontalmente en vez de recortarse.
+// Las tablas se re-crean al filtrar (innerHTML), por eso el
+// MutationObserver re-envuelve las nuevas (con debounce).
+// =======================================================
+(function(){
+  function wrapTables(){
+    document.querySelectorAll('#content table').forEach(function(t){
+      if (t.closest('.tbl-scroll')) return;
+      var p = t.parentElement;
+      while (p && p.id !== 'content') {
+        var ox = getComputedStyle(p).overflowX;
+        if (ox === 'auto' || ox === 'scroll') return;
+        p = p.parentElement;
+      }
+      var w = document.createElement('div');
+      w.className = 'tbl-scroll';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
+  }
+  var tmr = null;
+  var content = document.getElementById('content');
+  if (content) {
+    new MutationObserver(function(){
+      clearTimeout(tmr);
+      tmr = setTimeout(wrapTables, 250);
+    }).observe(content, { childList: true, subtree: true });
+  }
+  wrapTables();
+})();
+
 // Auto-refresh desactivado — actualización manual con el botón "Actualizar"
 // Aplicar color inicial al nav-item activo por defecto
 (function(){
