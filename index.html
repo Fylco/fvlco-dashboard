@@ -3270,7 +3270,8 @@ function renderResumen() {
     const _enProceso = hasPlanesData ? DATA.planesAccion.filter(r=>{const e=String(_colP(r,'ESTADO')||'').toUpperCase();return e.includes('PROCESO')||e.includes('PROGRESO');}).length : 0;
     const _pendientes = _tot - _cerradas - _enProceso;
 
-    // Layout en TARJETAS — cada plan ocupa su propio bloque, Seguimiento a ancho completo
+    // Layout en TARJETAS — cada plan lleva data-estado para filtrado sin re-render
+    const _estadoKey = es => es.label==='Cerrada'?'cerrada':es.label==='En Proceso'?'en_proceso':'pendiente';
     const tarjetas = hasPlanesData
       ? DATA.planesAccion.map((r, idx) => {
           const plan    = _colP(r,'PLAN DE ACCION','PLAN ACCION','PLAN DE ACCIÓN','PLAN');
@@ -3284,25 +3285,23 @@ function renderResumen() {
           const fCStr   = String(fCierre).trim();
           const atrasado = fCStr && fCStr!=='—' && fCStr < hoy && !String(estado).toUpperCase().includes('CERRAD');
           const es = _estadoStyle(estado);
+          const eKey = _estadoKey(es);
           const hasSeg = seg && seg!=='—';
           const hasValor = valor && valor!=='—';
           return `
-          <div style="border:1px solid ${atrasado?'#FECACA':'#E5E7EB'};border-radius:8px;padding:14px 18px;background:${atrasado?'#FEF9F9':'#FAFAFA'};margin-bottom:10px">
-            <!-- fila superior: número + título + estado -->
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:${hasSeg?'10px':'0'}">
+          <div data-estado="${eKey}" style="border:1px solid ${atrasado?'#FECACA':'#E5E7EB'};border-radius:8px;padding:14px 18px;background:${atrasado?'#FEF9F9':'#FAFAFA'};margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:${hasSeg?'10px':'6px'}">
               <div style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:0">
                 <span style="font-size:.72rem;font-weight:800;background:#DBEAFE;color:#1E40AF;border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;margin-top:2px">#${idx+1}</span>
                 <div style="font-size:.96rem;font-weight:700;color:#111827;line-height:1.4">${plan}</div>
               </div>
               <span style="font-size:.78rem;font-weight:700;padding:4px 12px;border-radius:20px;background:${es.bg};color:${es.color};border:1px solid ${es.border};white-space:nowrap;flex-shrink:0">${es.label}</span>
             </div>
-            <!-- seguimiento a ancho completo -->
             ${hasSeg?`
             <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:6px;padding:10px 14px;margin-bottom:10px">
               <div style="font-size:.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Seguimiento</div>
               <div style="font-size:.92rem;color:#1E293B;line-height:1.6;white-space:pre-line">${seg}</div>
             </div>`:''}
-            <!-- fila inferior: metadatos -->
             <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
               <div><span style="font-size:.72rem;font-weight:700;color:#9CA3AF;text-transform:uppercase">Responsable</span><br><span style="font-size:.88rem;color:#374151;font-weight:600">${resp}</span></div>
               <div><span style="font-size:.72rem;font-weight:700;color:#9CA3AF;text-transform:uppercase">F. Acción</span><br><span style="font-size:.88rem;color:#374151">${fAccion}</span></div>
@@ -3313,19 +3312,50 @@ function renderResumen() {
         }).join('')
       : `<div style="padding:28px 20px;text-align:center;color:#9CA3AF;font-size:.92rem">Sin planes de acción registrados</div>`;
 
+    // Función global de filtrado — opera sobre el DOM ya renderizado
+    window._filtrarPlanes = function(f) {
+      document.querySelectorAll('[data-planes-filter]').forEach(b => {
+        const isActive = b.dataset.planesFiltro === f;
+        b.style.outline = isActive ? '2px solid currentColor' : 'none';
+        b.style.opacity = isActive ? '1' : '0.55';
+        b.style.transform = isActive ? 'scale(1.07)' : 'scale(1)';
+      });
+      document.querySelectorAll('#planes-tarjetas-container [data-estado]').forEach(c => {
+        c.style.display = (!f || c.dataset.estado === f) ? '' : 'none';
+      });
+      // contador visible
+      const vis = document.querySelectorAll('#planes-tarjetas-container [data-estado]:not([style*="none"])').length;
+      const lbl = document.getElementById('planes-visible-count');
+      if (lbl) lbl.textContent = f ? `Mostrando ${vis} de ${_tot}` : '';
+    };
+
     planesEl.innerHTML = `
       <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden">
-        <div style="background:#F0F9FF;padding:12px 18px;border-bottom:2px solid #BAE6FD;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-          <div style="font-size:1.05rem;font-weight:800;color:#111827"><i class="fa-solid fa-list-check" style="color:#0EA5E9;margin-right:8px"></i>Planes de Acción</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            ${_tot>0?`
-              <span style="font-size:.8rem;font-weight:700;padding:3px 11px;border-radius:20px;background:#F0FDF4;color:#15803D;border:1px solid #86EFAC">${_cerradas} Cerradas</span>
-              <span style="font-size:.8rem;font-weight:700;padding:3px 11px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:1px solid #93C5FD">${_enProceso} En Proceso</span>
-              <span style="font-size:.8rem;font-weight:700;padding:3px 11px;border-radius:20px;background:#FFFBEB;color:#B45309;border:1px solid #FCD34D">${_pendientes} Pendientes</span>
-            `:'<span style="font-size:.82rem;color:#6B7280">Sin registros</span>'}
+        <div style="background:#F0F9FF;padding:12px 18px;border-bottom:2px solid #BAE6FD;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div style="font-size:1.05rem;font-weight:800;color:#111827"><i class="fa-solid fa-list-check" style="color:#0EA5E9;margin-right:8px"></i>Planes de Acción
+            <span id="planes-visible-count" style="font-size:.75rem;font-weight:500;color:#6B7280;margin-left:8px"></span>
           </div>
+          ${_tot>0?`
+          <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+            <button data-planes-filter data-planes-filtro="" onclick="window._filtrarPlanes('')"
+              style="cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:.8rem;font-weight:700;padding:5px 13px;border-radius:20px;border:1px solid #D1D5DB;background:#F3F4F6;color:#374151;transition:all .18s;outline:2px solid #374151;opacity:1;transform:scale(1.07)">
+              Todos (${_tot})
+            </button>
+            <button data-planes-filter data-planes-filtro="en_proceso" onclick="window._filtrarPlanes('en_proceso')"
+              style="cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:.8rem;font-weight:700;padding:5px 13px;border-radius:20px;border:1px solid #93C5FD;background:#EFF6FF;color:#1D4ED8;transition:all .18s;outline:none;opacity:.55">
+              En Proceso (${_enProceso})
+            </button>
+            <button data-planes-filter data-planes-filtro="pendiente" onclick="window._filtrarPlanes('pendiente')"
+              style="cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:.8rem;font-weight:700;padding:5px 13px;border-radius:20px;border:1px solid #FCD34D;background:#FFFBEB;color:#B45309;transition:all .18s;outline:none;opacity:.55">
+              Pendientes (${_pendientes})
+            </button>
+            <button data-planes-filter data-planes-filtro="cerrada" onclick="window._filtrarPlanes('cerrada')"
+              style="cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:.8rem;font-weight:700;padding:5px 13px;border-radius:20px;border:1px solid #86EFAC;background:#F0FDF4;color:#15803D;transition:all .18s;outline:none;opacity:.55">
+              Cerradas (${_cerradas})
+            </button>
+          </div>`:'<span style="font-size:.82rem;color:#6B7280">Sin registros</span>'}
         </div>
-        <div style="padding:14px 16px">${tarjetas}</div>
+        <div id="planes-tarjetas-container" style="padding:14px 16px">${tarjetas}</div>
       </div>`;
   }
 
