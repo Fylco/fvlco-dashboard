@@ -3039,6 +3039,9 @@ function applyGlobalFilter() {
 // =======================================================
 // CHART FACTORY
 // =======================================================
+// Alta resolución global para TODAS las gráficas (dashboard + capturas PDF)
+Chart.defaults.devicePixelRatio = Math.max(window.devicePixelRatio||1, 2.5);
+
 function makeChart(id, type, labels, datasets, opts={}) {
   destroyChart(id);
   const ctx = document.getElementById(id); if(!ctx) return;
