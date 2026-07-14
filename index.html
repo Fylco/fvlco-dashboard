@@ -1708,17 +1708,20 @@ let SEL_CAUSAS    = new Set();
 let _KEY_PROC = null, _KEY_MOT_INY = null, _KEY_MOT_TAP = null;
 function _detectProcKeys() {
   if (_KEY_PROC !== null) return;
-  const row = DATA.prod.find(r => Object.keys(r).length > 5) || {};
-  for (const k of Object.keys(row)) {
-    const u = k.toUpperCase().replace(/\s+/g,' ').trim();
-    if (!_KEY_PROC   && u.includes('PROCESO')) _KEY_PROC = k;
-    if (!_KEY_MOT_INY && u.includes('MOTIVO') && u.includes('INY')) _KEY_MOT_INY = k;
-    if (!_KEY_MOT_TAP && u.includes('MOTIVO') && (u.includes('TAP') || u.includes('TAPA'))) _KEY_MOT_TAP = k;
+  // Recolectar TODOS los keys únicos de todas las filas para mayor cobertura
+  const allKeys = new Set();
+  for (const r of DATA.prod) { for (const k of Object.keys(r)) allKeys.add(k); }
+  console.log('[FVLco] Columnas prod (todas):', [...allKeys].join(' | '));
+  for (const k of allKeys) {
+    const u = k.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+    if (!_KEY_PROC    && (u.includes('PROCESO') || u.includes('PROCESS'))) _KEY_PROC = k;
+    if (!_KEY_MOT_INY && u.includes('MOTIVO') && u.includes('INY'))        _KEY_MOT_INY = k;
+    if (!_KEY_MOT_TAP && u.includes('MOTIVO') && (u.includes('TAP')||u.includes('TAPA'))) _KEY_MOT_TAP = k;
   }
-  _KEY_PROC   = _KEY_PROC   || '';
+  _KEY_PROC    = _KEY_PROC    || '';
   _KEY_MOT_INY = _KEY_MOT_INY || '';
   _KEY_MOT_TAP = _KEY_MOT_TAP || '';
-  if (_KEY_PROC) console.log('[FVLco] Columna proceso responsable:', _KEY_PROC);
+  console.log('[FVLco] _KEY_PROC:', JSON.stringify(_KEY_PROC), '| _KEY_MOT_INY:', JSON.stringify(_KEY_MOT_INY), '| _KEY_MOT_TAP:', JSON.stringify(_KEY_MOT_TAP));
 }
 const _getProc   = r => { _detectProcKeys(); return String(r[_KEY_PROC]||'').trim(); };
 const _getMotivo = r => { _detectProcKeys(); return String(r[_KEY_MOT_INY]||r[_KEY_MOT_TAP]||'').trim(); };
