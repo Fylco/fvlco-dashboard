@@ -652,6 +652,12 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div class="chart-card"><div class="section-title">Tendencia Tiempo Paro por Mes</div><div style="height:220px"><canvas id="paro-trend"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Tiempo de Paro por Proceso Responsable (min)</div><div style="height:220px"><canvas id="paro-proceso"></canvas></div></div>
       </div>
+      <!-- DEBUG: columnas del sheet — se oculta automáticamente si PROCESO se detecta -->
+      <div id="paro-debug-cols" style="background:#1F2937;border:1px solid #374151;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:.72rem;color:#9CA3AF;display:none">
+        <b style="color:#F59E0B">Diagnóstico — columnas del sheet (col H/I/J):</b>
+        <div id="paro-debug-text" style="margin-top:6px;word-break:break-all;line-height:1.8"></div>
+      </div>
+
       <div class="chart-card" style="overflow-x:auto">
         <div class="section-title">Detalle de Paros y Observaciones</div>
         <table class="tbl" id="paro-obs-tbl"></table>
@@ -4131,6 +4137,24 @@ function renderOTIF() {
 // ── PAROS
 function renderParos() {
   _detectProcKeys(); // asegurar que los nombres de columna estén resueltos
+
+  // Panel de diagnóstico: muestra columnas reales si PROCESO no se detectó
+  {
+    const dbgEl = document.getElementById('paro-debug-cols');
+    const dbgTx = document.getElementById('paro-debug-text');
+    if (dbgEl && dbgTx) {
+      if (!_KEY_PROC) {
+        // Mostrar todas las columnas del sheet para identificar cuál es PROCESO
+        const allKeys = new Set();
+        DATA.prod.slice(0,10).forEach(r => Object.keys(r).forEach(k => allKeys.add(k)));
+        const cols = [...allKeys].filter(k => !k.startsWith('_')).map((k,i) => `<span style="background:#374151;border-radius:3px;padding:1px 6px;margin:2px;display:inline-block"><b style="color:#60A5FA">${String.fromCharCode(65+i)}:</b> "${k}"</span>`).join('');
+        dbgTx.innerHTML = cols || 'Sin datos cargados';
+        dbgEl.style.display = 'block';
+      } else {
+        dbgEl.style.display = 'none';
+      }
+    }
+  }
   const d = filterParo();
   const withParo = d.filter(r=>r._paro>0);
   const totalMin = sum(d,'_paro');
