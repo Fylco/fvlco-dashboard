@@ -652,7 +652,18 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div class="chart-card"><div class="section-title">Tendencia Tiempo Paro por Mes</div><div style="height:220px"><canvas id="paro-trend"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Tiempo de Paro por Proceso Responsable (min)</div><div style="height:220px"><canvas id="paro-proceso"></canvas></div></div>
       </div>
-<div class="chart-card" style="overflow-x:auto">
+<!-- RESUMEN EJECUTIVO COSTEADO -->
+      <div class="chart-card" style="margin-bottom:18px" id="paro-resumen-ejecutivo">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <div class="section-title" style="margin:0">Resumen Ejecutivo Costeado por Mes</div>
+          <div style="font-size:.72rem;color:#6B7280;background:#111827;padding:4px 10px;border-radius:6px;border:1px solid #374151">
+            Aplica filtros activos · Ordenado por costo total
+          </div>
+        </div>
+        <div id="paro-resumen-tabla" style="overflow-x:auto"></div>
+      </div>
+
+      <div class="chart-card" style="overflow-x:auto">
         <div class="section-title">Detalle de Paros y Observaciones</div>
         <table class="tbl" id="paro-obs-tbl"></table>
       </div>
@@ -4200,6 +4211,75 @@ function renderParos() {
     {label:'Min paro',data:procSorted.map(x=>x[1]),backgroundColor:procSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4,yAxisID:'y'},
     {label:'Acumulado %',data:pAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:4,borderWidth:2,yAxisID:'y1'}
   ],{indexAxis:'y',extra:{scales:{y:{position:'left'},y1:{position:'right',min:0,max:100,ticks:{callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
+
+  // ── RESUMEN EJECUTIVO COSTEADO POR MES
+  const MESES_ORD = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const resMes = {};
+  withParo.forEach(r => {
+    const mes = (r._mes||'sin mes').toLowerCase();
+    if (!resMes[mes]) resMes[mes] = { min:0, costo:0, eventos:0, razones:{}, procesos:{} };
+    const rm = resMes[mes];
+    rm.min   += r._paro;
+    rm.costo += _costoParo(r);
+    rm.eventos++;
+    const razon = String(r['RAZON PARO']||r['RAZÓN PARO']||'Sin dato').trim();
+    rm.razones[razon]  = (rm.razones[razon]||0)  + r._paro;
+    const proc = _getProc(r)||'Sin proceso';
+    rm.procesos[proc]  = (rm.procesos[proc]||0)  + r._paro;
+  });
+  const mesKeys = Object.keys(resMes).sort((a,b)=>{
+    const ia = MESES_ORD.indexOf(a), ib = MESES_ORD.indexOf(b);
+    return (ia<0?99:ia)-(ib<0?99:ib);
+  });
+  const totalCostoGlobal = mesKeys.reduce((s,m)=>s+resMes[m].costo, 0);
+
+  const resFilas = mesKeys.map(mes => {
+    const rm = resMes[mes];
+    const topRazon   = Object.entries(rm.razones).sort((a,b)=>b[1]-a[1])[0];
+    const topProc    = Object.entries(rm.procesos).sort((a,b)=>b[1]-a[1])[0];
+    const pctCosto   = totalCostoGlobal>0 ? Math.round(rm.costo/totalCostoGlobal*100) : 0;
+    const horas      = (rm.min/60).toFixed(1);
+    const barW       = pctCosto;
+    return `<tr>
+      <td style="font-weight:700;text-transform:capitalize;color:#EEEEEE;white-space:nowrap">${mes}</td>
+      <td style="text-align:center;color:#F59E0B;font-weight:600">${rm.eventos}</td>
+      <td style="text-align:right;color:#EF4444;font-weight:600;white-space:nowrap">${fmt(rm.min)} min<br><span style="font-size:.7rem;color:#9CA3AF">${horas} h</span></td>
+      <td style="text-align:right;font-weight:700;color:#DC2626;white-space:nowrap">${fmtCOP(rm.costo)}</td>
+      <td style="min-width:100px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:8px;background:#374151;border-radius:4px;overflow:hidden">
+            <div style="height:8px;background:linear-gradient(90deg,#EF4444,#F97316);border-radius:4px;width:${barW}%;transition:width .6s"></div>
+          </div>
+          <span style="font-size:.72rem;color:#9CA3AF;white-space:nowrap">${pctCosto}%</span>
+        </div>
+      </td>
+      <td style="color:#F59E0B;font-size:.78rem;max-width:160px">${topRazon?topRazon[0]:'—'}<br><span style="color:#6B7280;font-size:.68rem">${topRazon?fmt(topRazon[1])+' min':''}</span></td>
+      <td style="color:#60A5FA;font-size:.78rem;font-weight:600">${topProc?topProc[0]:'—'}<br><span style="color:#6B7280;font-size:.68rem">${topProc?fmt(topProc[1])+' min':''}</span></td>
+    </tr>`;
+  }).join('');
+
+  const resTotRow = `<tr style="background:#1a2235;font-weight:700;border-top:2px solid #374151">
+    <td style="color:#EEEEEE">TOTAL</td>
+    <td style="text-align:center;color:#F59E0B">${withParo.length}</td>
+    <td style="text-align:right;color:#EF4444;white-space:nowrap">${fmt(totalMin)} min<br><span style="font-size:.7rem;color:#9CA3AF">${(totalMin/60).toFixed(1)} h</span></td>
+    <td style="text-align:right;color:#DC2626;white-space:nowrap">${fmtCOP(totalCosto)}</td>
+    <td></td><td></td><td></td>
+  </tr>`;
+
+  document.getElementById('paro-resumen-tabla').innerHTML = mesKeys.length === 0
+    ? '<p style="color:#4B5563;text-align:center;padding:20px">Sin datos de paro en el período seleccionado.</p>'
+    : `<table class="tbl">
+        <thead><tr>
+          <th>Mes</th>
+          <th style="text-align:center">Eventos</th>
+          <th style="text-align:right">Tiempo Total</th>
+          <th style="text-align:right">Costo Total (COP)</th>
+          <th style="min-width:130px">% del Costo Global</th>
+          <th>Principal Razón de Paro</th>
+          <th>Proceso Más Afectado</th>
+        </tr></thead>
+        <tbody>${resFilas}${resTotRow}</tbody>
+      </table>`;
 
   // Tabla detalle — solo filas con paro > 0, ordenadas por costo desc
   const paroRows = d.filter(r=>r._paro>0).sort((a,b)=>_costoParo(b)-_costoParo(a));
