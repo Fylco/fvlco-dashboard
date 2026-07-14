@@ -662,15 +662,19 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </div>
         <!-- KPIs ejecutivos -->
         <div id="paro-res-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:20px"></div>
-        <!-- Pareto ejecutivo + tabla por mes -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <!-- Pareto ejecutivo: 3 gráficas -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px">
           <div>
-            <div style="font-size:.78rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Pareto de Costos por Razón de Paro</div>
+            <div style="font-size:.78rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Pareto Costos por Razón de Paro</div>
             <div style="height:260px"><canvas id="res-pareto-razon"></canvas></div>
           </div>
           <div>
             <div style="font-size:.78rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Costo por Proceso Responsable</div>
             <div style="height:260px"><canvas id="res-pareto-proc"></canvas></div>
+          </div>
+          <div>
+            <div style="font-size:.78rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Costo de Ineficiencia por Máquina</div>
+            <div style="height:260px"><canvas id="res-costo-maq"></canvas></div>
           </div>
         </div>
         <!-- Tabla resumen por mes -->
@@ -4256,6 +4260,19 @@ function renderParos() {
     y:{position:'left',ticks:{callback:v=>fmtCOP(v)}},
     y1:{position:'right',min:0,max:100,ticks:{callback:v=>v+'%'},grid:{drawOnChartArea:false}}
   }}});
+
+  // Costo de ineficiencia por máquina
+  const maqCostoMap = {};
+  withParo.forEach(r => {
+    const m = 'Maq '+r._maq;
+    maqCostoMap[m] = (maqCostoMap[m]||0) + _costoParo(r);
+  });
+  const maqSorted = Object.entries(maqCostoMap).sort((a,b)=>b[1]-a[1]);
+  makeChart('res-costo-maq','bar',maqSorted.map(x=>x[0]),[
+    {label:'Costo COP',data:maqSorted.map(x=>x[1]),
+     backgroundColor:maqSorted.map((_,i)=>['#EF4444','#F97316','#F59E0B','#10B981','#3B82F6','#8B5CF6'][i%6]+'cc'),
+     borderRadius:6}
+  ],{extra:{scales:{y:{ticks:{callback:v=>fmtCOP(v)}}},plugins:{legend:{display:false}}}});
 
   // Pareto de COSTO por proceso responsable
   const procCostoMap = {};
