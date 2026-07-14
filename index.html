@@ -5105,7 +5105,19 @@ async function shareCompactImage() {
   const prev = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
   try {
-    const canvas = await html2canvas(el, { backgroundColor:'#FFFFFF', scale:3, useCORS:true });
+    // Capturar SIEMPRE el formato clásico de tabla ancha (aunque la pantalla
+    // sea móvil): se clona fuera de pantalla a 1100px y rc-share-force
+    // desactiva el layout de tarjetas del media query.
+    const stage = document.createElement('div');
+    stage.style.cssText = 'position:absolute;left:-12000px;top:0;width:1280px;background:#FFFFFF';
+    const cloneEl = el.cloneNode(true);
+    cloneEl.classList.add('rc-share-force');
+    stage.appendChild(cloneEl);
+    document.body.appendChild(stage);
+    let canvas;
+    try {
+      canvas = await html2canvas(cloneEl, { backgroundColor:'#FFFFFF', scale:2, useCORS:true });
+    } finally { stage.remove(); }
     const blob   = await new Promise(res => canvas.toBlob(res, 'image/png'));
     const file   = new File([blob], fname, { type:'image/png' });
     _rcShareCache = { key, file };   // guardar para poder compartir en el 2º toque
