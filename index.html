@@ -611,6 +611,19 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           </div>
         </div>
 
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:180px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Proceso Responsable</span>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="paro-proc-btn" onclick="toggleParoProcDD(event)" style="min-width:180px;text-align:left">Todos los procesos ▾</button>
+            <div class="multi-sel-dropdown" id="paro-proc-dd" style="min-width:220px;max-height:280px;overflow-y:auto">
+              <label class="razon-item" style="border-bottom:1px solid #374151;margin-bottom:4px;padding-bottom:6px;font-weight:600;color:#F3F4F6">
+                <input type="checkbox" id="paro-proc-all" onchange="toggleAllProcesos(this)"> Seleccionar todos
+              </label>
+              <div id="paro-proc-list"></div>
+            </div>
+          </div>
+        </div>
+
         <div style="display:flex;gap:8px;align-items:flex-end">
           <button class="btn-x" onclick="clearParoDias()" style="white-space:nowrap">✕ Quitar días</button>
           <button class="btn-filter" onclick="renderParos()">Filtrar</button>
@@ -624,9 +637,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div class="chart-card"><div class="section-title">Pareto de Paros por Razón</div><div style="height:280px"><canvas id="paro-pareto"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Tiempo de Paro por Máquina (min)</div><div style="height:280px"><canvas id="paro-maq"></canvas></div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px">
         <div class="chart-card"><div class="section-title">Paros por Turno</div><div style="height:220px"><canvas id="paro-turno"></canvas></div></div>
         <div class="chart-card"><div class="section-title">Tendencia Tiempo Paro por Mes</div><div style="height:220px"><canvas id="paro-trend"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">Tiempo de Paro por Proceso Responsable (min)</div><div style="height:220px"><canvas id="paro-proceso"></canvas></div></div>
       </div>
       <div class="chart-card" style="overflow-x:auto">
         <div class="section-title">Detalle de Paros y Observaciones</div>
@@ -1674,9 +1688,14 @@ let DATA = { prod: [], nc: [], planRef: [], ventas: [], accid: [], ncByOrden: {}
 let CHARTS = {};
 let SEL_DIAS      = new Set();
 let SEL_RAZONES   = new Set();
+let SEL_PROCESOS  = new Set();
 let SEL_DIAS_PARO   = new Set();
 let SEL_DIAS_COSTOS = new Set();
 let SEL_CAUSAS    = new Set();
+
+// Helpers para columnas H, I, J del sheet "lista"
+const _getProc   = r => String(r['PROCESO RESPONSABLE PARO']||'').trim();
+const _getMotivo = r => String(r['MOTIVO PAROS INY']||r['MOTIVO PAROS TAPADORA']||'').trim();
 let SEL_DIAS_NC   = new Set();
 // Tarifas por máquina (COP/hora) — editables por el usuario
 // Tarifas base (COP/hora) — se sobreescriben automáticamente con los valores del sheet
@@ -1972,16 +1991,60 @@ function updateParoRazonBtn() {
   else { btn.textContent = `${SEL_RAZONES.size} razón(es) ▾`; btn.classList.add('active'); }
 }
 function clearParoPanel() {
-  SEL_RAZONES.clear(); SEL_DIAS_PARO.clear();
+  SEL_RAZONES.clear(); SEL_DIAS_PARO.clear(); SEL_PROCESOS.clear();
   document.getElementById('paro-fp-mes').value='';
   document.getElementById('paro-f-maq').value='';
-  document.querySelectorAll('#paro-razones-list input,#paro-dia-dd input').forEach(cb=>cb.checked=false);
+  document.querySelectorAll('#paro-razones-list input,#paro-dia-dd input,#paro-proc-list input').forEach(cb=>cb.checked=false);
   const allChk = document.getElementById('paro-razon-all');
   if (allChk) { allChk.checked=false; allChk.indeterminate=false; }
-  updateParoDiaBtn(); updateParoRazonBtn();
+  const allPChk = document.getElementById('paro-proc-all');
+  if (allPChk) { allPChk.checked=false; allPChk.indeterminate=false; }
+  updateParoDiaBtn(); updateParoRazonBtn(); updateParoProcBtn();
   renderParos();
 }
 function syncParoMes() { renderParos(); }
+
+// ── Panel paros: proceso responsable dropdown
+function toggleParoProcDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('paro-proc-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleProceso(p) {
+  if (SEL_PROCESOS.has(p)) SEL_PROCESOS.delete(p); else SEL_PROCESOS.add(p);
+  updateParoProcBtn(); _syncProcAllChk();
+}
+function toggleAllProcesos(chk) {
+  document.querySelectorAll('#paro-proc-list input[type=checkbox]').forEach(cb => {
+    const p = cb.dataset.proc;
+    if (p) { if (chk.checked) SEL_PROCESOS.add(p); else SEL_PROCESOS.delete(p); cb.checked = chk.checked; }
+  });
+  updateParoProcBtn();
+}
+function _syncProcAllChk() {
+  const allChk = document.getElementById('paro-proc-all');
+  if (!allChk) return;
+  const cbs = document.querySelectorAll('#paro-proc-list input[type=checkbox]');
+  allChk.checked = cbs.length > 0 && [...cbs].every(cb => cb.checked);
+  allChk.indeterminate = !allChk.checked && SEL_PROCESOS.size > 0;
+}
+function updateParoProcBtn() {
+  const btn = document.getElementById('paro-proc-btn');
+  if (!btn) return;
+  if (SEL_PROCESOS.size === 0) { btn.textContent = 'Todos los procesos ▾'; btn.classList.remove('active'); }
+  else { btn.textContent = `${SEL_PROCESOS.size} proceso(s) ▾`; btn.classList.add('active'); }
+}
+function buildProcList(procesos) {
+  const container = document.getElementById('paro-proc-list');
+  if (!container) return;
+  container.innerHTML = procesos.map(p => `
+    <label class="ms-item razon-item">
+      <input type="checkbox" data-proc="${p}" onchange="toggleProceso('${p.replace(/'/g,"\\'")}')" ${SEL_PROCESOS.has(p)?'checked':''}>
+      <span>${p}</span>
+    </label>`).join('');
+  _syncProcAllChk();
+}
 
 // ── Panel NC: días independientes
 function toggleNcDiaDD(e) {
@@ -2802,7 +2865,8 @@ function filterParo() {
     (!m        || (r._mesTurno || r._mes) === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq      || String(r._maq) === maq) &&
-    (!SEL_RAZONES.size || SEL_RAZONES.has(String(r['RAZON PARO']||'').trim()))
+    (!SEL_RAZONES.size || SEL_RAZONES.has(String(r['RAZON PARO']||'').trim())) &&
+    (!SEL_PROCESOS.size || SEL_PROCESOS.has(_getProc(r)))
   );
 }
 function filterNC() {
@@ -4014,27 +4078,46 @@ function renderParos() {
     {label:'Min paro',data:mKeys.map(m=>mesParo[m]),borderColor:'#EF4444',backgroundColor:'#EF444422',fill:true,tension:.4,pointRadius:3}
   ]);
 
+  // Dropdown proceso responsable — procesos únicos con paro > 0
+  const todosProc = [...new Set(DATA.prod.filter(r=>r._paro>0).map(_getProc).filter(Boolean))].sort();
+  buildProcList(todosProc);
+
+  // Gráfica por proceso responsable
+  const procMap = {};
+  d.forEach(r=>{ const p=_getProc(r)||'Sin dato'; if(r._paro>0) procMap[p]=(procMap[p]||0)+r._paro; });
+  const procSorted = Object.entries(procMap).sort((a,b)=>b[1]-a[1]);
+  makeChart('paro-proceso','bar',procSorted.map(x=>x[0]),[
+    {label:'Min',data:procSorted.map(x=>x[1]),backgroundColor:procSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4}
+  ],{indexAxis:'y'});
+
   // Tabla observaciones — solo filas con paro > 0
   const paroRows = d.filter(r=>r._paro>0).sort((a,b)=>(b._paro||0)-(a._paro||0));
   const obsRows = paroRows.map(r=>{
     const obs = String(r['OBS PARO']||'').trim();
     const razon = String(r['RAZON PARO']||r['RAZÓN PARO']||'—').trim();
+    const proc   = _getProc(r)   || '—';
+    const motivo = _getMotivo(r) || '—';
+    const procColor   = proc==='—'   ? '#4B5563' : '#60A5FA';
+    const motivoColor = motivo==='—' ? '#4B5563' : '#A78BFA';
     return `<tr>
       <td style="white-space:nowrap">${cap(r._mes||'—')} / Día ${r['DIA']||'—'}</td>
       <td>Máq ${r._maq||'—'}</td>
       <td>${r._turno?'Turno '+turnoLabel(r._turno):'—'}</td>
       <td>${r._prod?r._prod.substring(0,30):'—'}</td>
       <td style="color:#F59E0B;font-weight:600">${razon}</td>
+      <td style="color:${procColor};font-weight:600">${proc}</td>
+      <td style="color:${motivoColor};font-size:.75rem;max-width:180px">${motivo}</td>
       <td style="text-align:right;color:#EF4444;font-weight:700">${r._paro} min</td>
-      <td style="color:#9CA3AF;font-size:.7rem;max-width:220px">${obs||'<span style="color:#4B5563">Sin observación</span>'}</td>
+      <td style="color:#9CA3AF;font-size:.7rem;max-width:200px">${obs||'<span style="color:#4B5563">Sin observación</span>'}</td>
     </tr>`;
   }).join('');
   document.getElementById('paro-obs-tbl').innerHTML = `
     <thead><tr>
       <th>Fecha</th><th>Máquina</th><th>Turno</th><th>Producto</th>
-      <th>Razón de Paro</th><th style="text-align:right">Tiempo</th><th>Observación</th>
+      <th>Razón de Paro</th><th>Proceso Resp.</th><th>Motivo</th>
+      <th style="text-align:right">Tiempo</th><th>Observación</th>
     </tr></thead>
-    <tbody>${obsRows||'<tr><td colspan="7" style="text-align:center;color:#4B5563;padding:20px">Sin registros de paro</td></tr>'}</tbody>`;
+    <tbody>${obsRows||'<tr><td colspan="9" style="text-align:center;color:#4B5563;padding:20px">Sin registros de paro</td></tr>'}</tbody>`;
 }
 
 // ── ACCIDENTALIDAD
