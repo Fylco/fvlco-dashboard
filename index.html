@@ -3048,6 +3048,7 @@ function makeChart(id, type, labels, datasets, opts={}) {
     type, data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
+      devicePixelRatio: Math.max(window.devicePixelRatio||1, 2.5),
       plugins:{
         legend:{labels:{color:'#9CA3AF',boxWidth:11,font:{size:11,family:'Tahoma'}}},
         tooltip:{mode:'index',intersect:false},
