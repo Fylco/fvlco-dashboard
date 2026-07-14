@@ -991,6 +991,21 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </button>
       </div>
 
+      <!-- Capacidad del mes — fuente PROGRAMACION (misma que Tablero Plan) -->
+      <div class="chart-card" style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-industry" style="color:#10B981;margin-right:6px"></i>Capacidad del Mes — fuente PROGRAMACIÓN <span id="capprog-badge" style="font-weight:400;color:#6B7280;font-size:.68rem"></span></div>
+        </div>
+        <div id="capprog-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:14px"></div>
+        <div id="capprog-maq" style="margin-bottom:14px"></div>
+        <div id="capprog-tabla" style="overflow-x:auto"></div>
+        <p style="font-size:.66rem;color:#6B7280;margin-top:8px;line-height:1.5">
+          Calculado con cavidades/ciclo/rendimiento <b>habilitados del mes</b> (pestaña del mes en PROGRAMACIÓN) —
+          la misma fuente del Tablero Plan. Si una máquina está dañada, reasigna sus productos en el sheet y esto se recalcula.
+          Turnos disponibles = L–V 3 turnos, sábado 2, domingo 0.
+        </p>
+      </div>
+
       <!-- Simulador de escenarios -->
       <div style="background:#1F2937;border:1px solid #374151;border-radius:10px;padding:14px 16px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
         <div style="font-size:.7rem;font-weight:700;color:#8B5CF6;text-transform:uppercase;letter-spacing:.08em"><i class="fa-solid fa-sliders" style="margin-right:6px"></i>Escenario</div>
@@ -5442,16 +5457,16 @@ function renderReporteCompacto() {
       ? allProds.map(p => `<div style="font-size:.88rem;padding:1px 0">${p}</div>`).join('')
       : (allProds[0] || '—');
     return `<tr>
-    <td style="font-weight:700;color:#111827">${g.maq}</td>
-    <td>${prodCell}</td>
-    <td style="text-align:right">${g.cavTeor||'—'}</td>
-    <td style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
-    <td style="text-align:center">${nTurnos(g)}</td>
-    <td style="text-align:right">${g.cavReal||'—'}</td>
-    <td style="text-align:right">${g.cicloReal?g.cicloReal.toFixed(1):'—'}</td>
-    <td style="text-align:right;color:#2563EB;font-weight:700">${ri(g.undProg)}</td>
-    <td style="text-align:right;color:#059669;font-weight:700">${ri(g.undProd)}</td>
-    <td style="text-align:right;color:${g.falt>0?'#DC2626':'#059669'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
+    <td class="rc-mq" data-label="Máquina" style="font-weight:700;color:#111827">${g.maq}</td>
+    <td data-label="Producto">${prodCell}</td>
+    <td data-label="Cav. teóricas" style="text-align:right">${g.cavTeor||'—'}</td>
+    <td data-label="Ciclo STD" style="text-align:right">${g.cicloEst?g.cicloEst.toFixed(1):'—'}</td>
+    <td data-label="Turnos" style="text-align:center">${nTurnos(g)}</td>
+    <td data-label="Cav. reales" style="text-align:right">${g.cavReal||'—'}</td>
+    <td data-label="Ciclo real" style="text-align:right">${g.cicloReal?g.cicloReal.toFixed(1):'—'}</td>
+    <td data-label="Und. programadas" style="text-align:right;color:#2563EB;font-weight:700">${ri(g.undProg)}</td>
+    <td data-label="Und. producidas" style="text-align:right;color:#059669;font-weight:700">${ri(g.undProd)}</td>
+    <td data-label="Und. faltantes" style="text-align:right;color:${g.falt>0?'#DC2626':'#059669'}">${g.falt>0?'+'+ri(g.falt):ri(g.falt)}</td>
   </tr>`;
   }).join('');
 
@@ -5501,22 +5516,22 @@ function renderReporteCompacto() {
     const bodyRows = turnoTableRows || `<tr><td colspan="2" style="padding:4px 8px;color:#6B7280;font-size:.9rem">Sin producción</td></tr>`;
     const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${bodyRows}${totalRow}</table>`;
     return `<tr>
-      <td style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
-      <td style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
-      <td style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min</td>
-      <td style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.8rem;font-weight:800">${pc(g.disp)}</td>
-      <td style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.8rem;font-weight:800">${pc(g.rend)}</td>
-      <td style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.8rem;font-weight:800">${pc(g.cal)}</td>
-      <td style="text-align:right;font-size:2rem;font-weight:800;color:${oc}">${pc(g.oee)}</td>
+      <td class="rc-mq" style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
+      <td class="rc-det" data-label="Producción por turno" style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
+      <td data-label="Tiempo perdido" style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min</td>
+      <td data-label="Disponibilidad" style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.8rem;font-weight:800">${pc(g.disp)}</td>
+      <td data-label="Rendimiento" style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.8rem;font-weight:800">${pc(g.rend)}</td>
+      <td data-label="Calidad" style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.8rem;font-weight:800">${pc(g.cal)}</td>
+      <td data-label="OEE" style="text-align:right;font-size:2rem;font-weight:800;color:${oc}">${pc(g.oee)}</td>
     </tr>`;
   }).join('');
 
   const maquilaRows = maquilasDia.map(m=>`<tr>
-    <td style="font-weight:700;color:#7C3AED">${m.cliente||'—'}</td>
-    <td>${m.fecha||'—'}</td>
-    <td>${m.referencia||'—'}</td>
-    <td style="text-align:right">${m.cantidad?ri(pN(m.cantidad)):'—'}</td>
-    <td style="color:#6B7280">${m.orden||'—'}</td>
+    <td class="rc-mq" data-label="Cliente" style="font-weight:700;color:#7C3AED">${m.cliente||'—'}</td>
+    <td data-label="Fecha">${m.fecha||'—'}</td>
+    <td data-label="Referencia">${m.referencia||'—'}</td>
+    <td data-label="Cantidad" style="text-align:right">${m.cantidad?ri(pN(m.cantidad)):'—'}</td>
+    <td data-label="Orden de prod." style="color:#6B7280">${m.orden||'—'}</td>
   </tr>`).join('');
 
   contentEl.innerHTML = `
@@ -5527,6 +5542,26 @@ function renderReporteCompacto() {
       #rc-paper .tbl tr:hover td { background:#F3F4F6; }
       #rc-paper .section-title { color:#6B7280; font-size:.85rem; }
       #rc-paper .section-title::after { background:#D1D5DB; }
+      /* ── Móvil: cada máquina como tarjeta apilada (sin scroll lateral). ──
+         La clase rc-share-force (clon para la imagen de WhatsApp) desactiva
+         este layout y conserva la tabla clásica tipo Excel. */
+      @media (max-width: 768px) {
+        #rc-content:not(.rc-share-force) .rc-resp { min-width:0 !important; }
+        #rc-content:not(.rc-share-force) .rc-resp,
+        #rc-content:not(.rc-share-force) .rc-resp tbody { display:block; width:100%; }
+        #rc-content:not(.rc-share-force) .rc-resp thead { display:none; }
+        #rc-content:not(.rc-share-force) .rc-resp tr { display:block; border:1px solid #D1D5DB; border-radius:10px; margin-bottom:12px; overflow:hidden; background:#FFFFFF; }
+        #rc-content:not(.rc-share-force) .rc-resp td { display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:right !important; padding:7px 12px !important; font-size:1rem !important; border-bottom:1px solid #F3F4F6 !important; }
+        #rc-content:not(.rc-share-force) .rc-resp td::before { content:attr(data-label); color:#6B7280; font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; font-weight:700; flex-shrink:0; }
+        #rc-content:not(.rc-share-force) .rc-resp td[data-label="OEE"] { font-size:1.35rem !important; }
+        #rc-content:not(.rc-share-force) .rc-resp td.rc-mq { display:block; background:#0891B2; color:#FFFFFF !important; font-size:1.02rem !important; text-align:left !important; padding:8px 12px !important; font-weight:800 !important; }
+        #rc-content:not(.rc-share-force) .rc-resp td.rc-mq::before { content:attr(data-label) ' '; color:rgba(255,255,255,.75); font-size:.7rem; margin-right:6px; }
+        #rc-content:not(.rc-share-force) .rc-resp td.rc-det { display:block; text-align:left !important; }
+        #rc-content:not(.rc-share-force) .rc-resp td.rc-det::before { display:block; margin-bottom:5px; }
+        #rc-content:not(.rc-share-force) .rc-resp td.rc-det table { font-size:.95rem !important; }
+        #rc-content:not(.rc-share-force) .rc-resp td[colspan] { display:block; text-align:center !important; }
+        #rc-content:not(.rc-share-force) .rc-resp td[colspan]::before { content:none; }
+      }
     </style>
     <div id="rc-paper" style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:12px;overflow:hidden">
       <div style="background:#F3F4F6;padding:14px 20px;border-bottom:3px solid #0891B2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -5551,7 +5586,7 @@ function renderReporteCompacto() {
       </div>
 
       <div style="overflow-x:auto">
-        <table class="tbl" style="width:100%;min-width:760px">
+        <table class="tbl rc-resp" style="width:100%;min-width:760px">
           <thead><tr style="background:#FCE4D6">
             <th style="background:#FCE4D6;color:#7A4B12">Máq</th><th style="background:#FCE4D6;color:#7A4B12">Producto</th>
             <th style="text-align:right;background:#FCE4D6;color:#7A4B12">Cav. Teór.</th><th style="text-align:right;background:#FCE4D6;color:#7A4B12">Ciclo STD</th>
@@ -5586,7 +5621,7 @@ function renderReporteCompacto() {
       <div style="padding:14px 20px">
         <div class="section-title" style="margin-bottom:10px">OEE por Máquina</div>
         <div style="overflow-x:auto">
-          <table class="tbl" style="width:100%;min-width:700px">
+          <table class="tbl rc-resp" style="width:100%;min-width:700px">
             <thead><tr>
               <th>Máquina</th><th>Producto / Turnos</th>
               <th style="text-align:right;background:#FFFFFF">Tiempo Perdido</th>
@@ -5618,7 +5653,7 @@ function renderReporteCompacto() {
 
       <div style="padding:14px 20px;border-top:1px solid #E5E7EB">
         <div class="section-title" style="margin-bottom:10px"><i class="fa-solid fa-handshake" style="color:#7C3AED;margin-right:6px"></i>Maquilas — ${fechaTxt}</div>
-        <table class="tbl" style="width:100%">
+        <table class="tbl rc-resp" style="width:100%">
           <thead><tr><th>Cliente</th><th>Fecha</th><th>Referencia</th><th style="text-align:right">Cantidad</th><th>Orden de Prod.</th></tr></thead>
           <tbody>${maquilaRows}</tbody>
         </table>
@@ -7047,7 +7082,13 @@ function parseProgBlocks(rows) {
       PROG_PEDIDOS[PROG_PEDIDOS.length-1]._cants = r.slice(1).map(v=>pNum(v));
     }
 
-    if (lblU === 'PRODUCTO') {
+    // inicio de bloque: col A dice PRODUCTO, o la fila tiene etiquetas CAVIDADES y
+    // CICLO con nombre en col B (tolera que A1 haya sido editada, ej. "¿")
+    const esBloque = lblU === 'PRODUCTO' ||
+      (String(r[1]||'').trim() &&
+       r.some(c=>String(c||'').trim().toUpperCase()==='CAVIDADES') &&
+       r.some(c=>String(c||'').trim().toUpperCase().startsWith('CICLO ')));
+    if (esBloque) {
       if (cur && cur.producto && cur.fechas.length) blocks.push(cur);
       cur = { producto: String(r[1]||'').trim(),
               cavidades: pNum(_progAfter(r,'CAVIDADES'))||0,
@@ -7421,7 +7462,87 @@ function capNorm(s) {
   return String(s||'').toUpperCase().replace(/LYNNER/g,'LINER').replace(/[^A-Z0-9]/g,'').replace(/MM/g,'');
 }
 
+// ── Capacidad del mes desde PROGRAMACION (misma fuente que Tablero Plan) ──
+function renderCapProg() {
+  const kpisEl = document.getElementById('capprog-kpis');
+  const maqEl  = document.getElementById('capprog-maq');
+  const tblEl  = document.getElementById('capprog-tabla');
+  const badge  = document.getElementById('capprog-badge');
+  if (!tblEl) return;
+  const blocks = PROG_BLOCKS.filter(b => !/MAQUILA/i.test(b.maquina) && b.cavidades>0 && b.ciclo>0);
+  if (!blocks.length) {
+    tblEl.innerHTML = '<p style="color:#6B7280;font-size:.78rem;padding:10px 0">Sin datos de PROGRAMACIÓN para este mes (verifica que el archivo del año esté conectado y compartido).</p>';
+    if (kpisEl) kpisEl.innerHTML=''; if (maqEl) maqEl.innerHTML='';
+    return;
+  }
+
+  // turnos disponibles del mes según el calendario del propio sheet
+  let turnosDisp = 0;
+  blocks[0].fechas.forEach(fs => { const d=_parseFechaES(fs); if(!d) return;
+    const dow=d.getDay(); turnosDisp += dow===0 ? 0 : dow===6 ? 2 : 3; });
+
+  const rows = blocks.map(b => {
+    const undTurno  = Math.floor(b.cavidades * (28800/b.ciclo) * b.rendimiento);
+    const turnosNec = undTurno>0 ? b.requerida/undTurno : 0;
+    const maqLbl    = /^\d+$/.test(String(b.maquina).trim()) ? 'INY#'+b.maquina : (b.maquina||'—');
+    return {...b, undTurno, turnosNec, maqLbl};
+  });
+
+  // carga por máquina
+  const maqLoad = {};
+  rows.forEach(r => { maqLoad[r.maqLbl]=(maqLoad[r.maqLbl]||0)+r.turnosNec; });
+
+  const totNec = rows.reduce((s,r)=>s+r.turnosNec,0);
+  const nMaq   = Object.keys(maqLoad).length;
+  const sobre  = Object.entries(maqLoad).filter(([,v])=>v>turnosDisp);
+
+  if (badge) badge.textContent = `· ${rows.length} productos · ${nMaq} máquinas en uso`;
+  if (kpisEl) kpisEl.innerHTML =
+    poKpi('Turnos disp./máquina', turnosDisp, 'calendario del mes', '#3B82F6') +
+    poKpi('Turnos requeridos', Math.round(totNec), 'total planta', '#8B5CF6') +
+    poKpi('Máquinas sobrecargadas', sobre.length, sobre.map(([m])=>m).join(', ')||'ninguna', sobre.length?'#EF4444':'#10B981');
+
+  // barras de carga por máquina
+  if (maqEl) maqEl.innerHTML = Object.entries(maqLoad).sort((a,b)=>b[1]-a[1]).map(([m,v]) => {
+    const pct = turnosDisp ? v/turnosDisp*100 : 0;
+    const col = pct>100 ? '#EF4444' : pct>85 ? '#F59E0B' : '#10B981';
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+      <div style="width:64px;font-size:.72rem;color:#D1D5DB;font-weight:600">${m}</div>
+      <div style="flex:1;background:#111827;border-radius:6px;height:18px;overflow:hidden;position:relative">
+        <div style="width:${Math.min(100,pct)}%;height:100%;background:${col};opacity:.75"></div>
+      </div>
+      <div style="width:130px;font-size:.7rem;color:${col};font-weight:700">${v.toFixed(1)} / ${turnosDisp} turnos (${Math.round(pct)}%)</div>
+    </div>`; }).join('');
+
+  // tabla por producto
+  tblEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.75rem">
+    <thead><tr style="background:#1F2937">
+      <th style="text-align:left;padding:8px 12px;color:#9CA3AF">Producto</th>
+      <th style="text-align:center;padding:8px;color:#9CA3AF">Máq.</th>
+      <th style="text-align:center;padding:8px;color:#9CA3AF">Cav. mes</th>
+      <th style="text-align:center;padding:8px;color:#9CA3AF">Ciclo</th>
+      <th style="text-align:center;padding:8px;color:#9CA3AF">Rend.</th>
+      <th style="text-align:right;padding:8px;color:#9CA3AF">Und/turno</th>
+      <th style="text-align:right;padding:8px;color:#9CA3AF">Requerido</th>
+      <th style="text-align:right;padding:8px;color:#9CA3AF">Turnos nec.</th>
+    </tr></thead><tbody>
+    ${rows.sort((a,b)=>b.turnosNec-a.turnosNec).map(r=>`<tr style="border-top:1px solid #1F2937">
+      <td style="padding:7px 12px;font-weight:600;color:#F3F4F6">${r.producto}</td>
+      <td style="text-align:center;padding:7px"><span style="background:#374151;border-radius:4px;padding:2px 7px;font-size:.68rem">${r.maqLbl}</span></td>
+      <td style="text-align:center;padding:7px;color:#D1D5DB">${r.cavidades}</td>
+      <td style="text-align:center;padding:7px;color:#D1D5DB">${r.ciclo}s</td>
+      <td style="text-align:center;padding:7px;color:#D1D5DB">${Math.round(r.rendimiento*100)}%</td>
+      <td style="text-align:right;padding:7px;color:#D1D5DB">${r.undTurno.toLocaleString('es-CO')}</td>
+      <td style="text-align:right;padding:7px;font-weight:600;color:#F3F4F6">${r.requerida.toLocaleString('es-CO')}</td>
+      <td style="text-align:right;padding:7px;font-weight:700;color:#8B5CF6">${r.turnosNec.toFixed(1)}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
 async function loadCapacidadMensual(force) {
+  const _mesC  = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
+  const _anioC = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
+  loadProgData(_mesC, _anioC).then(renderCapProg).catch(()=>renderCapProg());
   if (CAP_DATA.loaded && !force) { renderCapacidadMensual(); return; }
   const tit = document.getElementById('cap-mes-titulo');
   if (tit) tit.textContent = 'Cargando pestaña PLANEACION…';
