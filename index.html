@@ -297,6 +297,16 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div class="multi-sel-dropdown" id="g-dia-dd"></div>
         </div>
         <button class="btn-x" onclick="clearDias()" title="Quitar filtro de días">✕ días</button>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="g-proc-btn" onclick="toggleGProcDD(event)" style="min-width:150px;text-align:left">Todos los procesos ▾</button>
+          <div class="multi-sel-dropdown" id="g-proc-dd" style="min-width:220px;max-height:280px;overflow-y:auto">
+            <label class="razon-item" style="border-bottom:1px solid #374151;margin-bottom:4px;padding-bottom:6px;font-weight:600;color:#F3F4F6">
+              <input type="checkbox" id="g-proc-all" onchange="toggleAllGProc(this)"> Seleccionar todos
+            </label>
+            <div id="g-proc-list"></div>
+          </div>
+        </div>
+        <button class="btn-x" onclick="clearGProc()" title="Quitar filtro de proceso">✕ proceso</button>
       </span>
       <span id="last-update" style="font-size:.7rem;color:#4B5563"></span>
       <button onclick="reloadAll()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">
@@ -1878,6 +1888,58 @@ function updateDiaBtn() {
   if (SEL_DIAS.size === 0) { btn.textContent='Todos los días ▾'; btn.classList.remove('active'); }
   else { btn.textContent=`${SEL_DIAS.size} día(s) ▾`; btn.classList.add('active'); }
 }
+
+// ── Filtro global de Proceso Responsable (top bar)
+function toggleGProcDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('g-proc-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleGProc(p) {
+  if (SEL_PROCESOS.has(p)) SEL_PROCESOS.delete(p); else SEL_PROCESOS.add(p);
+  updateGProcBtn(); _syncGProcAllChk();
+  // sincronizar también el dropdown de la pestaña Paros
+  buildProcList([...SEL_PROCESOS, ...[...document.querySelectorAll('#paro-proc-list input')].map(cb=>cb.dataset.proc)].filter(Boolean));
+  applyGlobalFilter();
+}
+function toggleAllGProc(chk) {
+  document.querySelectorAll('#g-proc-list input[type=checkbox]').forEach(cb => {
+    const p = cb.dataset.proc;
+    if (p) { if (chk.checked) SEL_PROCESOS.add(p); else SEL_PROCESOS.delete(p); cb.checked = chk.checked; }
+  });
+  updateGProcBtn(); applyGlobalFilter();
+}
+function _syncGProcAllChk() {
+  const allChk = document.getElementById('g-proc-all');
+  if (!allChk) return;
+  const cbs = document.querySelectorAll('#g-proc-list input[type=checkbox]');
+  allChk.checked = cbs.length > 0 && [...cbs].every(cb => cb.checked);
+  allChk.indeterminate = !allChk.checked && SEL_PROCESOS.size > 0;
+}
+function updateGProcBtn() {
+  const btn = document.getElementById('g-proc-btn');
+  if (!btn) return;
+  if (SEL_PROCESOS.size === 0) { btn.textContent = 'Todos los procesos ▾'; btn.classList.remove('active'); }
+  else { btn.textContent = `${SEL_PROCESOS.size} proceso(s) ▾`; btn.classList.add('active'); }
+}
+function clearGProc() {
+  SEL_PROCESOS.clear();
+  document.querySelectorAll('#g-proc-list input,#paro-proc-list input').forEach(cb=>cb.checked=false);
+  ['g-proc-all','paro-proc-all'].forEach(id=>{ const el=document.getElementById(id); if(el){el.checked=false;el.indeterminate=false;} });
+  updateGProcBtn(); updateParoProcBtn();
+  applyGlobalFilter();
+}
+function buildGProcDd(procesos) {
+  const container = document.getElementById('g-proc-list');
+  if (!container) return;
+  container.innerHTML = procesos.map(p => `
+    <label class="ms-item razon-item">
+      <input type="checkbox" data-proc="${p}" onchange="toggleGProc('${p.replace(/'/g,"\\'")}')" ${SEL_PROCESOS.has(p)?'checked':''}>
+      <span>${p||'Sin dato'}</span>
+    </label>`).join('');
+  _syncGProcAllChk();
+}
 function buildDiaDd(dias) {
   const dd = document.getElementById('g-dia-dd');
   if (!dd) return;
@@ -2013,7 +2075,7 @@ function toggleParoProcDD(e) {
 }
 function toggleProceso(p) {
   if (SEL_PROCESOS.has(p)) SEL_PROCESOS.delete(p); else SEL_PROCESOS.add(p);
-  updateParoProcBtn(); _syncProcAllChk();
+  updateParoProcBtn(); updateGProcBtn(); _syncProcAllChk(); _syncGProcAllChk();
 }
 function toggleAllProcesos(chk) {
   document.querySelectorAll('#paro-proc-list input[type=checkbox]').forEach(cb => {
@@ -2777,6 +2839,8 @@ function populateAllFilters() {
   // Global top bar
   fillSel('g-mes', meses.map(cap), 'Mes');
   buildDiaDd(dias);
+  const procesos = [...new Set(DATA.prod.filter(r=>r._paro>0).map(_getProc).filter(Boolean))].sort();
+  buildGProcDd(procesos);
   // OEE section
   fillSel('oee-f-maq', maqs, 'Máquina');
   // Paros panel
@@ -2843,7 +2907,9 @@ function filterProd() {
     (!m        || r._mes === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq      || String(r._maq) === maq) &&
-    (!t        || String(r._turno) === t)
+    (!t        || String(r._turno) === t) &&
+    // Proceso: excluye solo filas con paro de otro proceso; filas sin paro siempre pasan
+    (!SEL_PROCESOS.size || !_getProc(r) || SEL_PROCESOS.has(_getProc(r)))
   );
 }
 function filterCostos() {
