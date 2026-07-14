@@ -1704,8 +1704,31 @@ let SEL_DIAS_COSTOS = new Set();
 let SEL_CAUSAS    = new Set();
 
 // Helpers para columnas H, I, J del sheet "lista"
-const _getProc   = r => String(r['PROCESO RESPONSABLE PARO']||'').trim();
-const _getMotivo = r => String(r['MOTIVO PAROS INY']||r['MOTIVO PAROS TAPADORA']||'').trim();
+// Detección dinámica de columnas H/I/J del sheet "lista" (insensible a espacios/tildes/mayúsculas)
+let _KEY_PROC = null, _KEY_MOT_INY = null, _KEY_MOT_TAP = null;
+function _detectProcKeys() {
+  if (_KEY_PROC !== null) return;
+  const row = DATA.prod.find(r => Object.keys(r).length > 5) || {};
+  for (const k of Object.keys(row)) {
+    const u = k.toUpperCase().replace(/\s+/g,' ').trim();
+    if (!_KEY_PROC   && u.includes('PROCESO')) _KEY_PROC = k;
+    if (!_KEY_MOT_INY && u.includes('MOTIVO') && u.includes('INY')) _KEY_MOT_INY = k;
+    if (!_KEY_MOT_TAP && u.includes('MOTIVO') && (u.includes('TAP') || u.includes('TAPA'))) _KEY_MOT_TAP = k;
+  }
+  _KEY_PROC   = _KEY_PROC   || '';
+  _KEY_MOT_INY = _KEY_MOT_INY || '';
+  _KEY_MOT_TAP = _KEY_MOT_TAP || '';
+  if (_KEY_PROC) console.log('[FVLco] Columna proceso responsable:', _KEY_PROC);
+}
+const _getProc   = r => { _detectProcKeys(); return String(r[_KEY_PROC]||'').trim(); };
+const _getMotivo = r => { _detectProcKeys(); return String(r[_KEY_MOT_INY]||r[_KEY_MOT_TAP]||'').trim(); };
+
+// Costo de un paro en COP: (minutos / 60) × tarifa horaria de la máquina
+const _costoParo = r => {
+  const min = r._paro || 0;
+  const tarifa = (typeof TARIFAS_MAQ !== 'undefined' ? TARIFAS_MAQ[r._maq] : null) || 25000;
+  return Math.round((min / 60) * tarifa);
+};
 let SEL_DIAS_NC   = new Set();
 // Tarifas por máquina (COP/hora) — editables por el usuario
 // Tarifas base (COP/hora) — se sobreescriben automáticamente con los valores del sheet
@@ -4104,24 +4127,31 @@ function renderOTIF() {
 
 // ── PAROS
 function renderParos() {
+  _detectProcKeys(); // asegurar que los nombres de columna estén resueltos
   const d = filterParo();
   const withParo = d.filter(r=>r._paro>0);
   const totalMin = sum(d,'_paro');
   const maqs = [...new Set(d.map(r=>r._maq).filter(Boolean))].sort();
+  const totalCosto = withParo.reduce((s,r)=>s+_costoParo(r),0);
 
+  // KPIs — incluye costo total de paros
   document.getElementById('paro-kpis').innerHTML=
-    kpiCard('Tiempo Total Paro',fmt(totalMin)+' min','#EF4444',`${(totalMin/60).toFixed(0)} horas`,'fa-solid fa-pause')+
+    kpiCard('Tiempo Total Paro',fmt(totalMin)+' min','#EF4444',`${(totalMin/60).toFixed(1)} horas`,'fa-solid fa-pause')+
+    kpiCard('Costo Total Paros',fmtCOP(totalCosto),'#DC2626','Costo máquina parada','fa-solid fa-circle-dollar-to-slot')+
     kpiCard('Eventos de Paro',withParo.length,'#F59E0B','Registros con paro','fa-solid fa-triangle-exclamation')+
-    kpiCard('Paro Promedio',fmt(withParo.length?totalMin/withParo.length:0,1)+' min','#F97316','Por evento','fa-solid fa-hourglass')+
-    kpiCard('Tiempo Procesado',fmt(sum(d.filter(r=>r['TIEMPO CAJA MIN']<720),'TIEMPO CAJA MIN'))+' min','#8B5CF6','Total ciclos','fa-solid fa-industry'); // <720min: excluye valores basura del "primer reporte sin referencia" (hasta 66M min)
+    kpiCard('Paro Promedio',fmt(withParo.length?totalMin/withParo.length:0,1)+' min','#F97316','Por evento','fa-solid fa-hourglass');
 
-  // Pareto por razón
+  // Pareto por razón (con línea acumulada %)
   const razon={};
   d.forEach(r=>{ const k=r['RAZON PARO']||r['RAZÓN PARO']||'Sin dato'; const v=r._paro; if(v>0) razon[k]=(razon[k]||0)+v; });
   const rSorted=Object.entries(razon).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const rTotal=rSorted.reduce((s,x)=>s+x[1],0);
+  let rAcum=0;
+  const rAcumPct=rSorted.map(x=>{ rAcum+=x[1]; return rTotal>0?Math.round(rAcum/rTotal*100):0; });
   makeChart('paro-pareto','bar',rSorted.map(x=>x[0].substring(0,30)),[
-    {label:'Min',data:rSorted.map(x=>x[1]),backgroundColor:rSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4}
-  ],{indexAxis:'y'});
+    {label:'Min',data:rSorted.map(x=>x[1]),backgroundColor:rSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4,yAxisID:'y'},
+    {label:'Acumulado %',data:rAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:3,yAxisID:'y1'}
+  ],{indexAxis:'y',extra:{scales:{y:{position:'left'},y1:{position:'right',min:0,max:100,ticks:{callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
 
   // Por máquina
   makeChart('paro-maq','bar',maqs.map(m=>'Maq '+m),[
@@ -4129,7 +4159,7 @@ function renderParos() {
      backgroundColor:'#EF444488',borderRadius:4}
   ]);
 
-  // Por turno (8h: 1/2/3 · 12h: diurno=4, nocturno=5)
+  // Por turno
   const turnos=[1,2,3,4,5];
   const tNames=['Turno 1 (8h)','Turno 2 (8h)','Turno 3 (8h)','Diurno (12h)','Nocturno (12h)'];
   makeChart('paro-turno','doughnut',tNames,[
@@ -4147,22 +4177,34 @@ function renderParos() {
   // Dropdown proceso responsable — procesos únicos con paro > 0
   const todosProc = [...new Set(DATA.prod.filter(r=>r._paro>0).map(_getProc).filter(Boolean))].sort();
   buildProcList(todosProc);
+  buildGProcDd(todosProc);
 
-  // Gráfica por proceso responsable
-  const procMap = {};
-  d.forEach(r=>{ const p=_getProc(r)||'Sin dato'; if(r._paro>0) procMap[p]=(procMap[p]||0)+r._paro; });
-  const procSorted = Object.entries(procMap).sort((a,b)=>b[1]-a[1]);
+  // Pareto por proceso responsable (barras + línea acumulada + eje costo)
+  const procMap={};
+  d.forEach(r=>{ if(r._paro<=0) return; const p=_getProc(r)||'Sin proceso'; procMap[p]=(procMap[p]||0)+r._paro; });
+  const procSorted=Object.entries(procMap).sort((a,b)=>b[1]-a[1]);
+  const pTotal=procSorted.reduce((s,x)=>s+x[1],0);
+  let pAcum=0;
+  const pAcumPct=procSorted.map(x=>{ pAcum+=x[1]; return pTotal>0?Math.round(pAcum/pTotal*100):0; });
+  const procCostos=procSorted.map(([p])=>{
+    const minP=procMap[p]||0;
+    // costo promedio ponderado por tiempo de paro de cada máquina
+    const costoP=d.filter(r=>r._paro>0&&(_getProc(r)||'Sin proceso')===p).reduce((s,r)=>s+_costoParo(r),0);
+    return costoP;
+  });
   makeChart('paro-proceso','bar',procSorted.map(x=>x[0]),[
-    {label:'Min',data:procSorted.map(x=>x[1]),backgroundColor:procSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4}
-  ],{indexAxis:'y'});
+    {label:'Min paro',data:procSorted.map(x=>x[1]),backgroundColor:procSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4,yAxisID:'y'},
+    {label:'Acumulado %',data:pAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:4,borderWidth:2,yAxisID:'y1'}
+  ],{indexAxis:'y',extra:{scales:{y:{position:'left'},y1:{position:'right',min:0,max:100,ticks:{callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
 
-  // Tabla observaciones — solo filas con paro > 0
-  const paroRows = d.filter(r=>r._paro>0).sort((a,b)=>(b._paro||0)-(a._paro||0));
+  // Tabla detalle — solo filas con paro > 0, ordenadas por costo desc
+  const paroRows = d.filter(r=>r._paro>0).sort((a,b)=>_costoParo(b)-_costoParo(a));
   const obsRows = paroRows.map(r=>{
-    const obs = String(r['OBS PARO']||'').trim();
-    const razon = String(r['RAZON PARO']||r['RAZÓN PARO']||'—').trim();
+    const obs    = String(r['OBS PARO']||'').trim();
+    const razon  = String(r['RAZON PARO']||r['RAZÓN PARO']||'—').trim();
     const proc   = _getProc(r)   || '—';
     const motivo = _getMotivo(r) || '—';
+    const costo  = _costoParo(r);
     const procColor   = proc==='—'   ? '#4B5563' : '#60A5FA';
     const motivoColor = motivo==='—' ? '#4B5563' : '#A78BFA';
     return `<tr>
@@ -4172,18 +4214,19 @@ function renderParos() {
       <td>${r._prod?r._prod.substring(0,30):'—'}</td>
       <td style="color:#F59E0B;font-weight:600">${razon}</td>
       <td style="color:${procColor};font-weight:600">${proc}</td>
-      <td style="color:${motivoColor};font-size:.75rem;max-width:180px">${motivo}</td>
+      <td style="color:${motivoColor};font-size:.75rem;max-width:160px">${motivo}</td>
       <td style="text-align:right;color:#EF4444;font-weight:700">${r._paro} min</td>
-      <td style="color:#9CA3AF;font-size:.7rem;max-width:200px">${obs||'<span style="color:#4B5563">Sin observación</span>'}</td>
+      <td style="text-align:right;color:#DC2626;font-weight:700;white-space:nowrap">${fmtCOP(costo)}</td>
+      <td style="color:#9CA3AF;font-size:.7rem;max-width:180px">${obs||'<span style="color:#4B5563">Sin observación</span>'}</td>
     </tr>`;
   }).join('');
   document.getElementById('paro-obs-tbl').innerHTML = `
     <thead><tr>
       <th>Fecha</th><th>Máquina</th><th>Turno</th><th>Producto</th>
       <th>Razón de Paro</th><th>Proceso Resp.</th><th>Motivo</th>
-      <th style="text-align:right">Tiempo</th><th>Observación</th>
+      <th style="text-align:right">Tiempo</th><th style="text-align:right">Costo (COP)</th><th>Observación</th>
     </tr></thead>
-    <tbody>${obsRows||'<tr><td colspan="9" style="text-align:center;color:#4B5563;padding:20px">Sin registros de paro</td></tr>'}</tbody>`;
+    <tbody>${obsRows||'<tr><td colspan="10" style="text-align:center;color:#4B5563;padding:20px">Sin registros de paro</td></tr>'}</tbody>`;
 }
 
 // ── ACCIDENTALIDAD
