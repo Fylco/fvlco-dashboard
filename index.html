@@ -6238,6 +6238,10 @@ function closeSidebar() {
 // =======================================================
 // shareMode=true → comparte vía Web Share API (WhatsApp) en vez de descargar
 async function exportPDF(shareMode = false) {
+  // Si está activa la pestaña Tiempos de Paro → informe exclusivo de paros
+  if (document.getElementById('sec-paros')?.classList.contains('active')) {
+    return exportPDFParos(shareMode);
+  }
   const btn = document.getElementById('btn-pdf');
   if (!shareMode && btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
 
@@ -6635,6 +6639,251 @@ async function exportPDF(shareMode = false) {
 }
 // función helper para mostrar valor OEE en PDF
 function oeeStr(v) { return v!=null ? v.toFixed(1)+'%' : '—'; }
+
+// =======================================================
+// PDF EXCLUSIVO — TIEMPOS DE PARO (informe gerencial)
+// =======================================================
+async function exportPDFParos(shareMode = false) {
+  const btn = document.getElementById('btn-pdf');
+  if (!shareMode && btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const pageW=210, pageH=297, ml=14, mr=14, usableW=pageW-ml-mr;
+    let y = 0;
+
+    const mesFiltro = getVal('paro-fp-mes') || getVal('g-mes');
+    const mesLabel  = mesFiltro ? cap(mesFiltro) : 'Todos los meses';
+    const fechaGen  = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+
+    // ── datos (mismos cálculos que renderParos) ──
+    const d = filterParo();
+    const withParo = d.filter(r=>r._paro>0);
+    const totalMin = sum(d,'_paro');
+    const totalCosto = withParo.reduce((s,r)=>s+_costoParo(r),0);
+    const costoPromEvento = withParo.length ? Math.round(totalCosto/withParo.length) : 0;
+
+    // ── helpers ──
+    const header = (title) => {
+      pdf.setFillColor(30,64,175); pdf.rect(0,0,pageW,16,'F');
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(10); pdf.setTextColor(255,255,255);
+      pdf.text(title, ml, 11);
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(7); pdf.setTextColor(219,234,254);
+      pdf.text(`${mesLabel} · ${fechaGen}`, pageW-mr, 11, {align:'right'});
+      pdf.setDrawColor(219,234,254); pdf.setLineWidth(0.3);
+      pdf.line(ml,18,pageW-mr,18);
+      y = 24;
+    };
+    const TITULO = 'Informe de Tiempos de Paro — FVLco';
+    const addPage = () => { pdf.addPage(); header(TITULO); };
+    const needSpace = (h) => { if (y+h > pageH-14) addPage(); };
+    const secTitle = (t) => {
+      needSpace(14);
+      pdf.setFillColor(254,242,242); pdf.rect(ml,y,usableW,7,'F');
+      pdf.setDrawColor(252,165,165); pdf.setLineWidth(0.3); pdf.rect(ml,y,usableW,7,'S');
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(8.5); pdf.setTextColor(185,28,28);
+      pdf.text(t.toUpperCase(), ml+3, y+5); y+=10;
+    };
+    const kpiRow = (items) => {
+      needSpace(22);
+      const colW = usableW/items.length;
+      items.forEach((kpi,i)=>{
+        const x=ml+i*colW;
+        pdf.setFillColor(248,250,252); pdf.rect(x,y,colW-2,16,'F');
+        pdf.setDrawColor(226,232,240); pdf.setLineWidth(0.25); pdf.rect(x,y,colW-2,16,'S');
+        const [r2,g2,b2] = kpi.color||[185,28,28];
+        pdf.setFillColor(r2,g2,b2); pdf.rect(x,y,colW-2,1.5,'F');
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(6); pdf.setTextColor(100,116,139);
+        pdf.text(String(kpi.label||''), x+3, y+6, {maxWidth:colW-6});
+        pdf.setFont('helvetica','bold'); pdf.setFontSize(10); pdf.setTextColor(r2,g2,b2);
+        pdf.text(String(kpi.value||'—'), x+3, y+13, {maxWidth:colW-6});
+      });
+      y+=20;
+    };
+    const table = (headers, rows, colWidths, boldLast=false) => {
+      if (!rows.length) { y+=4; return; }
+      const rowH=6.5;
+      needSpace(rowH*2);
+      pdf.setFillColor(185,28,28);
+      let hx=ml; headers.forEach((h,i)=>{ pdf.rect(hx,y,colWidths[i],rowH,'F'); hx+=colWidths[i]; });
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(6.5); pdf.setTextColor(255,255,255);
+      hx=ml; headers.forEach((h,i)=>{ pdf.text(h,hx+2,y+4.5,{maxWidth:colWidths[i]-3}); hx+=colWidths[i]; });
+      y+=rowH;
+      rows.forEach((row,ri)=>{
+        if (y>pageH-18) addPage();
+        const esTotal = boldLast && ri===rows.length-1;
+        pdf.setFillColor(esTotal?254:ri%2===0?255:248, esTotal?226:ri%2===0?255:250, esTotal?226:ri%2===0?255:252);
+        hx=ml; colWidths.forEach(w=>{ pdf.rect(hx,y,w,rowH,'F'); hx+=w; });
+        pdf.setDrawColor(226,232,240); pdf.setLineWidth(0.15);
+        hx=ml; colWidths.forEach(w=>{ pdf.rect(hx,y,w,rowH,'S'); hx+=w; });
+        pdf.setFont('helvetica', esTotal?'bold':'normal'); pdf.setFontSize(6.5); pdf.setTextColor(30,41,59);
+        hx=ml;
+        row.forEach((cell,ci)=>{
+          pdf.text(String(cell??''), hx+2, y+4.5, {maxWidth:colWidths[ci]-3});
+          hx+=colWidths[ci];
+        });
+        y+=rowH;
+      });
+      y+=5;
+    };
+    // Captura un canvas de Chart.js compuesto sobre fondo oscuro (los textos son claros)
+    const canvasImg = (id) => {
+      const cv = document.getElementById(id);
+      if (!cv || !cv.width) return null;
+      const tmp = document.createElement('canvas');
+      tmp.width = cv.width; tmp.height = cv.height;
+      const ctx = tmp.getContext('2d');
+      ctx.fillStyle = '#1F2937'; ctx.fillRect(0,0,tmp.width,tmp.height);
+      ctx.drawImage(cv,0,0);
+      return { data: tmp.toDataURL('image/png'), ratio: cv.height/cv.width };
+    };
+    const chart = (id, title, w) => {
+      const img = canvasImg(id);
+      if (!img) return;
+      const h = w*img.ratio;
+      needSpace(h+12);
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(7.5); pdf.setTextColor(51,65,85);
+      pdf.text(title, ml, y+4); y+=6;
+      pdf.addImage(img.data,'PNG',ml,y,w,h); y+=h+6;
+    };
+
+    // ── PORTADA ──
+    pdf.setFillColor(255,255,255); pdf.rect(0,0,pageW,pageH,'F');
+    pdf.setFillColor(153,27,27); pdf.rect(0,0,pageW,55,'F');
+    pdf.setFillColor(185,28,28); pdf.rect(0,45,pageW,25,'F');
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(28); pdf.setTextColor(255,255,255);
+    pdf.text('FVLco', pageW/2, 28, {align:'center'});
+    pdf.setFontSize(12); pdf.setTextColor(254,226,226);
+    pdf.text('Informe de Tiempos de Paro', pageW/2, 41, {align:'center'});
+    pdf.setFillColor(248,250,252); pdf.rect(ml,72,usableW,60,'F');
+    pdf.setDrawColor(252,165,165); pdf.setLineWidth(0.5); pdf.rect(ml,72,usableW,60,'S');
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(11); pdf.setTextColor(185,28,28);
+    pdf.text('Período', pageW/2, 87, {align:'center'});
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(16); pdf.setTextColor(15,23,42);
+    pdf.text(mesLabel, pageW/2, 98, {align:'center'});
+    pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.setTextColor(100,116,139);
+    pdf.text(`Generado el ${fechaGen}`, pageW/2, 110, {align:'center'});
+    pdf.setFontSize(8);
+    pdf.text(`${withParo.length} eventos de paro · ${fmt(totalMin)} min · ${fmtCOP(totalCosto)} en ineficiencia`, pageW/2, 120, {align:'center'});
+
+    // ── PÁGINA 1: KPIs + PARETOS ──
+    addPage();
+    secTitle('Indicadores Generales');
+    kpiRow([
+      { label:'TIEMPO TOTAL DE PARO', value:`${fmt(totalMin)} min (${(totalMin/60).toFixed(1)} h)`, color:[220,38,38] },
+      { label:'COSTO TOTAL INEFICIENCIA', value:fmtCOP(totalCosto), color:[153,27,27] },
+      { label:'EVENTOS DE PARO', value:String(withParo.length), color:[217,119,6] },
+      { label:'COSTO PROMEDIO / EVENTO', value:fmtCOP(costoPromEvento), color:[234,88,12] }
+    ]);
+
+    secTitle('Paretos de Costo');
+    chart('res-pareto-razon', 'Pareto de costos por razón de paro', usableW);
+    chart('res-pareto-proc',  'Costo por proceso responsable', usableW);
+
+    // ── GRÁFICAS COMPLEMENTARIAS ──
+    secTitle('Distribución de Paros');
+    chart('res-costo-maq', 'Costo de ineficiencia por máquina', usableW);
+    chart('paro-pareto',   'Pareto de paros por razón (minutos)', usableW);
+    chart('paro-proceso',  'Tiempo de paro por proceso responsable (min)', usableW);
+    chart('paro-trend',    'Tendencia de tiempo de paro por mes', usableW*0.75);
+
+    // ── TABLA POR MÁQUINA ──
+    const maqRes = {};
+    withParo.forEach(r=>{
+      const m=r._maq||'?';
+      if(!maqRes[m]) maqRes[m]={min:0,costo:0,ev:0};
+      maqRes[m].min+=r._paro; maqRes[m].costo+=_costoParo(r); maqRes[m].ev++;
+    });
+    const maqKeys = Object.keys(maqRes).sort((a,b)=>maqRes[b].costo-maqRes[a].costo);
+    secTitle('Tiempo y Costo de Ineficiencia por Máquina');
+    table(
+      ['Máquina','Tipo','Eventos','Tiempo (min)','Horas','Costo COP','% Costo'],
+      [...maqKeys.map(m=>{
+        const rm=maqRes[m];
+        return [`Máquina ${m}`, Number(m)<=4?'Inyectora':'Tapadora', rm.ev, fmt(rm.min),
+                (rm.min/60).toFixed(1), fmtCOP(rm.costo),
+                (totalCosto>0?Math.round(rm.costo/totalCosto*100):0)+'%'];
+      }),
+      ['TOTAL','',withParo.length,fmt(totalMin),(totalMin/60).toFixed(1),fmtCOP(totalCosto),'100%']],
+      [30,24,18,26,18,40,26], true
+    );
+
+    // ── TABLA POR MES ──
+    const MESES_ORD2 = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const mesRes = {};
+    withParo.forEach(r=>{
+      const m=(r._mes||'sin mes').toLowerCase();
+      if(!mesRes[m]) mesRes[m]={min:0,costo:0,ev:0,razones:{},procesos:{}};
+      mesRes[m].min+=r._paro; mesRes[m].costo+=_costoParo(r); mesRes[m].ev++;
+      const rz=String(r['RAZON PARO']||r['RAZÓN PARO']||'Sin dato').trim();
+      mesRes[m].razones[rz]=(mesRes[m].razones[rz]||0)+_costoParo(r);
+      const pc=_getProc(r)||'Sin proceso';
+      mesRes[m].procesos[pc]=(mesRes[m].procesos[pc]||0)+_costoParo(r);
+    });
+    const mesKeys2 = Object.keys(mesRes).sort((a,b)=>{
+      const ia=MESES_ORD2.indexOf(a), ib=MESES_ORD2.indexOf(b);
+      return (ia<0?99:ia)-(ib<0?99:ib);
+    });
+    secTitle('Resumen Ejecutivo por Mes');
+    table(
+      ['Mes','Eventos','Tiempo (min)','Costo COP','Principal razón (costo)','Proceso más costoso'],
+      mesKeys2.map(m=>{
+        const rm=mesRes[m];
+        const tr=Object.entries(rm.razones).sort((a,b)=>b[1]-a[1])[0];
+        const tp=Object.entries(rm.procesos).sort((a,b)=>b[1]-a[1])[0];
+        return [cap(m), rm.ev, fmt(rm.min), fmtCOP(rm.costo), tr?tr[0]:'—', tp?tp[0]:'—'];
+      }),
+      [22,16,24,34,52,34]
+    );
+
+    // ── TOP 15 PAROS MÁS COSTOSOS ──
+    const topParos = [...withParo].sort((a,b)=>_costoParo(b)-_costoParo(a)).slice(0,15);
+    secTitle('Top 15 Paros Más Costosos');
+    table(
+      ['Mes/Día','Máq','Razón','Proceso Resp.','Min','Costo COP'],
+      topParos.map(r=>[
+        `${cap(r._mes||'—')} / ${r['DIA']||'—'}`, r._maq||'—',
+        String(r['RAZON PARO']||r['RAZÓN PARO']||'—').substring(0,32),
+        _getProc(r)||'—', r._paro, fmtCOP(_costoParo(r))
+      ]),
+      [26,12,56,36,14,38]
+    );
+
+    // ── pie de página en todas las hojas ──
+    const nPages = pdf.getNumberOfPages();
+    for (let p=2; p<=nPages; p++) {
+      pdf.setPage(p);
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(6.5); pdf.setTextColor(148,163,184);
+      pdf.text(`FVLco · Informe de Tiempos de Paro · ${mesLabel}`, ml, pageH-7);
+      pdf.text(`Página ${p-1} de ${nPages-1}`, pageW-mr, pageH-7, {align:'right'});
+    }
+
+    const filename = `FVLco_TiemposParo_${mesLabel}_${fechaGen}.pdf`.replace(/[:\s]/g,'_');
+    if (shareMode) {
+      const blob = pdf.output('blob');
+      const file = new File([blob], filename, { type:'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files:[file] })) {
+        await navigator.share({ files:[file], title:'Informe Tiempos de Paro FVLco', text:'Informe de tiempos de paro FVLco' });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+        URL.revokeObjectURL(url);
+      }
+    } else {
+      pdf.save(filename);
+    }
+
+  } catch(err) {
+    if (!shareMode) alert('Error generando PDF de paros: '+err.message);
+    console.error(err);
+  } finally {
+    if (!shareMode && btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Descargar PDF';
+    }
+  }
+}
 
 // =======================================================
 // FORECAST
