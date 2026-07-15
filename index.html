@@ -5491,8 +5491,23 @@ async function exportCompactImage() {
   const prev = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
   try {
-    // scale alto = mejor resolución (≈3x densidad de píxeles)
-    const canvas = await html2canvas(el, { backgroundColor:'#FFFFFF', scale:4, useCORS:true });
+    // Mismo formato ancho que "Compartir" (RC_W=1900 + windowWidth) para que
+    // no salga estirado ni dependa del ancho del navegador. scale alto = mejor
+    // resolución.
+    const RC_W = 1900;
+    const stage = document.createElement('div');
+    stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
+    const cloneEl = el.cloneNode(true);
+    cloneEl.classList.add('rc-share-force');
+    stage.appendChild(cloneEl);
+    document.body.appendChild(stage);
+    let canvas;
+    try {
+      canvas = await html2canvas(cloneEl, {
+        backgroundColor:'#FFFFFF', scale:4, useCORS:true,
+        width: RC_W, windowWidth: RC_W
+      });
+    } finally { stage.remove(); }
     const sel = document.getElementById('rc-f-dia');
     const fecha = (sel && sel.value) ? sel.value : 'reporte';
     const link = document.createElement('a');
@@ -5548,15 +5563,28 @@ async function shareCompactImage() {
     // Capturar SIEMPRE el formato clásico de tabla ancha (aunque la pantalla
     // sea móvil): se clona fuera de pantalla a 1100px y rc-share-force
     // desactiva el layout de tarjetas del media query.
+    // RC_W = ancho fijo de la imagen. A 1280 el reporte salía como tira
+    // vertical (alto/ancho ≈3.1) y en WhatsApp se veía "estirado"; a 1900 las
+    // columnas y los textos largos (motivos de paro) tienen espacio y queda
+    // apaisado (~1.3–1.5), como el reporte que se veía bien. Se conservan las
+    // fuentes grandes y legibles.
+    const RC_W = 1900;
     const stage = document.createElement('div');
-    stage.style.cssText = 'position:absolute;left:-12000px;top:0;width:1280px;background:#FFFFFF';
+    stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
     const cloneEl = el.cloneNode(true);
     cloneEl.classList.add('rc-share-force');
     stage.appendChild(cloneEl);
     document.body.appendChild(stage);
     let canvas;
     try {
-      canvas = await html2canvas(cloneEl, { backgroundColor:'#FFFFFF', scale:2, useCORS:true });
+      // width + windowWidth fijan el viewport de maquetación a RC_W: la imagen
+      // sale IDÉNTICA desde el celular o el PC. Sin windowWidth, html2canvas
+      // usa el ancho real del navegador y dispara los @media móviles, así que
+      // el mismo reporte cambiaba de aspecto según el dispositivo.
+      canvas = await html2canvas(cloneEl, {
+        backgroundColor:'#FFFFFF', scale:2, useCORS:true,
+        width: RC_W, windowWidth: RC_W
+      });
     } finally { stage.remove(); }
     const blob   = await new Promise(res => canvas.toBlob(res, 'image/png'));
     const file   = new File([blob], fname, { type:'image/png' });
