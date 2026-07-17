@@ -5980,22 +5980,22 @@ function renderReporteCompacto() {
       const label = t === '' ? 'Sin turno' : `Turno ${turnoNum(t)}`;
       // Una línea por producto: "NOMBRE — cantidad"
       const prodListHtml = prodsThisTurn.map(x =>
-        `<div style="padding:1px 0"><span style="color:#374151">${x.prod}</span> — <strong style="color:#111827">${ri(x.q)}</strong></div>`
+        `<div style="padding:1px 0;font-size:.8rem"><span style="color:#374151">${x.prod}</span> — <strong style="color:#111827">${ri(x.q)}</strong></div>`
       ).join('');
       // Total del turno solo si hubo cambio de molde (más de un producto)
       const totalTurnoHtml = prodsThisTurn.length > 1
-        ? `<div style="padding:1px 0;color:#6B7280;font-size:.85rem">Total turno: <strong>${ri(prodThisTurn)}</strong></div>`
+        ? `<div style="padding:1px 0;color:#6B7280;font-size:.72rem">Total turno: <strong>${ri(prodThisTurn)}</strong></div>`
         : '';
       const paroHtml = paroThisTurn > 0
-        ? `<div style="color:#DC2626;font-weight:600;margin-top:2px">Paro ${ri(paroThisTurn)} min`
+        ? `<div style="color:#DC2626;font-weight:400;font-size:.72rem;margin-top:2px">Paro ${ri(paroThisTurn)} min`
           + (razonesThisTurn.length ? ` · <span style="text-transform:uppercase">${razonesThisTurn.join(', ')}</span>` : '')
           + `</div>`
         : razonesThisTurn.length
-          ? `<div style="font-size:.78rem;color:#B91C1C;margin-top:1px;text-transform:uppercase">${razonesThisTurn.join(', ')}</div>`
+          ? `<div style="font-size:.7rem;color:#B91C1C;margin-top:1px;text-transform:uppercase">${razonesThisTurn.join(', ')}</div>`
           : '';
 
       return `<tr style="border:1px solid #E5E7EB">
-        <td style="padding:4px 8px;white-space:nowrap;font-size:.95rem;vertical-align:top">${label}</td>
+        <td style="padding:4px 8px;white-space:nowrap;font-size:.78rem;vertical-align:top">${label}</td>
         <td style="padding:4px 8px;border-left:1px solid #E5E7EB">
           ${prodListHtml}
           ${totalTurnoHtml}
@@ -6011,7 +6011,7 @@ function renderReporteCompacto() {
     </tr>`;
 
     const bodyRows = turnoTableRows || `<tr><td colspan="2" style="padding:4px 8px;color:#6B7280;font-size:.9rem">Sin producción</td></tr>`;
-    const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:1.15rem">${bodyRows}${totalRow}</table>`;
+    const fullDet = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">${bodyRows}${totalRow}</table>`;
     return `<tr>
       <td class="rc-mq" style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
       <td class="rc-det" data-label="Producción por turno" style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
