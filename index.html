@@ -5687,6 +5687,12 @@ function renderMaquilas() {
 function renderReporteCompacto() {
   const contentEl = document.getElementById('rc-content');
   if (!contentEl) return;
+  // El contenido se está redibujando: cualquier imagen ya cacheada para
+  // "Compartir" quedó obsoleta (p. ej. tras Actualizar / dedupe / canonicalización
+  // de turnos). La invalidamos para que el próximo Compartir capture lo que se ve
+  // ahora, no un PNG viejo. Seguro para el flujo de 2 toques: entre toque y toque
+  // no se re-renderiza. (Ver bug reporte: Máquina #3 salía con Turno 3 fantasma.)
+  _rcShareCache = { key:null, file:null };
   const pN = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
   const ri = n => Math.round(n||0).toLocaleString('es-CO'); // entero con separador de miles
   const pc = v => (v===null||isNaN(v)) ? '—' : v.toFixed(2)+'%';
