@@ -12,6 +12,7 @@
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="turnos.js"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -2814,6 +2815,7 @@ async function loadAll() {
     DATA.prod = prodParsed.data.map(normalizeProd);
     DATA.dupes = dedupeProd(DATA.prod);
     DATA.prod  = DATA.prod.filter(r => !r._dup);
+    canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
 
     // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
     setProgress(28, 'Cargando No Conformes...');
@@ -2872,6 +2874,7 @@ async function silentRefresh() {
     DATA.prod = prodParsed.data.map(normalizeProd);
     DATA.dupes = dedupeProd(DATA.prod);
     DATA.prod  = DATA.prod.filter(r => !r._dup);
+    canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
@@ -2982,7 +2985,7 @@ function filterProd() {
     (!m        || r._mes === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!maq      || String(r._maq) === maq) &&
-    (!t        || String(r._turno) === t) &&
+    (!t        || turnoNum(r._turno) === turnoNum(t)) &&
     // Proceso: excluye solo filas con paro de otro proceso; filas sin paro siempre pasan
     (!SEL_PROCESOS.size || !_getProc(r) || SEL_PROCESOS.has(_getProc(r)))
   );
@@ -5960,28 +5963,42 @@ function renderReporteCompacto() {
       ...Object.values(g.porProd).flatMap(pt2 => Object.keys(pt2))
     ])].sort();
 
-    // ── Fila unificada por turno: producción + paro en la misma línea ────────
+    // ── Fila por turno: desglose POR PRODUCTO (el molde puede cambiar dentro
+    //    del mismo turno) + paro ────────────────────────────────────────────
     const turnoTableRows = allTurnoKeys.map(t => {
-      const prodThisTurn    = Object.values(g.porProd).reduce((s, pt2) => s + (pt2[t]?.prod || 0), 0);
+      // Productos con producción en este turno, mayor a menor
+      const prodsThisTurn = Object.entries(g.porProd)
+        .map(([prod, pt2]) => ({ prod, q: pt2[t]?.prod || 0 }))
+        .filter(x => x.q > 0)
+        .sort((a, b) => b.q - a.q);
+      const prodThisTurn    = prodsThisTurn.reduce((s, x) => s + x.q, 0);
       const paroThisTurn    = g.porTurno[t]?.paro    || 0;
       const razonesThisTurn = g.porTurno[t]?.razones || [];
 
       if (prodThisTurn === 0 && paroThisTurn === 0) return '';
 
       const label = t === '' ? 'Sin turno' : `Turno ${turnoNum(t)}`;
+      // Una línea por producto: "NOMBRE — cantidad"
+      const prodListHtml = prodsThisTurn.map(x =>
+        `<div style="padding:1px 0"><span style="color:#374151">${x.prod}</span> — <strong style="color:#111827">${ri(x.q)}</strong></div>`
+      ).join('');
+      // Total del turno solo si hubo cambio de molde (más de un producto)
+      const totalTurnoHtml = prodsThisTurn.length > 1
+        ? `<div style="padding:1px 0;color:#6B7280;font-size:.85rem">Total turno: <strong>${ri(prodThisTurn)}</strong></div>`
+        : '';
       const paroHtml = paroThisTurn > 0
-        ? `<span style="color:#DC2626;font-weight:600;margin-left:6px">(paro ${ri(paroThisTurn)} min)</span>`
-          + (razonesThisTurn.length
-              ? `<div style="font-size:.78rem;color:#B91C1C;margin-top:1px;text-transform:uppercase">${razonesThisTurn.join(', ')}</div>`
-              : '')
+        ? `<div style="color:#DC2626;font-weight:600;margin-top:2px">Paro ${ri(paroThisTurn)} min`
+          + (razonesThisTurn.length ? ` · <span style="text-transform:uppercase">${razonesThisTurn.join(', ')}</span>` : '')
+          + `</div>`
         : razonesThisTurn.length
           ? `<div style="font-size:.78rem;color:#B91C1C;margin-top:1px;text-transform:uppercase">${razonesThisTurn.join(', ')}</div>`
           : '';
 
       return `<tr style="border:1px solid #E5E7EB">
-        <td style="padding:4px 8px;white-space:nowrap;font-size:.95rem">${label}</td>
+        <td style="padding:4px 8px;white-space:nowrap;font-size:.95rem;vertical-align:top">${label}</td>
         <td style="padding:4px 8px;border-left:1px solid #E5E7EB">
-          ${prodThisTurn > 0 ? `<strong style="color:#374151">${ri(prodThisTurn)}</strong>` : ''}
+          ${prodListHtml}
+          ${totalTurnoHtml}
           ${paroHtml}
         </td>
       </tr>`;
