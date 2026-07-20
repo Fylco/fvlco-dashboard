@@ -5928,6 +5928,29 @@ function renderReporteCompacto() {
   const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
   const cumplColor = cumpl>=90?'#059669':cumpl>=70?'#D97706':'#DC2626';
 
+  // ── VALIDADOR: marca valores imposibles/sospechosos para que ningún dato
+  //    malo pase silencioso — sea error de cálculo O de digitación de turnos.
+  //    Aparece como banner solo cuando hay algo que revisar. ─────────────────
+  const alertas = [];
+  maqList.forEach(g => {
+    const m = `Máquina ${g.maq}`;
+    if (g.horas > 24)
+      alertas.push(`${m}: ${g.horas} h en el día (imposible, máx 24 h) — revisar turnos digitados.`);
+    if (g.undProg > 0 && g.undProd > g.undProg * 1.15)
+      alertas.push(`${m}: producidas (${ri(g.undProd)}) superan lo programado (${ri(g.undProg)}) — revisar turno digitado o ciclo/cavidad.`);
+    if (g.undProg === 0 && g.undProd > 0)
+      alertas.push(`${m}: con producción pero 0 programadas — falta ciclo estándar o cavidad teórica.`);
+    [['Disponibilidad',g.disp],['Rendimiento',g.rend],['Calidad',g.cal],['OEE',g.oee]].forEach(([k,v]) => {
+      if (v != null && (v < -0.01 || v > 100.01))
+        alertas.push(`${m}: ${k} = ${v.toFixed(1)}% fuera de rango (0–100%).`);
+    });
+  });
+  const alertaHTML = alertas.length ? `
+      <div style="background:#FEF3C7;border-bottom:2px solid #F59E0B;padding:11px 20px;color:#92400E">
+        <div style="font-weight:800;font-size:.95rem;margin-bottom:5px"><i class="fa-solid fa-triangle-exclamation" style="color:#D97706;margin-right:6px"></i>Revisar — ${alertas.length} dato(s) fuera de lo esperado</div>
+        <ul style="margin:0;padding-left:20px;font-size:.85rem;line-height:1.5">${alertas.map(a=>`<li>${a}</li>`).join('')}</ul>
+      </div>` : '';
+
   // Cantidad de turnos = horas trabajadas / 8 (8h→1, 16h→2, 24h→3). Máx 3.
   const nTurnos = g => g.horas>0 ? Math.max(1, Math.min(3, Math.round(g.horas/8))) : '—';
 
@@ -6079,6 +6102,7 @@ function renderReporteCompacto() {
           </div>
         </div>
       </div>
+      ${alertaHTML}
 
       <div style="overflow-x:auto">
         <table class="tbl rc-resp" style="width:100%;min-width:760px">
