@@ -1,5 +1,5 @@
 const assert = require('node:assert');
-const { canonicalizeTurnos, windowForRow, calcShiftHours } = require('./turnos.js');
+const { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas } = require('./turnos.js');
 const S = (...t) => new Set(t.map(String));
 
 const ts = (h, m = 0) => new Date(2026, 5, 10, h, m, 0).getTime(); // hora local del 2026-06-10
@@ -115,5 +115,30 @@ t('horas: T2 + T5 = 16',                  () => assert.strictEqual(calcShiftHour
 t('horas: T1+T2+T5 = 24 (tope)',          () => assert.strictEqual(calcShiftHours(S('1','2','5')), 24));
 t('horas: T2+T3+T4 = 24 (tope)',          () => assert.strictEqual(calcShiftHours(S('2','3','4')), 24));
 t('horas: nunca supera 24',               () => assert.strictEqual(calcShiftHours(S('1','2','3','4','5')), 24));
+
+// ── turnoSeconds (fuente única de segundos por turno) ─────────────────────
+t('turnoSeconds: T1/T2/T3 = 28800 (8h)', () => {
+  assert.strictEqual(turnoSeconds('1'), 28800);
+  assert.strictEqual(turnoSeconds('2'), 28800);
+  assert.strictEqual(turnoSeconds('3'), 28800);
+});
+t('turnoSeconds: T4/T5 = 43200 (12h)', () => {
+  assert.strictEqual(turnoSeconds('4'), 43200);
+  assert.strictEqual(turnoSeconds('5'), 43200);
+});
+t('turnoSeconds: turno desconocido = 28800 (default)', () => {
+  assert.strictEqual(turnoSeconds('9'), 28800);
+  assert.strictEqual(turnoSeconds(''), 28800);
+});
+
+// ── unidadesTeoricas = round(tiempo/ciclo × cav); ciclo<=0 → 0 ────────────
+t('unidadesTeoricas: T4 12h, ciclo 13, cav 24 = 79754', () =>
+  assert.strictEqual(unidadesTeoricas(43200, 13, 24), 79754));
+t('unidadesTeoricas: T2 8h, ciclo 13, cav 24 = 53169', () =>
+  assert.strictEqual(unidadesTeoricas(28800, 13, 24), 53169));
+t('unidadesTeoricas: ciclo 0 → 0 (guarda)', () =>
+  assert.strictEqual(unidadesTeoricas(43200, 0, 24), 0));
+t('unidadesTeoricas: tiempo 0 → 0', () =>
+  assert.strictEqual(unidadesTeoricas(0, 13, 24), 0));
 
 console.log(`\n${passed} pruebas OK`);

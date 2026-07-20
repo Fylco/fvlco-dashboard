@@ -2690,7 +2690,6 @@ function calcCalidad(rows) {
 function calcRendimiento(rows) {
   rows = rows.filter(_covParoRow);  // sin paros registrados el run-time es ficticio
   const _esProg = rz => /programado/i.test(String(rz||''));
-  const _TSEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   const slots = {};
   rows.forEach(r => {
     const sk = `${r._fechaKey||r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`; // fecha COMPLETA (no solo día): evita colapsar el mismo día de meses distintos en un solo slot
@@ -2730,11 +2729,11 @@ function calcRendimiento(rows) {
       // sobre-contado o duplicado en varias filas del mismo slot NO puede volver
       // negativo el run time ni disparar la meta teórica. Sin este tope, slots con
       // paro > turno hundían el run time y disparaban el Rendimiento (>100% → clamp).
-      const _turnoSeg = _TSEG[s.turno]||28800;
+      const _turnoSeg = turnoSeconds(s.turno);
       const runSeg = _turnoSeg - Math.min(s.paroTotal*60, _turnoSeg);
       if (runSeg > 0) {
         totProd += s.undProd;
-        totTeo  += Math.round((runSeg / s.cicloEst) * cavEff);
+        totTeo  += unidadesTeoricas(runSeg, s.cicloEst, cavEff);
       }
       // Slot totalmente parado (runSeg=0): sin tiempo de corrida no hay
       // velocidad que medir → se excluye del Rendimiento (ya cuenta en Disp).
@@ -3387,7 +3386,6 @@ function renderResumen() {
   // ── Unidades Dejadas de Fabricar ────────────────────────────────────────
   const undPerdEl = document.getElementById('resumen-und-perdidas');
   if (undPerdEl) {
-    const _TSEG3 = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
     // Acumular por slot — clave incluye FECHA COMPLETA para que "Todos los meses"
     // no fusione el día 15 de junio con el día 15 de mayo en el mismo slot.
     const _upSlots = {};
@@ -3408,8 +3406,8 @@ function renderResumen() {
     const _byProdMaq = {}; // {prod: {maq: {lost,value}}}
     Object.values(_upSlots).forEach(s => {
       if (s.cicloEst >= 5 && s.cavTeor>0) {
-        const tEfSeg = Math.max(0, (_TSEG3[s.turno]||28800) - s.paroProgSeg);
-        s.undProg = Math.round((tEfSeg/s.cicloEst)*s.cavTeor);
+        const tEfSeg = Math.max(0, turnoSeconds(s.turno) - s.paroProgSeg);
+        s.undProg = unidadesTeoricas(tEfSeg, s.cicloEst, s.cavTeor);
       } else { s.undProg = s.undProd; }
       const lost = Math.max(0, s.undProg - s.undProd);
       if (lost <= 0) return;
@@ -4981,7 +4979,6 @@ function renderReporteDiario() {
   // Todos los turnos se suman; no hay filtrado T4/T5
   const effRowsRd = rows.slice();
   // Segundos por turno
-  const TURNO_SEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
 
 
   // ── Paso 1: capacidad por Máquina+Turno+Día (1 valor por slot de máquina) ─────
@@ -5016,10 +5013,10 @@ function renderReporteDiario() {
       if (est > 0) {
         const cavTeor = Math.max(pNum(r['CAV.TEORICAS']) || CAV_TEOR_MAP[r._prod] || 1, 1);
         // Turno disponible = duración del turno (T4/T5=12h) − paro programado
-        const turnoSeg = TURNO_SEG[turno] || 28800;
+        const turnoSeg = turnoSeconds(turno);
         const dispSeg = Math.max(turnoSeg - (s.paroProgSeg || 0), 0);
         s.dispSeg = dispSeg;
-        s.undProg = Math.round((dispSeg / est) * cavTeor);
+        s.undProg = unidadesTeoricas(dispSeg, est, cavTeor);
       }
     }
   });
@@ -5151,7 +5148,6 @@ function renderReporteDiario() {
   });
   // undProg por slot
   const _scRd = {};
-  const _TSEG2 = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   effRowsRd.forEach(r => {
     const sk = `${r._fechaKey||r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
     if (!_scRd[sk]) _scRd[sk] = {undProg:0,cantTotal:0,paroProgSeg:0};
@@ -5163,7 +5159,7 @@ function renderReporteDiario() {
     const sk=`${r._fechaKey||r._diaTurno||'?'}|${maq}|${turno}`, s=_scRd[sk];
     if (!s.undProg && maq!=='?') {
       const est=pNum(r['T. CICLO EST']);
-      if (est>0) s.undProg=Math.round((Math.max((_TSEG2[turno]||28800)-(s.paroProgSeg||0),0)/est)*_cavTeorOf(r));
+      if (est>0) s.undProg=unidadesTeoricas(Math.max(turnoSeconds(turno)-(s.paroProgSeg||0),0), est, _cavTeorOf(r));
     }
   });
   // Métricas por máquina (idéntico al Compacto)
@@ -5720,7 +5716,6 @@ function renderReporteCompacto() {
 
   // ── Capacidad programada por slot (sobre filas efectivas) ──────────────
   // Segundos por turno: T1/T2/T3 = 8h (28800); T4/T5 = 12h (43200).
-  const TURNO_SEG = {'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
   const esProgramado = razon => /programado/i.test(String(razon || ''));
   const slotCap = {};
   effRows.forEach(r => {
@@ -5738,9 +5733,9 @@ function renderReporteCompacto() {
       const est = pN(r['T. CICLO EST']);
       if (est > 0) {
         const cavTeor = _cavTeorOf(r);
-        const turnoSeg = TURNO_SEG[turno] || 28800;
+        const turnoSeg = turnoSeconds(turno);
         const dispSeg = Math.max(turnoSeg - (s.paroProgSeg||0), 0);
-        s.undProg = Math.round((dispSeg / est) * cavTeor);
+        s.undProg = unidadesTeoricas(dispSeg, est, cavTeor);
       }
     }
   });
@@ -5850,7 +5845,7 @@ function renderReporteCompacto() {
     //    (columnas Und. Programadas / Faltantes / % Cumplimiento). NO se usa
     //    para el Rendimiento OEE (ver #5).
     const horasEfectivasSeg = Math.max(0, g.horas*3600 - (g.paroProg||0)*60);
-    g.undProg = (cEst>0 && cavT>0 && horasEfectivasSeg>0) ? Math.round((horasEfectivasSeg/cEst)*cavT) : g.undProd;
+    g.undProg = (cEst>0 && cavT>0 && horasEfectivasSeg>0) ? unidadesTeoricas(horasEfectivasSeg, cEst, cavT) : g.undProd;
     g.falt    = g.undProg - g.undProd;
 
     // #2 TIEMPO REAL TRABAJADO (min) = (producción ÷ cav reales × ciclo real) ÷ 60
@@ -5868,7 +5863,7 @@ function renderReporteCompacto() {
     //    tiempo perdido ya lo penaliza Disponibilidad, restarlo otra vez aquí
     //    sería doble castigo y hundiría el OEE. Mide velocidad mientras corrió.
     const runSeg  = g.horas*3600 - Math.min((g.paro||0)*60, g.horas*3600); // paro topado al tiempo programado
-    const undTeoRun = (cEst>0 && cavT>0 && runSeg>0) ? Math.round((runSeg/cEst)*cavT) : 0;
+    const undTeoRun = (cEst>0 && cavT>0 && runSeg>0) ? unidadesTeoricas(runSeg, cEst, cavT) : 0;
     g.rend = (_cvParoRc && undTeoRun>0) ? Math.min(100, g.undProd/undTeoRun*100) : null;
 
     // #6 CALIDAD = (producidas − NC) ÷ producidas — misma fórmula que calcCalidad.
@@ -6531,7 +6526,6 @@ async function exportPDF(shareMode = false) {
     // ── UNIDADES PERDIDAS ─────────────────────────────────────────────────
     if (y > pageH-60) addPage('Informe de Cierre de Mes — FVLco');
     secTitle('Unidades Dejadas de Fabricar');
-    const _TSEG_P={'1':28800,'2':28800,'3':28800,'4':43200,'5':43200};
     const _upSlotsP={};
     dProd.forEach(r=>{
       const sk=`${r._fechaKey||r._mesTurno||'?'}|${r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`;
@@ -6548,8 +6542,8 @@ async function exportPDF(shareMode = false) {
     const _byProdP={};
     Object.values(_upSlotsP).forEach(s=>{
       if(s.cicloEst>=5&&s.cavTeor>0){
-        const tEf=Math.max(0,(_TSEG_P[s.turno]||28800)-s.paroProgSeg);
-        s.undProg=Math.round((tEf/s.cicloEst)*s.cavTeor);
+        const tEf=Math.max(0,turnoSeconds(s.turno)-s.paroProgSeg);
+        s.undProg=unidadesTeoricas(tEf, s.cicloEst, s.cavTeor);
       } else { s.undProg=s.undProd; }
       const lost=Math.max(0,s.undProg-s.undProd); if(lost<=0) return;
       const tot=Object.values(s.prods).reduce((a,b)=>a+b,0)||1;

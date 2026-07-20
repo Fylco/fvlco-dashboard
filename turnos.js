@@ -78,6 +78,25 @@ function calcShiftHours(turnosSet) {
   return covered.reduce((s, c) => s + (c ? 1 : 0), 0);
 }
 
+// Segundos nominales de un turno: 12h (43200) para T4/T5, 8h (28800) para el
+// resto. Fuente ÚNICA — antes esta tabla estaba duplicada en 6 lugares del
+// dashboard (_TSEG, _TSEG2, _TSEG3, _TSEG_P, TURNO_SEG×2).
+function turnoSeconds(turnoCode) {
+  const t = String(turnoCode);
+  return (t === '4' || t === '5') ? 43200 : 28800;
+}
+
+// Unidades teóricas producibles en un tiempo dado = round(tiempoSeg/ciclo × cav).
+// Núcleo compartido de "Unidades Programadas" (con tiempo disponible del turno)
+// y de la producción ideal del Rendimiento OEE (con run-time). Antes esta
+// fórmula estaba copiada en 8 lugares; un error en una copia no llegaba a las
+// otras → inconsistencias entre pestañas. El manejo de cav<=0 y los fallbacks
+// (usar undProd, etc.) los decide cada llamador con sus propias guardas.
+function unidadesTeoricas(tiempoSeg, cicloEst, cavTeor) {
+  if (!(cicloEst > 0)) return 0;
+  return Math.round((tiempoSeg / cicloEst) * cavTeor);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours };
+  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas };
 }
