@@ -51,6 +51,20 @@ function canonicalizeTurnos(rows) {
   return rows;
 }
 
+// Horas trabajadas de un conjunto de turnos YA canónicos de un día+máquina.
+// Cada turno de 12h (T4 diurno, T5 nocturno) suma 12h. Cada turno de 8h
+// (T1/T2/T3) que SOBREVIVE la canonicalización junto a un turno de 12h es un
+// turno físico EXTRA (p.ej. T2-noche con T4 pero sin código T5, o T3 con T4 sin
+// T5) y también suma sus 8h. Antes se devolvía 12 en cuanto había un T4/T5 y se
+// perdían esas horas → "Unidades Programadas" y Rendimiento salían subvaluados
+// (producción > programado, faltantes negativos imposibles). Ver 2026-07-16.
+function calcShiftHours(turnosSet) {
+  const h4 = turnosSet.has('4'), h5 = turnosSet.has('5');
+  const h8 = (turnosSet.has('1') ? 8 : 0) + (turnosSet.has('2') ? 8 : 0) + (turnosSet.has('3') ? 8 : 0);
+  if (!h4 && !h5) return h8;               // día de 8h: 1/2/3 suman normal
+  return (h4 ? 12 : 0) + (h5 ? 12 : 0) + h8; // con 12h: suma los 8h residuales extra
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { canonicalizeTurnos, windowForRow };
+  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours };
 }

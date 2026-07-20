@@ -1,5 +1,6 @@
 const assert = require('node:assert');
-const { canonicalizeTurnos, windowForRow } = require('./turnos.js');
+const { canonicalizeTurnos, windowForRow, calcShiftHours } = require('./turnos.js');
+const S = (...t) => new Set(t.map(String));
 
 const ts = (h, m = 0) => new Date(2026, 5, 10, h, m, 0).getTime(); // hora local del 2026-06-10
 let passed = 0;
@@ -92,5 +93,22 @@ t('windowForRow ubica T1/T3', () => {
   assert.strictEqual(windowForRow({ _turno: '1' }, false, false), 'D');
   assert.strictEqual(windowForRow({ _turno: '3' }, false, false), 'N');
 });
+
+// ── calcShiftHours ────────────────────────────────────────────────────────
+// 10. Días sin turno de 12h: T1/T2/T3 suman 8h cada uno
+t('horas: 3x8h = 24', () => assert.strictEqual(calcShiftHours(S('1','2','3')), 24));
+t('horas: T1 solo = 8',  () => assert.strictEqual(calcShiftHours(S('1')), 8));
+t('horas: T1+T2 = 16',   () => assert.strictEqual(calcShiftHours(S('1','2')), 16));
+
+// 11. Turnos de 12h solos
+t('horas: T4 solo = 12',  () => assert.strictEqual(calcShiftHours(S('4')), 12));
+t('horas: T5 solo = 12',  () => assert.strictEqual(calcShiftHours(S('5')), 12));
+t('horas: T4+T5 = 24',    () => assert.strictEqual(calcShiftHours(S('4','5')), 24));
+
+// 12. REGRESIÓN (bug 2026-07-16): un turno de 8h que sobrevive junto a un 12h es
+//     un turno físico EXTRA y DEBE sumar sus horas (antes se ignoraba → 12).
+t('horas: T4 + T2-noche residual = 20', () => assert.strictEqual(calcShiftHours(S('4','2')), 20));
+t('horas: T5 + T3 residual = 20',       () => assert.strictEqual(calcShiftHours(S('5','3')), 20));
+t('horas: T4 + T3 residual = 20',       () => assert.strictEqual(calcShiftHours(S('4','3')), 20));
 
 console.log(`\n${passed} pruebas OK`);
