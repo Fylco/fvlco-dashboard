@@ -105,10 +105,15 @@ t('horas: T4 solo = 12',  () => assert.strictEqual(calcShiftHours(S('4')), 12));
 t('horas: T5 solo = 12',  () => assert.strictEqual(calcShiftHours(S('5')), 12));
 t('horas: T4+T5 = 24',    () => assert.strictEqual(calcShiftHours(S('4','5')), 24));
 
-// 12. REGRESIÓN (bug 2026-07-16): un turno de 8h que sobrevive junto a un 12h es
-//     un turno físico EXTRA y DEBE sumar sus horas (antes se ignoraba → 12).
-t('horas: T4 + T2-noche residual = 20', () => assert.strictEqual(calcShiftHours(S('4','2')), 20));
-t('horas: T5 + T3 residual = 20',       () => assert.strictEqual(calcShiftHours(S('5','3')), 20));
-t('horas: T4 + T3 residual = 20',       () => assert.strictEqual(calcShiftHours(S('4','3')), 20));
+// 12. UNIÓN de ventanas físicas (los turnos SE SOLAPAN, no se suman duraciones).
+//     REGRESIÓN bug 2026-07-16: T4+T2-noche debe dar 16h (no 12), pero sin
+//     sobre-contar solapes (T5+T3 = 12 porque T3 va dentro de T5; tope 24h).
+t('horas: T4 + T2-noche (extiende) = 16', () => assert.strictEqual(calcShiftHours(S('4','2')), 16));
+t('horas: T5 + T3 (contenido) = 12',      () => assert.strictEqual(calcShiftHours(S('5','3')), 12));
+t('horas: T4 + T3 (sin solape) = 20',     () => assert.strictEqual(calcShiftHours(S('4','3')), 20));
+t('horas: T2 + T5 = 16',                  () => assert.strictEqual(calcShiftHours(S('2','5')), 16));
+t('horas: T1+T2+T5 = 24 (tope)',          () => assert.strictEqual(calcShiftHours(S('1','2','5')), 24));
+t('horas: T2+T3+T4 = 24 (tope)',          () => assert.strictEqual(calcShiftHours(S('2','3','4')), 24));
+t('horas: nunca supera 24',               () => assert.strictEqual(calcShiftHours(S('1','2','3','4','5')), 24));
 
 console.log(`\n${passed} pruebas OK`);

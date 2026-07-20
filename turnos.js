@@ -52,17 +52,30 @@ function canonicalizeTurnos(rows) {
 }
 
 // Horas trabajadas de un conjunto de turnos YA canónicos de un día+máquina.
-// Cada turno de 12h (T4 diurno, T5 nocturno) suma 12h. Cada turno de 8h
-// (T1/T2/T3) que SOBREVIVE la canonicalización junto a un turno de 12h es un
-// turno físico EXTRA (p.ej. T2-noche con T4 pero sin código T5, o T3 con T4 sin
-// T5) y también suma sus 8h. Antes se devolvía 12 en cuanto había un T4/T5 y se
-// perdían esas horas → "Unidades Programadas" y Rendimiento salían subvaluados
-// (producción > programado, faltantes negativos imposibles). Ver 2026-07-16.
+// Los códigos de turno tienen ventanas físicas que SE SOLAPAN, así que NO se
+// pueden sumar sus duraciones (daría >24h). Se calcula la UNIÓN de las ventanas
+// y se cuentan las horas cubiertas (tope 24). Ventanas (reloj 24h):
+//   T1 6-14 · T2 14-22 · T3 22-6 · T4 6-18 (12h diurno) · T5 18-6 (12h nocturno)
+// Ejemplos: T4+T2-noche = 6-22 = 16h (T2 extiende más allá de T4), pero T5+T3
+// = 12h (T3 va DENTRO de T5, no suma). Antes se devolvía 12 en cuanto había un
+// T4/T5 y se perdían las horas extra → "Unidades Programadas" y Rendimiento
+// salían subvaluados (producción > programado, faltantes imposibles). Ver
+// 2026-07-16 Máquina 1 (T4+T2-noche): 12h→16h, 79.754→106.338 programadas.
+const _TURNO_WINDOWS = {
+  '1': [[6, 14]],
+  '2': [[14, 22]],
+  '3': [[22, 24], [0, 6]],
+  '4': [[6, 18]],
+  '5': [[18, 24], [0, 6]],
+};
 function calcShiftHours(turnosSet) {
-  const h4 = turnosSet.has('4'), h5 = turnosSet.has('5');
-  const h8 = (turnosSet.has('1') ? 8 : 0) + (turnosSet.has('2') ? 8 : 0) + (turnosSet.has('3') ? 8 : 0);
-  if (!h4 && !h5) return h8;               // día de 8h: 1/2/3 suman normal
-  return (h4 ? 12 : 0) + (h5 ? 12 : 0) + h8; // con 12h: suma los 8h residuales extra
+  const covered = new Array(24).fill(false);
+  turnosSet.forEach(t => {
+    (_TURNO_WINDOWS[String(t)] || []).forEach(([a, b]) => {
+      for (let h = a; h < b; h++) covered[h] = true;
+    });
+  });
+  return covered.reduce((s, c) => s + (c ? 1 : 0), 0);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
