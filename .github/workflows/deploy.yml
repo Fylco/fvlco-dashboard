@@ -6,7 +6,23 @@ on:
       - main
 
 jobs:
+  # Candado: corre las pruebas de lógica de turnos ANTES de publicar.
+  # Si alguna falla, el job "deploy" (needs: test) NO se ejecuta → no se
+  # publica una versión con la lógica rota.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Pruebas de logica de turnos
+        run: node turnos.test.js
+
   deploy:
+    needs: test          # solo despliega si "test" pasó
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
