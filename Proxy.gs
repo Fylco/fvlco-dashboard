@@ -33,8 +33,12 @@ var ALLOWED_IDS = [
   '1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8', // Producción / No Conformes / Ventas ...
   '1vZTs6xImawkKwiWEPmFaY4y6LrVRKrMaAHKuCz0dy98', // BD Productos / Pedidos (forecast)
   '1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8', // Restricciones / Inventario MP
-  '1P9-3iiJMyXQRqV22dL5TJ8n6L1lcgNM5WejOPMbHH6A', // Capacidad / PLANEACION
-  '1sdoHXHcZ6_we0k1wPabGNFPGn9NTnCGQOV5qsZr6eOg'  // Histórico de capacidad
+  '1P9-3iiJMyXQRqV22dL5TJ8n6L1lcgNM5WejOPMbHH6A', // RECURSOS (máquinas/personal)
+  // PROGRAMACION 20XX — fuente única de Capacidad (turnos, costos maquila e histórico
+  // salen todos de aquí; ya no se usa PLANEACION ni la hoja aparte de histórico)
+  '1dYm44LKn6TQm2fWLY5ZG9_kI_GMGwWcTm7Wq_wDrKs8', // PROGRAMACION 2026
+  '1hFfhndWwoEoTdEjYoafYRveXFHpRgb_BB04SZGaX6Zk', // PROGRAMACION 2027
+  '1_mupUu7TEqC5HNEdhfO5bVSCCyXPyW_FJKnGdRZaNbQ'  // PROGRAMACION 2028
 ];
 
 // Prueba de salud en el navegador: abrir la URL /exec muestra este texto,
