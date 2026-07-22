@@ -1090,6 +1090,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </table>
       </div>
 
+      <!-- Turnos disponibles día por día, editable por máquina -->
+      <div id="cap-turnos-dia" class="chart-card" style="overflow-x:auto;margin-bottom:22px"></div>
+
       <!-- Histórico mensual — calculado automáticamente desde PROGRAMACION, sin hoja aparte -->
       <div class="chart-card">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
@@ -8348,12 +8351,39 @@ function capResetAllOverrides() {
   renderCapacidadMensual();
 }
 
+// ── Turnos disponibles por máquina, día por día — ajuste manual guardado en
+// el navegador. Por defecto se asume que toda máquina trabaja el turno real
+// del calendario de PROGRAMACIÓN (festivos ya conciliados); esto permite decir
+// "esta máquina puntual no va a trabajar a máxima capacidad tal día".
+function capTurnosDiaOvKey(anio, mes) { return `fvlco_turnos_dia_ov_${anio}_${mes}`; }
+function capLoadTurnosDiaOv(anio, mes) {
+  try { return JSON.parse(localStorage.getItem(capTurnosDiaOvKey(anio,mes)) || '{}'); }
+  catch(e) { return {}; }
+}
+function capSaveTurnosDiaOv(anio, mes, ov) {
+  try { localStorage.setItem(capTurnosDiaOvKey(anio,mes), JSON.stringify(ov)); } catch(e) {}
+}
+function capSetTurnoDia(anio, mes, maquina, diaIdx, valor) {
+  const ov = capLoadTurnosDiaOv(anio, mes);
+  const n = valor === null ? null : parseInt(valor, 10);
+  if (n === null || isNaN(n) || n < 0) { if (ov[maquina]) delete ov[maquina][diaIdx]; }
+  else { ov[maquina] = ov[maquina] || {}; ov[maquina][diaIdx] = n; }
+  capSaveTurnosDiaOv(anio, mes, ov);
+  renderCapacidadMensual();
+}
+function capResetTurnosDia() {
+  const mes  = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
+  const anio = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
+  capSaveTurnosDiaOv(anio, mes, {});
+  renderCapacidadMensual();
+}
+
 function renderCapacidadMensual() {
   const mes  = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
   const anio = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
   const tit = document.getElementById('cap-mes-titulo');
   const blocks = PROG_BLOCKS.filter(b => b.cavidades>0 && b.ciclo>0);
-  const clearIds = ['cap-kpis','cap-alertas','cap-saturacion','cap-prod-tbody','cap-maquila','po-cap-tbody','cap-cav-nota'];
+  const clearIds = ['cap-kpis','cap-alertas','cap-saturacion','cap-prod-tbody','cap-maquila','po-cap-tbody','cap-cav-nota','cap-turnos-dia'];
   if (!blocks.length) {
     if (tit) tit.textContent = `Sin datos de PROGRAMACIÓN para ${PROG_MES[mes]||''} ${anio} — verifica que exista la pestaña de ese mes en el archivo del año.`;
     clearIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
@@ -8390,11 +8420,24 @@ function renderCapacidadMensual() {
     return { ...b, und8h, turnos, dias, maqLbl, maqs, esMaquila, cavidades, cavKey, overridden, cavReal: b.cavidades };
   });
 
+  const maqNms = Object.keys(maqLoad).sort();
+
+  // turnos disponibles por máquina, día por día — parte del calendario real
+  // de PROGRAMACIÓN (festivos ya conciliados) y permite ajuste manual por
+  // máquina/día cuando una máquina puntual no va a trabajar a máxima capacidad
+  const turnosDiaOv = capLoadTurnosDiaOv(anio, mes);
+  const maqDias = {}, maqTurnosDisp = {};
+  maqNms.forEach(m => {
+    const ovM = turnosDiaOv[m] || {};
+    maqDias[m] = calBlock.turnosUsado.map((v,d) => (ovM[d] != null ? ovM[d] : v));
+    maqTurnosDisp[m] = maqDias[m].reduce((s,v)=>s+v, 0);
+  });
+
   // sobrecarga por máquina → desborde a maquila (el producto de más turnos en esa
   // máquina aporta el desborde completo — misma regla que antes, no se reparte)
   const overflow = [];
-  Object.keys(maqLoad).forEach(m => {
-    const exceso = maqLoad[m] - turnosDisp;
+  maqNms.forEach(m => {
+    const exceso = maqLoad[m] - maqTurnosDisp[m];
     if (exceso <= 0.01) return;
     const prods = items.filter(i => i.maqs.includes(m)).sort((a,b) => b.turnos - a.turnos);
     if (!prods.length) return;
@@ -8407,21 +8450,21 @@ function renderCapacidadMensual() {
       tieneMaquila: !!(costo && costo.maquila) });
   });
 
-  const maqNms = Object.keys(maqLoad).sort();
   const nIny = maqNms.filter(m=>m.startsWith('INY')).length, nTV = maqNms.filter(m=>m.startsWith('TV')).length;
-  const dispIny = nIny * turnosDisp, dispTV = nTV * turnosDisp;
+  const dispIny = maqNms.filter(m=>m.startsWith('INY')).reduce((s,m)=>s+maqTurnosDisp[m],0);
+  const dispTV  = maqNms.filter(m=>m.startsWith('TV')).reduce((s,m)=>s+maqTurnosDisp[m],0);
   const pctIny = dispIny ? Math.round(turnosReqIny/dispIny*100) : 0;
   const pctTV  = dispTV  ? Math.round(turnosReqTV/dispTV*100)  : 0;
 
   // operarios y horas hombre por MÁQUINA (una cuadrilla por máquina, no por
   // producto) — turnos = lo que la máquina realmente corre este mes (tope
-  // turnos disponibles; el excedente ya se va a maquila y no consume mano de
-  // obra interna)
+  // turnos disponibles de esa máquina; el excedente ya se va a maquila y no
+  // consume mano de obra interna)
   const maqOperarios = {}, maqHH = {};
   let opTotal = 0, hhTotal = 0;
   maqNms.forEach(m => {
     const operarios = capOperariosDe(m);
-    const turnosReales = Math.min(maqLoad[m], turnosDisp);
+    const turnosReales = Math.min(maqLoad[m], maqTurnosDisp[m]);
     const hh = operarios * turnosReales * 8;
     maqOperarios[m] = operarios; maqHH[m] = hh;
     opTotal += operarios; hhTotal += hh;
@@ -8452,7 +8495,7 @@ function renderCapacidadMensual() {
       const prods = items.filter(i => i.maqs.includes(m));
       let reqAcum = 0, dispAcum = 0, diaCae = null;
       for (let d = 0; d < nDias; d++) {
-        dispAcum += calBlock.turnosUsado[d]||0;
+        dispAcum += maqDias[m][d]||0;
         prods.forEach(p => { reqAcum += ((p.acumPlan[d]||0) - (p.acumPlan[d-1]||0)) / (p.und8h||1) / p.maqs.length; });
         if (diaCae===null && reqAcum > dispAcum + 0.05) diaCae = d+1;
       }
@@ -8471,7 +8514,7 @@ function renderCapacidadMensual() {
   // tabla por producto
   const tbody = document.getElementById('cap-prod-tbody');
   if (tbody) tbody.innerHTML = items.map(p => {
-    const sat = !p.esMaquila && p.maqs.some(m => maqLoad[m] > turnosDisp + 0.01);
+    const sat = !p.esMaquila && p.maqs.some(m => maqLoad[m] > maqTurnosDisp[m] + 0.01);
     const estado = p.esMaquila ? '<span style="background:#F9731620;color:#F97316;border-radius:4px;padding:2px 8px;font-size:.68rem;font-weight:700">MAQUILA</span>'
       : sat ? '<span class="badge-red">Excede máquina</span>' : '<span class="badge-green">OK</span>';
     return `<tr>
@@ -8519,21 +8562,50 @@ function renderCapacidadMensual() {
   // tabla y gráfico de carga por máquina
   const capTbody = document.getElementById('po-cap-tbody');
   if (capTbody) capTbody.innerHTML = maqNms.length ? maqNms.map(m => {
-    const req = maqLoad[m]; const pct = turnosDisp ? Math.round(req/turnosDisp*100) : 0;
+    const req = maqLoad[m]; const disp = maqTurnosDisp[m]; const pct = disp ? Math.round(req/disp*100) : 0;
     const color = pct>100?'#EF4444':pct>85?'#F59E0B':'#10B981';
-    return `<tr><td style="font-weight:700">${m}</td><td style="text-align:right">${turnosDisp}</td><td style="text-align:right">${req.toFixed(1)}</td><td style="text-align:right;font-weight:700;color:${color}">${pct}%</td><td style="text-align:right">${maqOperarios[m]||'—'}</td><td style="text-align:right">${maqHH[m]?Math.round(maqHH[m]).toLocaleString('es-CO')+'h':'—'}</td><td>${pct>100?'<span class="badge-red">Saturada</span>':pct>85?'<span class="badge-yellow">En riesgo</span>':'<span class="badge-green">OK</span>'}</td></tr>`;
+    return `<tr><td style="font-weight:700">${m}</td><td style="text-align:right">${disp}</td><td style="text-align:right">${req.toFixed(1)}</td><td style="text-align:right;font-weight:700;color:${color}">${pct}%</td><td style="text-align:right">${maqOperarios[m]||'—'}</td><td style="text-align:right">${maqHH[m]?Math.round(maqHH[m]).toLocaleString('es-CO')+'h':'—'}</td><td>${pct>100?'<span class="badge-red">Saturada</span>':pct>85?'<span class="badge-yellow">En riesgo</span>':'<span class="badge-green">OK</span>'}</td></tr>`;
   }).join('') : '<tr><td colspan="7" style="text-align:center;color:#4B5563;padding:24px">Sin datos de PROGRAMACIÓN</td></tr>';
 
   destroyChart('po-cap-b');
   const el = document.getElementById('po-chart-cap-barras');
   if (el && maqNms.length) CHARTS['po-cap-b'] = new Chart(el.getContext('2d'), { type:'bar',
     data:{ labels:maqNms, datasets:[
-      { label:'Disponibles', data:maqNms.map(()=>turnosDisp), backgroundColor:'#3B82F644', borderColor:'#3B82F6', borderWidth:1, borderRadius:4 },
+      { label:'Disponibles', data:maqNms.map(m=>maqTurnosDisp[m]), backgroundColor:'#3B82F644', borderColor:'#3B82F6', borderWidth:1, borderRadius:4 },
       { label:'Requeridos', data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),
-        backgroundColor:maqNms.map(m=>{const p=turnosDisp?maqLoad[m]/turnosDisp*100:0;return p>100?'#EF444488':p>85?'#F59E0B88':'#10B98188';}), borderRadius:4 }]},
+        backgroundColor:maqNms.map(m=>{const p=maqTurnosDisp[m]?maqLoad[m]/maqTurnosDisp[m]*100:0;return p>100?'#EF444488':p>85?'#F59E0B88':'#10B98188';}), borderRadius:4 }]},
     options:{ plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},
       scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}}},
       responsive:true, maintainAspectRatio:false }});
+
+  // turnos disponibles día por día, editable por máquina
+  const tdEl = document.getElementById('cap-turnos-dia');
+  if (tdEl) {
+    const nOvDias = Object.values(turnosDiaOv).reduce((s,o) => s + Object.keys(o||{}).length, 0);
+    const fechas = calBlock.fechas || [];
+    const header = fechas.map(f => `<th style="text-align:center;padding:3px 1px;color:#6B7280;font-weight:400;font-size:.62rem;min-width:26px">${String(f).split('/')[0]}</th>`).join('');
+    const filas = maqNms.map(m => {
+      const ovM = turnosDiaOv[m] || {};
+      const celdas = (maqDias[m]||[]).map((v,d) => {
+        const isOv = ovM[d] != null;
+        return `<td style="padding:2px 1px">
+          <input type="number" min="0" max="3" step="1" value="${v}"
+            style="width:26px;text-align:center;background:${isOv?'#78350f':'#111827'};border:1px solid ${isOv?'#F59E0B':'#374151'};border-radius:3px;color:#EEEEEE;font-size:.62rem;padding:2px 0;font-family:Tahoma,Arial,sans-serif"
+            onchange="capSetTurnoDia(${anio}, ${mes}, '${m}', ${d}, this.value)"
+            ondblclick="capSetTurnoDia(${anio}, ${mes}, '${m}', ${d}, null)">
+        </td>`;
+      }).join('');
+      return `<tr><td style="font-weight:700;padding:4px 10px 4px 0;position:sticky;left:0;background:#1F2937;font-size:.72rem">${m}</td>${celdas}</tr>`;
+    }).join('');
+    tdEl.innerHTML = maqNms.length ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-table-cells" style="color:#06B6D4;margin-right:6px"></i>Turnos disponibles por máquina, día por día</div>
+        ${nOvDias ? `<div style="font-size:.7rem;color:#F59E0B;display:flex;align-items:center;gap:8px">${nOvDias} día(s) ajustados manualmente <button onclick="capResetTurnosDia()" style="background:#1F2937;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.7rem">restablecer todos</button></div>` : ''}
+      </div>
+      <table style="border-collapse:collapse"><thead><tr><th style="position:sticky;left:0;background:#1F2937;padding:4px 10px 4px 0"></th>${header}</tr></thead><tbody>${filas}</tbody></table>
+      <p style="font-size:.66rem;color:#6B7280;margin-top:8px">Trae por defecto el turno real del calendario de PROGRAMACIÓN (festivos ya incluidos). Edita un día puntual si esa máquina no va a trabajar a máxima capacidad — doble clic en la casilla la restablece.</p>
+    ` : '';
+  }
 }
 
 // ── Histórico mensual — calculado leyendo los meses pasados de PROGRAMACION,
