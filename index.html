@@ -8578,32 +8578,51 @@ function renderCapacidadMensual() {
       scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}}},
       responsive:true, maintainAspectRatio:false }});
 
-  // turnos disponibles día por día, editable por máquina
+  // turnos disponibles día por día, editable por máquina — vista de calendario
+  // (una cuadrícula semanal por máquina, números grandes y fáciles de tocar)
   const tdEl = document.getElementById('cap-turnos-dia');
   if (tdEl) {
     const nOvDias = Object.values(turnosDiaOv).reduce((s,o) => s + Object.keys(o||{}).length, 0);
     const fechas = calBlock.fechas || [];
-    const header = fechas.map(f => `<th style="text-align:center;padding:3px 1px;color:#6B7280;font-weight:400;font-size:.62rem;min-width:26px">${String(f).split('/')[0]}</th>`).join('');
-    const filas = maqNms.map(m => {
+    const diasSemana = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    // día de la semana de la fecha inicial (lunes=0…domingo=6), para rellenar
+    // la primera semana del calendario hasta que caiga el día 1
+    const primerDow = fechas.length ? (() => { const d=_parseFechaES(fechas[0]); return d ? (d.getDay()+6)%7 : 0; })() : 0;
+
+    const bloques = maqNms.map(m => {
       const ovM = turnosDiaOv[m] || {};
-      const celdas = (maqDias[m]||[]).map((v,d) => {
+      const dias = maqDias[m] || [];
+      const celdas = [];
+      for (let i=0; i<primerDow; i++) celdas.push('<div></div>');
+      dias.forEach((v,d) => {
         const isOv = ovM[d] != null;
-        return `<td style="padding:2px 1px">
-          <input type="number" min="0" max="3" step="1" value="${v}"
-            style="width:26px;text-align:center;background:${isOv?'#78350f':'#111827'};border:1px solid ${isOv?'#F59E0B':'#374151'};border-radius:3px;color:#EEEEEE;font-size:.62rem;padding:2px 0;font-family:Tahoma,Arial,sans-serif"
-            onchange="capSetTurnoDia(${anio}, ${mes}, '${m}', ${d}, this.value)"
-            ondblclick="capSetTurnoDia(${anio}, ${mes}, '${m}', ${d}, null)">
-        </td>`;
-      }).join('');
-      return `<tr><td style="font-weight:700;padding:4px 10px 4px 0;position:sticky;left:0;background:#1F2937;font-size:.72rem">${m}</td>${celdas}</tr>`;
+        const numDia = String(fechas[d]||'').split('/')[0];
+        celdas.push(`
+          <div style="background:${isOv?'#78350f':'#111827'};border:1px solid ${isOv?'#F59E0B':'#374151'};border-radius:8px;padding:5px 2px;text-align:center">
+            <div style="font-size:.62rem;color:#6B7280;margin-bottom:3px">${numDia}</div>
+            <input type="number" min="0" max="3" step="1" value="${v}"
+              style="width:100%;text-align:center;background:transparent;border:none;color:#EEEEEE;font-size:1.05rem;font-weight:700;font-family:Tahoma,Arial,sans-serif"
+              onchange="capSetTurnoDia(${anio}, ${mes}, '${m}', ${d}, this.value)"
+              ondblclick="capSetTurnoDia(${anio}, ${mes}, '${m}', ${d}, null)">
+          </div>`);
+      });
+      return `
+        <div style="min-width:280px">
+          <div style="font-weight:700;color:#F3F4F6;margin-bottom:8px;font-size:.9rem">${m}</div>
+          <div style="display:grid;grid-template-columns:repeat(7,minmax(38px,1fr));gap:5px;max-width:460px">
+            ${diasSemana.map(d=>`<div style="text-align:center;font-size:.68rem;color:#6B7280;font-weight:700">${d}</div>`).join('')}
+            ${celdas.join('')}
+          </div>
+        </div>`;
     }).join('');
+
     tdEl.innerHTML = maqNms.length ? `
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-table-cells" style="color:#06B6D4;margin-right:6px"></i>Turnos disponibles por máquina, día por día</div>
-        ${nOvDias ? `<div style="font-size:.7rem;color:#F59E0B;display:flex;align-items:center;gap:8px">${nOvDias} día(s) ajustados manualmente <button onclick="capResetTurnosDia()" style="background:#1F2937;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.7rem">restablecer todos</button></div>` : ''}
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <div class="section-title" style="margin-bottom:0"><i class="fa-solid fa-calendar-days" style="color:#06B6D4;margin-right:6px"></i>Turnos disponibles por máquina, día por día</div>
+        ${nOvDias ? `<div style="font-size:.72rem;color:#F59E0B;display:flex;align-items:center;gap:8px">${nOvDias} día(s) ajustados manualmente <button onclick="capResetTurnosDia()" style="background:#1F2937;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:.72rem">restablecer todos</button></div>` : ''}
       </div>
-      <table style="border-collapse:collapse"><thead><tr><th style="position:sticky;left:0;background:#1F2937;padding:4px 10px 4px 0"></th>${header}</tr></thead><tbody>${filas}</tbody></table>
-      <p style="font-size:.66rem;color:#6B7280;margin-top:8px">Trae por defecto el turno real del calendario de PROGRAMACIÓN (festivos ya incluidos). Edita un día puntual si esa máquina no va a trabajar a máxima capacidad — doble clic en la casilla la restablece.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:26px">${bloques}</div>
+      <p style="font-size:.68rem;color:#6B7280;margin-top:14px">Trae por defecto el turno real del calendario de PROGRAMACIÓN (festivos ya incluidos, de 0 a 3 por día). Edita un día puntual si esa máquina no va a trabajar a máxima capacidad — doble clic en la casilla la restablece.</p>
     ` : '';
   }
 }
