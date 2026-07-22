@@ -1062,10 +1062,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
       <div class="chart-card" style="margin-bottom:20px"><div class="section-title">Carga por máquina — turnos requeridos vs disponibles</div><div style="height:280px"><canvas id="po-chart-cap-barras"></canvas></div></div>
 
+      <div id="cap-cav-nota" style="margin-bottom:8px"></div>
       <div style="overflow-x:auto;margin-bottom:22px">
         <table class="tbl">
           <thead><tr>
-            <th>Producto</th><th style="text-align:right">Cav.</th><th style="text-align:right">Ciclo (s)</th>
+            <th>Producto</th><th style="text-align:right">Cav. <i class="fa-solid fa-pen" style="font-size:.6rem;opacity:.55" title="Editable: si un molde tiene cavidades bloqueadas hoy, escribe el número real aquí"></i></th><th style="text-align:right">Ciclo (s)</th>
             <th style="text-align:right">Rend.</th><th style="text-align:right">Und/Turno 8h</th><th style="text-align:right">Requerido</th>
             <th style="text-align:right">Turnos</th><th style="text-align:right">Días</th>
             <th>Máquina</th><th>Estado</th>
@@ -8322,12 +8323,37 @@ async function loadCapacidadMensual(force) {
   capLoadHistorico(force);
 }
 
+// ── Simulador de cavidades por producto — ajuste manual, guardado en el
+// navegador (localStorage), para cuando un molde queda con cavidades
+// bloqueadas/dañadas y hay que ver el impacto real sin editar PROGRAMACIÓN ──
+function capOvKey(anio, mes) { return `fvlco_cav_ov_${anio}_${mes}`; }
+function capLoadOverrides(anio, mes) {
+  try { return JSON.parse(localStorage.getItem(capOvKey(anio,mes)) || '{}'); }
+  catch(e) { return {}; }
+}
+function capSaveOverrides(anio, mes, ov) {
+  try { localStorage.setItem(capOvKey(anio,mes), JSON.stringify(ov)); } catch(e) {}
+}
+function capSetCavOverride(anio, mes, key, valor) {
+  const ov = capLoadOverrides(anio, mes);
+  const n = parseInt(valor, 10);
+  if (valor === null || isNaN(n) || n <= 0) delete ov[key]; else ov[key] = n;
+  capSaveOverrides(anio, mes, ov);
+  renderCapacidadMensual();
+}
+function capResetAllOverrides() {
+  const mes  = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
+  const anio = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
+  capSaveOverrides(anio, mes, {});
+  renderCapacidadMensual();
+}
+
 function renderCapacidadMensual() {
   const mes  = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
   const anio = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
   const tit = document.getElementById('cap-mes-titulo');
   const blocks = PROG_BLOCKS.filter(b => b.cavidades>0 && b.ciclo>0);
-  const clearIds = ['cap-kpis','cap-alertas','cap-saturacion','cap-prod-tbody','cap-maquila','po-cap-tbody'];
+  const clearIds = ['cap-kpis','cap-alertas','cap-saturacion','cap-prod-tbody','cap-maquila','po-cap-tbody','cap-cav-nota'];
   if (!blocks.length) {
     if (tit) tit.textContent = `Sin datos de PROGRAMACIÓN para ${PROG_MES[mes]||''} ${anio} — verifica que exista la pestaña de ese mes en el archivo del año.`;
     clearIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
@@ -8343,10 +8369,17 @@ function renderCapacidadMensual() {
   const calBlock = blocks.find(b => b.turnosUsado && b.turnosUsado.length) || { turnosUsado: [] };
   const turnosDisp = calBlock.turnosUsado.reduce((s,v)=>s+v, 0) || 71;
 
+  // ajuste manual de cavidades (molde con cavidades bloqueadas/dañadas hoy) —
+  // simulación local, no cambia lo que hay en PROGRAMACIÓN
+  const cavOv = capLoadOverrides(anio, mes);
+
   const maqLoad = {};   // máquina → turnos requeridos
   let turnosReqIny = 0, turnosReqTV = 0;
   const items = blocks.map(b => {
-    const und8h  = b.ciclo>0 ? Math.floor(b.cavidades * 28800/b.ciclo * b.rendimiento) : 0;
+    const cavKey    = capNorm(b.producto);
+    const overridden = cavOv[cavKey] != null;
+    const cavidades  = overridden ? cavOv[cavKey] : b.cavidades;
+    const und8h  = b.ciclo>0 ? Math.floor(cavidades * 28800/b.ciclo * b.rendimiento) : 0;
     const turnos = und8h>0 ? b.requerida/und8h : 0;
     const dias   = turnos/3; // asumiendo el máximo de 3 turnos/día L-V
     const maqLbl = /^\d+$/.test(String(b.maquina).trim()) ? 'INY#'+b.maquina : (b.maquina||'—');
@@ -8354,7 +8387,7 @@ function renderCapacidadMensual() {
     const esMaquila = !maqs.length;
     maqs.forEach(m => maqLoad[m] = (maqLoad[m]||0) + turnos/maqs.length);
     if (!esMaquila) { if (maqs[0].startsWith('TV')) turnosReqTV += turnos; else turnosReqIny += turnos; }
-    return { ...b, und8h, turnos, dias, maqLbl, maqs, esMaquila };
+    return { ...b, und8h, turnos, dias, maqLbl, maqs, esMaquila, cavidades, cavKey, overridden, cavReal: b.cavidades };
   });
 
   // sobrecarga por máquina → desborde a maquila (el producto de más turnos en esa
@@ -8443,7 +8476,13 @@ function renderCapacidadMensual() {
       : sat ? '<span class="badge-red">Excede máquina</span>' : '<span class="badge-green">OK</span>';
     return `<tr>
       <td style="font-weight:600">${p.producto}</td>
-      <td style="text-align:right">${p.cavidades}</td>
+      <td style="text-align:right">
+        <input type="number" min="1" step="1" value="${p.cavidades}"
+          style="width:52px;text-align:right;background:${p.overridden?'#78350f':'#111827'};border:1px solid ${p.overridden?'#F59E0B':'#374151'};border-radius:4px;color:#EEEEEE;font-size:.75rem;padding:2px 4px;font-family:Tahoma,Arial,sans-serif"
+          title="${p.overridden?'Ajustado manualmente (real en PROGRAMACIÓN: '+p.cavReal+') — doble clic para restablecer':'Cavidades de PROGRAMACIÓN — edítalo si hoy hay cavidades bloqueadas'}"
+          onchange="capSetCavOverride(${anio}, ${mes}, '${p.cavKey}', this.value)"
+          ondblclick="capSetCavOverride(${anio}, ${mes}, '${p.cavKey}', null)">
+      </td>
       <td style="text-align:right">${p.ciclo.toLocaleString('es-CO')}</td>
       <td style="text-align:right">${Math.round(p.rendimiento*100)}%</td>
       <td style="text-align:right">${p.und8h.toLocaleString('es-CO')}</td>
@@ -8453,6 +8492,16 @@ function renderCapacidadMensual() {
       <td><span style="background:#374151;border-radius:4px;padding:2px 7px;font-size:.68rem">${p.maqLbl}</span></td>
       <td>${estado}</td></tr>`;
   }).join('');
+
+  const cavNotaEl = document.getElementById('cap-cav-nota');
+  if (cavNotaEl) {
+    const nOv = items.filter(p => p.overridden).length;
+    cavNotaEl.innerHTML = nOv
+      ? `<div style="display:flex;align-items:center;gap:10px;font-size:.72rem;color:#F59E0B">
+          <i class="fa-solid fa-triangle-exclamation"></i> ${nOv} producto(s) con cavidades ajustadas manualmente (no es el dato real de PROGRAMACIÓN) — doble clic sobre el número para restablecer uno, o
+          <button onclick="capResetAllOverrides()" style="background:#1F2937;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.7rem">restablecer todos</button>
+        </div>` : '';
+  }
 
   // panel maquila: fijas + overflow
   const maqEl = document.getElementById('cap-maquila');
