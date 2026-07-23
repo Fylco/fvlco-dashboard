@@ -5906,8 +5906,9 @@ function renderReporteCompacto() {
     const m = `Máquina ${g.maq}`;
     if (g.horas > 24)
       alertas.push(`${m}: ${g.horas} h en el día (imposible, máx 24 h) — revisar turnos digitados.`);
-    if (g.undProg > 0 && g.undProd > g.undProg * 1.15)
-      alertas.push(`${m}: producidas (${ri(g.undProd)}) superan lo programado (${ri(g.undProg)}) — revisar turno digitado o ciclo/cavidad.`);
+    // (Se quitó la alerta "producidas superan lo programado": disparaba falsos
+    // positivos cuando en planta se monta un molde distinto al programado —
+    // eso es una decisión operativa normal, no un error de digitación.)
     if (g.undProg === 0 && g.undProd > 0)
       alertas.push(`${m}: con producción pero 0 programadas — falta ciclo estándar o cavidad teórica.`);
     [['Disponibilidad',g.disp],['Rendimiento',g.rend],['Calidad',g.cal],['OEE',g.oee]].forEach(([k,v]) => {
