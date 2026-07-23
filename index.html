@@ -8637,6 +8637,13 @@ const CAP_HIST_CACHE = {}; // "anio|mes" → bloques ya descargados de ese mes (
 async function capLoadHistorico(force) {
   if (CAP_HIST.loaded && !force) { capRenderHistorico(); return; }
   if (force) Object.keys(CAP_HIST_CACHE).forEach(k => delete CAP_HIST_CACHE[k]);
+  // el mes activo (el que se ve arriba en "Capacidad del Mes") se sigue
+  // editando en vivo — nunca se cachea aparte para el histórico: se reusa el
+  // PROG_BLOCKS que loadCapacidadMensual ya acaba de traer fresco para esta
+  // misma pantalla, así el histórico nunca muestra un número viejo del mes activo
+  const mesActivo  = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
+  const anioActivo = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
+  CAP_HIST_CACHE[anioActivo+'|'+mesActivo] = PROG_BLOCKS;
   const out = [];
   const totals = {}; // "MES|AÑO" → {hh, operarios} por máquina (no por producto, para no duplicar)
   const anios = Object.keys(PROG_FILES).map(Number).sort((a,b)=>a-b);
