@@ -7923,10 +7923,15 @@ function parseProgBlocks(rows) {
 
   // reconstruye el acumulado real de cada bloque desde la fila diaria (programacion.js)
   // y reemplaza acumReal por el resultado confiable — todo el código que lo lee
-  // (renderProgreso, renderProgClientes) recibe el valor corregido sin más cambios
+  // (renderProgreso, renderProgClientes) recibe el valor corregido sin más cambios.
+  // Se acota a los días que ya pasaron (_idxHoy): algunos bloques traen "0" ya
+  // puesto en los días futuros del Sheet en vez de dejarlos vacíos, y sin este
+  // corte esos ceros se cuentan como "día reportado", corriendo lastIdx hasta
+  // fin de mes y dejando diasRest en 0 (las alertas nunca se disparaban).
   blocks.forEach(b => {
-    const rec = reconstruirAcumReal(b.realDiario);
-    b.acumReal = rec.acum;
+    const hoyIdx = _idxHoy(b.fechas);
+    const rec = reconstruirAcumReal(b.realDiario.slice(0, hoyIdx + 1));
+    b.acumReal = b.fechas.map((_, i) => i < rec.acum.length ? rec.acum[i] : rec.total);
     b.acumRealLastIdx = rec.lastIdx;
     b.inconsistente = datosInconsistentes(rec.total, b.totalReal);
   });
@@ -7950,16 +7955,21 @@ function _parseFechaES(s) {
   return new Date(+p[2], +p[1]-1, +p[0]);
 }
 
+// índice de "hoy" dentro de fechas — para meses ya cerrados (histórico), la
+// fecha real de hoy queda después de todo el arreglo y esto devuelve el
+// último índice (nada que acotar). Se usa para no confiar en datos de
+// CANTIDAD REAL (MANUAL) de días que todavía no han pasado (algunos bloques
+// del Sheet traen "0" ya puesto en los días futuros en vez de dejarlos vacíos).
 function _idxHoy(fechas) {
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  let last = 0;
+  let last = fechas.length - 1;
   for (let i = 0; i < fechas.length; i++) {
     const f = _parseFechaES(fechas[i]);
     if (!f) continue;
     if (f.getTime() === hoy.getTime()) return i;
-    if (f < hoy) last = i;
+    if (f > hoy) return Math.max(0, i - 1);
   }
-  return last; // último día pasado si hoy no está (fin de mes)
+  return last;
 }
 
 function _domingosRestantes(fechas, desdeIdx) {
@@ -8002,69 +8012,63 @@ function renderProgreso() {
       <th style="text-align:left;padding:9px 14px;color:#9CA3AF;font-weight:600">Producto</th>
       <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Máq.</th>
       <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Requerido</th>
-      <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Plan acum. hoy</th>
-      <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Real acum.</th>
+      <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Llevamos</th>
+      <th style="text-align:right;padding:9px 8px;color:#9CA3AF;font-weight:600">Faltante</th>
       <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Cumpl.%</th>
-      <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Estado</th>
       <th style="text-align:center;padding:9px 8px;color:#9CA3AF;font-weight:600">Día cumplim.</th>
     </tr></thead><tbody>`;
 
   PROG_BLOCKS.forEach(b => {
     if (/MAQUILA/i.test(b.maquina)) return; // maquila: no es capacidad de planta
-    const idx     = _idxHoy(b.fechas);
-    const planHoy = b.acumPlan[idx] || b.totalPlaneada || 0;
 
     // real: acumulado reconstruido desde CANTIDAD REAL (MANUAL) — no la fila
     // ACUM REAL cruda del Sheet, que se puede romper (ver programacion.js)
     const lastRealIdx = b.acumRealLastIdx;
     const realHoy = lastRealIdx >= 0 ? b.acumReal[lastRealIdx] : 0;
+    const faltante = Math.max(0, (b.requerida||0) - realHoy);
 
-    const cumpl    = planHoy > 0 ? (realHoy / planHoy * 100) : (realHoy > 0 ? 100 : 0);
-    const sem      = cumpl >= 97 ? '🟢' : cumpl >= 88 ? '🟡' : '🔴';
+    // % cumplimiento = Llevamos ÷ Requerido (cuánto del total del mes ya se
+    // produjo) — YA NO se compara contra el plan diario acumulado a hoy, para
+    // no generar contradicciones entre esta columna y "Día cumplim." (un
+    // producto puede ir arriba del plan diario de cierto día pero seguir sin
+    // llegar al requerido total, o viceversa)
+    const cumpl    = b.requerida > 0 ? (realHoy / b.requerida * 100) : (realHoy > 0 ? 100 : 0);
     const semColor = cumpl >= 97 ? '#10B981' : cumpl >= 88 ? '#F59E0B' : '#EF4444';
     const bgRow    = cumpl < 88 ? 'rgba(127,29,29,.18)' : cumpl < 97 ? 'rgba(120,53,15,.15)' : 'transparent';
 
-    // ── cálculo de sugerencias ──
-    if (cumpl < 97 && b.requerida > 0 && b.cavidades > 0 && b.ciclo > 0) {
-      const diasTransc   = lastRealIdx >= 0 ? lastRealIdx + 1 : 1;
-      const ritmo        = realHoy / diasTransc;                          // und/día promedio
-      const faltante     = b.requerida - realHoy;
-      const diasRest     = b.fechas.length - (lastRealIdx + 1);
-      const undPorTurno  = Math.floor(b.cavidades * (28800 / b.ciclo) * b.rendimiento);
-      const undPorDia3T  = undPorTurno * 3;
-      const undPorDia2T  = undPorTurno * 2;
+    // ── alertas y sugerencias: solo cuando el ritmo normal NO alcanza a
+    // cerrar el faltante en los días hábiles que quedan (antes se disparaban
+    // con cualquier Cumpl.% bajo, lo cual era ruido casi todo el mes) ──
+    if (faltante > 0 && b.cavidades > 0 && b.ciclo > 0 && b.fechas.length) {
+      const diasTransc  = lastRealIdx >= 0 ? lastRealIdx + 1 : 1;
+      const ritmo       = realHoy / diasTransc;                 // und/día promedio
+      const diasRest    = b.fechas.length - (lastRealIdx + 1);
+      const undPorTurno = Math.floor(b.cavidades * (28800 / b.ciclo) * b.rendimiento);
+      const undPorDia2T = undPorTurno * 2;
 
-      if (diasRest > 0) {
-        // ¿alcanza con turnos normales (L-V 3T, S 2T)?
-        const turnosNorm = diasRest * 3; // estimado conservador
-        if (undPorTurno * turnosNorm < faltante) {
+      if (diasRest > 0 && undPorTurno > 0) {
+        const turnosNorm       = diasRest * 3;                   // estimado conservador (L-V 3T, incluye holgura de sábado)
+        const turnosNecesarios = Math.ceil(faltante / undPorTurno);
+        const extraTurnos      = turnosNecesarios - turnosNorm;
+
+        if (extraTurnos > 0) {
           alertas.push({ tipo:'rojo', prod: b.producto,
             msg:`Faltan <b>${faltante.toLocaleString('es-CO')}</b> unidades con solo <b>${diasRest} día(s)</b> hábiles. No alcanza con turnos normales.` });
-        } else if (cumpl < 97) {
-          alertas.push({ tipo:'amarillo', prod: b.producto,
-            msg:`Va <b>${(planHoy-realHoy).toLocaleString('es-CO')} unidades</b> por debajo del acumulado plan. Aún recuperable.` });
-        }
 
-        // turnos extra para recuperar
-        const extraUnd   = planHoy - realHoy;
-        const extraTurnos = extraUnd > 0 ? Math.ceil(extraUnd / undPorTurno) : 0;
-        if (extraTurnos > 0) {
-          sugerencias.push(`⏰ <b>${b.producto}</b>: ${extraTurnos} turno(s) extra para ponerse al día (~${Math.ceil(extraTurnos/3)} día(s) extra). Produce ${undPorTurno.toLocaleString('es-CO')} und/turno.`);
-        }
+          sugerencias.push(`⏰ <b>${b.producto}</b>: ${extraTurnos} turno(s) extra para llegar al requerido (~${Math.ceil(extraTurnos/3)} día(s) extra). Produce ${undPorTurno.toLocaleString('es-CO')} und/turno.`);
 
-        // domingos disponibles
-        const doms = _domingosRestantes(b.fechas, lastRealIdx);
-        if (doms > 0) {
-          const ganDom = doms * undPorDia2T;
-          sugerencias.push(`📅 <b>${b.producto}</b>: trabajar ${doms} domingo(s) aporta +${ganDom.toLocaleString('es-CO')} unidades (${undPorDia2T.toLocaleString('es-CO')}/dom · 2 turnos).`);
-        }
+          const doms = _domingosRestantes(b.fechas, lastRealIdx);
+          if (doms > 0) {
+            const ganDom = doms * undPorDia2T;
+            sugerencias.push(`📅 <b>${b.producto}</b>: trabajar ${doms} domingo(s) aporta +${ganDom.toLocaleString('es-CO')} unidades (${undPorDia2T.toLocaleString('es-CO')}/dom · 2 turnos).`);
+          }
 
-        // proyección al ritmo actual
-        if (ritmo > 0) {
-          const diasParaCumplir = Math.ceil(faltante / ritmo);
-          const fechaProyect    = new Date();
-          fechaProyect.setDate(fechaProyect.getDate() + diasParaCumplir);
-          sugerencias.push(`📈 <b>${b.producto}</b>: al ritmo actual (${Math.round(ritmo).toLocaleString('es-CO')} und/día) cumplirías el <b>${fechaProyect.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</b>.`);
+          if (ritmo > 0) {
+            const diasParaCumplir = Math.ceil(faltante / ritmo);
+            const fechaProyect    = new Date();
+            fechaProyect.setDate(fechaProyect.getDate() + diasParaCumplir);
+            sugerencias.push(`📈 <b>${b.producto}</b>: al ritmo actual (${Math.round(ritmo).toLocaleString('es-CO')} und/día) cumplirías el <b>${fechaProyect.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</b>.`);
+          }
         }
       }
     }
@@ -8075,10 +8079,9 @@ function renderProgreso() {
       <td style="padding:9px 14px;font-weight:600;color:#F3F4F6">${b.producto}${b.inconsistente?' <span title="El acumulado reconstruido ('+realHoy.toLocaleString('es-CO')+') no coincide con SUMA TOTAL REAL del Sheet ('+Math.round(b.totalReal||0).toLocaleString('es-CO')+') — revisar la fila CANTIDAD REAL (MANUAL) de este producto." style="color:#F59E0B;cursor:help">⚠</span>':''}</td>
       <td style="text-align:center;padding:9px 8px;color:#9CA3AF;font-size:.72rem">${/^\d+$/.test(String(b.maquina).trim()) ? 'INY#'+b.maquina : (b.maquina||'—')}</td>
       <td style="text-align:right;padding:9px 8px;color:#D1D5DB">${(b.requerida||0).toLocaleString('es-CO')}</td>
-      <td style="text-align:right;padding:9px 8px;color:#9CA3AF">${planHoy.toLocaleString('es-CO')}</td>
       <td style="text-align:right;padding:9px 8px;font-weight:700;color:#F3F4F6">${realHoy.toLocaleString('es-CO')}</td>
+      <td style="text-align:right;padding:9px 8px;color:#9CA3AF">${faltante.toLocaleString('es-CO')}</td>
       <td style="text-align:center;padding:9px 8px;font-weight:700;color:${semColor}">${cumpl.toFixed(1)}%</td>
-      <td style="text-align:center;padding:9px 8px;font-size:1.05rem">${sem}</td>
       <td style="text-align:center;padding:9px 8px;font-size:.72rem;color:#9CA3AF">${diaCumplCalc}</td>
     </tr>`;
   });
