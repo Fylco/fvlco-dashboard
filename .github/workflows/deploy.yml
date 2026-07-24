@@ -24,6 +24,9 @@ jobs:
       - name: Pruebas del motor de capacidad
         run: node capacidad.test.js
 
+      - name: Pruebas de reconciliacion de PROGRAMACION
+        run: node programacion.test.js
+
   deploy:
     needs: test          # solo despliega si "test" pasó
     runs-on: ubuntu-latest

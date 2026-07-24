@@ -14,6 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="turnos.js"></script>
 <script src="capacidad.js"></script>
+<script src="programacion.js"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -7672,6 +7673,17 @@ async function sincronizarSheetInv() {
   btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Sincronizar Sheets';
 }
 
+// fecha de entrega del pedido — fuente única del nombre de columna. La hoja
+// "pedidos" usa hoy "FECHA DE ENTREGA"; se mantienen los alias viejos por si
+// cambia otra vez. ANTES este fallback estaba duplicado (filtro de mes vs.
+// cálculo de días/semáforo) y se desincronizó: el filtro sí tenía "FECHA DE
+// ENTREGA" pero el cálculo de días no, así que TODOS los pedidos caían al
+// valor por defecto (último día del mes) y el semáforo nunca mostraba rojo/
+// amarillo. Una sola función para los dos sitios evita que vuelva a pasar.
+function fechaEntregaStr(r) {
+  return String(r['FECHA ENTREGA']||r['Fecha Entrega']||r['FECHA DE ENTREGA']||'').trim();
+}
+
 // ── MPS engine ──────────────────────────────────────────
 function recalcularPlan() {
   const now  = new Date();
@@ -7679,7 +7691,7 @@ function recalcularPlan() {
   const anio = parseInt(document.getElementById('po-anio-sel')?.value) || now.getFullYear();
 
   const pedidosMes = PLAN_DATA.pedidos.filter(r => {
-    const fStr = String(r['FECHA ENTREGA']||r['Fecha Entrega']||r['FECHA DE ENTREGA']||'').trim();
+    const fStr = fechaEntregaStr(r);
     if (!fStr) return false;
     const f = parseFechaPO(fStr); if (!f) return false;
     return f.getMonth()+1 === mes && f.getFullYear() === anio;
@@ -7692,7 +7704,7 @@ function recalcularPlan() {
     const cliente = String(r['CLIENTE']||r['Cliente']||'').trim();
     const cantRaw = String(r['CANT PENDIENTE']||r['CANTIDAD PENDIENTE']||r['CANTIDAD']||'0').replace(/[$.\s]/g,'').replace(',','.');
     const cant    = parseFloat(cantRaw)||0;
-    const fStr    = String(r['FECHA ENTREGA']||r['Fecha Entrega']||'').trim();
+    const fStr    = fechaEntregaStr(r);
     const num     = String(r['NÚM PEDIDO']||r['NUM PEDIDO']||r['Num Pedido']||'').trim();
     const valRaw  = String(r['VALOR TOTAL']||r['VALOR']||'0').replace(/[$.\s]/g,'').replace(',','.');
     const val     = parseFloat(valRaw)||0;
@@ -7881,7 +7893,7 @@ function parseProgBlocks(rows) {
               ciclo: pNum(_progAfter(r,'CICLO'))||0,
               rendimiento: (pNum(_progAfter(r,'RENDIMIENTO'))||95)/100,
               maquina:'', requerida:0, fechas:[], turnosUsado:[], acumPlan:[], acumReal:[],
-              totalPlaneada:0, totalReal:0, diaCumpl:'' };
+              realDiario:[], totalPlaneada:0, totalReal:0, diaCumpl:'' };
     }
     if (!cur) continue;
 
@@ -7893,7 +7905,11 @@ function parseProgBlocks(rows) {
     // turnos reales del día (ya concilia festivos y ajustes manuales) — una casilla por fecha
     if (lblU === 'TURNOS (USADO)') cur.turnosUsado = r.slice(1).map(v=>pNum(v)||0);
     if (lblU === 'ACUMULADO')      cur.acumPlan    = r.slice(1).map(v=>pNum(v)||0);
-    if (lblU === 'ACUM REAL')      cur.acumReal    = r.slice(1).map(v=>pNum(v));
+    // ACUM REAL del Sheet ya no se usa: es una fórmula de acumulado corrido que se
+    // rompe al editar (pegar un valor fijo, insertar/borrar una columna). En vez de
+    // confiar en ella, se reconstruye desde CANTIDAD REAL (MANUAL) — la única fila
+    // que el operario escribe a mano — ver reconciliarAcumReal() más abajo.
+    if (lblU === 'CANTIDAD REAL (MANUAL)') cur.realDiario = r.slice(1).map(v=>pNum(v));
     if (lblU.startsWith('SUMA TOTAL PLANEADA')) {
       cur.totalPlaneada = pNum(_progAfter(r,'SUMA TOTAL PLANEADA'))||0;
       cur.totalReal     = pNum(_progAfter(r,'SUMA TOTAL REAL'))||0;
@@ -7901,6 +7917,17 @@ function parseProgBlocks(rows) {
     if (lblU.startsWith('DIA DE CUMPLIMIENTO')) cur.diaCumpl = String(_progAfter(r,'DIA DE CUMPLIMIENTO')||'').trim();
   }
   if (cur && cur.producto && cur.fechas.length) blocks.push(cur);
+
+  // reconstruye el acumulado real de cada bloque desde la fila diaria (programacion.js)
+  // y reemplaza acumReal por el resultado confiable — todo el código que lo lee
+  // (renderProgreso, renderProgClientes) recibe el valor corregido sin más cambios
+  blocks.forEach(b => {
+    const rec = reconstruirAcumReal(b.realDiario);
+    b.acumReal = rec.acum;
+    b.acumRealLastIdx = rec.lastIdx;
+    b.inconsistente = datosInconsistentes(rec.total, b.totalReal);
+  });
+
   // aplanar pedidos: una entrada por columna con cliente y cantidad válidos
   const flat = [];
   pedidos.forEach(p => {
@@ -7984,9 +8011,10 @@ function renderProgreso() {
     const idx     = _idxHoy(b.fechas);
     const planHoy = b.acumPlan[idx] || b.totalPlaneada || 0;
 
-    // real: último valor no nulo de acumReal
-    let realHoy = 0, lastRealIdx = -1;
-    (b.acumReal||[]).forEach((v,i) => { if (v != null && v > 0) { realHoy = v; lastRealIdx = i; } });
+    // real: acumulado reconstruido desde CANTIDAD REAL (MANUAL) — no la fila
+    // ACUM REAL cruda del Sheet, que se puede romper (ver programacion.js)
+    const lastRealIdx = b.acumRealLastIdx;
+    const realHoy = lastRealIdx >= 0 ? b.acumReal[lastRealIdx] : 0;
 
     const cumpl    = planHoy > 0 ? (realHoy / planHoy * 100) : (realHoy > 0 ? 100 : 0);
     const sem      = cumpl >= 97 ? '🟢' : cumpl >= 88 ? '🟡' : '🔴';
@@ -8038,15 +8066,17 @@ function renderProgreso() {
       }
     }
 
+    const diaCumplCalc = proyectarDiaCumplimiento({ requerida: b.requerida, acum: b.acumReal, lastIdx: b.acumRealLastIdx, fechas: b.fechas });
+
     html += `<tr style="border-bottom:1px solid #1F2937;background:${bgRow}">
-      <td style="padding:9px 14px;font-weight:600;color:#F3F4F6">${b.producto}</td>
+      <td style="padding:9px 14px;font-weight:600;color:#F3F4F6">${b.producto}${b.inconsistente?' <span title="El acumulado reconstruido ('+realHoy.toLocaleString('es-CO')+') no coincide con SUMA TOTAL REAL del Sheet ('+Math.round(b.totalReal||0).toLocaleString('es-CO')+') — revisar la fila CANTIDAD REAL (MANUAL) de este producto." style="color:#F59E0B;cursor:help">⚠</span>':''}</td>
       <td style="text-align:center;padding:9px 8px;color:#9CA3AF;font-size:.72rem">${/^\d+$/.test(String(b.maquina).trim()) ? 'INY#'+b.maquina : (b.maquina||'—')}</td>
       <td style="text-align:right;padding:9px 8px;color:#D1D5DB">${(b.requerida||0).toLocaleString('es-CO')}</td>
       <td style="text-align:right;padding:9px 8px;color:#9CA3AF">${planHoy.toLocaleString('es-CO')}</td>
       <td style="text-align:right;padding:9px 8px;font-weight:700;color:#F3F4F6">${realHoy.toLocaleString('es-CO')}</td>
       <td style="text-align:center;padding:9px 8px;font-weight:700;color:${semColor}">${cumpl.toFixed(1)}%</td>
       <td style="text-align:center;padding:9px 8px;font-size:1.05rem">${sem}</td>
-      <td style="text-align:center;padding:9px 8px;font-size:.72rem;color:#9CA3AF">${b.diaCumpl||'—'}</td>
+      <td style="text-align:center;padding:9px 8px;font-size:.72rem;color:#9CA3AF">${diaCumplCalc}</td>
     </tr>`;
   });
 
@@ -8091,9 +8121,10 @@ function renderProgClientes() {
   };
 
   // producción proyectada de un bloque al día idx (real hasta hoy + plan de ahí en adelante)
+  // — b.acumReal ya viene reconstruido desde CANTIDAD REAL (MANUAL) (parseProgBlocks)
   const proyectar = (b, idx) => {
-    let realHoy = 0, lastIdx = -1;
-    (b.acumReal||[]).forEach((v,i)=>{ if (v!=null && v>0) { realHoy=v; lastIdx=i; } });
+    const lastIdx = b.acumRealLastIdx;
+    const realHoy = lastIdx >= 0 ? b.acumReal[lastIdx] : 0;
     if (idx < 0) return 0;
     if (idx <= lastIdx) return b.acumReal[idx] || 0;
     return realHoy + ((b.acumPlan[idx]||0) - (lastIdx>=0 ? (b.acumPlan[lastIdx]||0) : 0));
