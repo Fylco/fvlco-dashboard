@@ -7702,12 +7702,15 @@ function recalcularPlan() {
     const cod     = String(r['CÓD PRODUCTO']||r['COD PRODUCTO']||r['Cod Producto']||r['CODIGO']||'').trim();
     const prod    = String(r['PRODUCTO']||r['Producto']||r['NOMBRE PRODUCTO']||'').trim();
     const cliente = String(r['CLIENTE']||r['Cliente']||'').trim();
-    const cantRaw = String(r['CANT PENDIENTE']||r['CANTIDAD PENDIENTE']||r['CANTIDAD']||'0').replace(/[$.\s]/g,'').replace(',','.');
-    const cant    = parseFloat(cantRaw)||0;
+    // fvNum() — no parseFloat con .replace(',','.'): la hoja "pedidos" usa formato
+    // US (coma = miles, ej. "50,000" = 50000, "$5,350,000" = 5350000), no el
+    // formato colombiano de PROGRAMACIÓN. Tratar la coma como decimal aquí hacía
+    // que "Valor Plan" mostrara $16 en vez de millones — mismo fvNum ya usado
+    // (correctamente) para esta misma hoja en el Forecast.
+    const cant    = fvNum(r['CANT PENDIENTE']||r['CANTIDAD PENDIENTE']||r['CANTIDAD']);
     const fStr    = fechaEntregaStr(r);
     const num     = String(r['NÚM PEDIDO']||r['NUM PEDIDO']||r['Num Pedido']||'').trim();
-    const valRaw  = String(r['VALOR TOTAL']||r['VALOR']||'0').replace(/[$.\s]/g,'').replace(',','.');
-    const val     = parseFloat(valRaw)||0;
+    const val     = fvNum(r['VALOR TOTAL']||r['VALOR']);
     if ((!prod&&!cod)||cant<=0) return;
 
     const fecha = parseFechaPO(fStr) || new Date(anio, mes, 0);
