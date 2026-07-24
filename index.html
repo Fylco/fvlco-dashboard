@@ -13,6 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="turnos.js"></script>
+<script src="capacidad.js"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -979,7 +980,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div id="po-tablero-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px"></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:18px">
         <div class="chart-card"><div class="section-title">Pedidos por Semáforo</div><div style="height:200px"><canvas id="po-chart-semaforo"></canvas></div></div>
-        <div class="chart-card"><div class="section-title">Capacidad vs Requerida</div><div style="height:200px"><canvas id="po-chart-capacidad"></canvas></div></div>
+        <div class="chart-card"><div class="section-title">Capacidad vs Requerida (turnos)</div><div id="po-cap2-msg" style="display:none;color:#6B7280;font-size:.78rem;padding:16px 4px"></div><div style="height:200px"><canvas id="po-chart-capacidad"></canvas></div></div>
         <div class="chart-card" style="grid-column:1/-1"><div class="section-title">Top productos — Unidades pendientes</div><div style="height:220px"><canvas id="po-chart-productos"></canvas></div></div>
       </div>
 
@@ -7724,7 +7725,7 @@ function recalcularPlan() {
   const sel=document.getElementById('po-plan-f-cliente');
   if(sel){ sel.innerHTML='<option value="">Todos los clientes</option>'+clientes.map(c=>`<option>${c}</option>`).join(''); }
 
-  loadProgData(mes, anio).then(renderProgreso);
+  loadProgData(mes, anio).then(()=>{ renderProgreso(); renderTableroPlanCapacidad(); });
   renderTablieroPlan(); renderPlanMaestro();
   renderMaquilaPlan(); renderPersonalPlan(); renderHorasCostosPO();
   renderLoteMinimoPO(); renderInventarioMP();
@@ -8168,13 +8169,17 @@ function renderProgClientes() {
 }
 
 // ── Tablero Plan ────────────────────────────────────────
-function renderTablieroPlan() {
+// KPI "Turnos Req." depende del motor de capacidad (PROGRAMACIÓN), que carga
+// async — se cachea el último valor conocido para que renderTableroPlanKPIs()
+// pueda pintar los 6 KPIs juntos sin importar cuál de las dos partes corrió última.
+let _tableroCapKpi = { val:'—', sub:'cargando…' };
+
+function renderTableroPlanKPIs() {
   const items=PLAN_DATA.plan, maq=PLAN_DATA.maquila;
   const v=items.filter(i=>i.sem==='verde').length;
   const a=items.filter(i=>i.sem==='amarillo').length;
   const r=items.filter(i=>i.sem==='rojo').length;
   const val=items.reduce((s,i)=>s+(i.val||0),0);
-  const hrs=items.reduce((s,i)=>s+(i.hrs||0),0);
   const kpiEl=document.getElementById('po-tablero-kpis');
   if(kpiEl)kpiEl.innerHTML=
     poKpi('Pedidos en Planta',items.length,maq.length+' en maquila','#3B82F6')+
@@ -8182,28 +8187,57 @@ function renderTablieroPlan() {
     poKpi('En Riesgo 🟡',a,'≤ '+PLAN_CFG.DIAS_RIESGO+' días','#F59E0B')+
     poKpi('Incumplimiento 🔴',r,'fecha vencida','#EF4444')+
     poKpi('Valor Plan',fCOP(val),'pedidos planta','#8B5CF6')+
-    poKpi('Horas Est.',Math.round(hrs)+'h','total planta','#06B6D4');
+    poKpi('Turnos Req.',_tableroCapKpi.val,_tableroCapKpi.sub,'#06B6D4');
+}
+
+function renderTablieroPlan() {
+  const items=PLAN_DATA.plan;
+  const v=items.filter(i=>i.sem==='verde').length;
+  const a=items.filter(i=>i.sem==='amarillo').length;
+  const r=items.filter(i=>i.sem==='rojo').length;
+
+  renderTableroPlanKPIs();
 
   destroyChart('po-sem');
   const elS=document.getElementById('po-chart-semaforo');
   if(elS)CHARTS['po-sem']=new Chart(elS.getContext('2d'),{type:'doughnut',data:{labels:['En tiempo','En riesgo','Incumplimiento'],datasets:[{data:[v,a,r],backgroundColor:['#10B981','#F59E0B','#EF4444'],borderWidth:0,hoverOffset:6}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#9CA3AF',font:{size:11}}}},cutout:'68%',responsive:true,maintainAspectRatio:false}});
-
-  const mes=parseInt(document.getElementById('po-mes-sel')?.value)||(new Date().getMonth()+1);
-  const anio=parseInt(document.getElementById('po-anio-sel')?.value)||new Date().getFullYear();
-  const diasH=diasHabilesPO(mes,anio);
-  const noms=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
-  const horasDisp=diasH.reduce((s,d)=>s+(PLAN_CFG.HORAS_DIA[noms[d.getDay()]]||0),0);
-  const maqMap={};items.forEach(i=>{if(i.maq&&i.maq!=='—')maqMap[i.maq]=(maqMap[i.maq]||0)+(i.hrs||0);});
-  const maqNms=Object.keys(maqMap);
-  destroyChart('po-cap2');
-  const elC=document.getElementById('po-chart-capacidad');
-  if(elC&&maqNms.length)CHARTS['po-cap2']=new Chart(elC.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(()=>horasDisp),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>Math.round(maqMap[m])),backgroundColor:'#8B5CF688',borderColor:'#8B5CF6',borderWidth:1,borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'}}},responsive:true,maintainAspectRatio:false}});
 
   const prodMap={};items.forEach(i=>prodMap[i.prod]=(prodMap[i.prod]||0)+(i.cant||0));
   const top=Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
   destroyChart('po-prods');
   const elP=document.getElementById('po-chart-productos');
   if(elP&&top.length)CHARTS['po-prods']=new Chart(elP.getContext('2d'),{type:'bar',data:{labels:top.map(e=>e[0].length>22?e[0].slice(0,22)+'…':e[0]),datasets:[{label:'Unidades',data:top.map(e=>e[1]),backgroundColor:PAL.map(c=>c+'bb'),borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#9CA3AF',font:{size:10}},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
+}
+
+// ── Capacidad vs Requerida (Tablero Plan) — mismo motor que la pestaña
+// Capacidad (capacidad.js), en turnos. Depende de PROG_BLOCKS (PROGRAMACIÓN),
+// por eso se llama aparte de renderTablieroPlan(): debe correr DESPUÉS de que
+// loadProgData() resuelva, nunca antes (ver recalcularPlan).
+function renderTableroPlanCapacidad() {
+  const mes=parseInt(document.getElementById('po-mes-sel')?.value)||(new Date().getMonth()+1);
+  const anio=parseInt(document.getElementById('po-anio-sel')?.value)||new Date().getFullYear();
+  const msgEl=document.getElementById('po-cap2-msg');
+  const blocks=PROG_BLOCKS.filter(b=>b.cavidades>0&&b.ciclo>0);
+
+  if(!blocks.length){
+    _tableroCapKpi={val:'—',sub:'sin datos de PROGRAMACIÓN'};
+    renderTableroPlanKPIs();
+    destroyChart('po-cap2');
+    if(msgEl){msgEl.style.display='block';msgEl.textContent=`Sin datos de PROGRAMACIÓN para ${PROG_MES[mes]||''} ${anio}.`;}
+    return;
+  }
+  if(msgEl)msgEl.style.display='none';
+
+  const cavOv=capLoadOverrides(anio,mes);
+  const turnosDiaOv=capLoadTurnosDiaOv(anio,mes);
+  const {maqNms,maqLoad,maqTurnosDisp,turnosReqTotal}=calcCapacidadMotor(blocks,cavOv,turnosDiaOv);
+
+  _tableroCapKpi={val:(Math.round(turnosReqTotal*10)/10)+' turnos',sub:'según PROGRAMACIÓN'};
+  renderTableroPlanKPIs();
+
+  destroyChart('po-cap2');
+  const elC=document.getElementById('po-chart-capacidad');
+  if(elC&&maqNms.length)CHARTS['po-cap2']=new Chart(elC.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(m=>maqTurnosDisp[m]),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),backgroundColor:'#8B5CF688',borderColor:'#8B5CF6',borderWidth:1,borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}}},responsive:true,maintainAspectRatio:false}});
 }
 
 // ── Plan Maestro ────────────────────────────────────────
@@ -8242,23 +8276,9 @@ function capNum(s) {
   else s = s.replace(',', '.');
   return parseFloat(s) || 0;
 }
-// normaliza nombres para cruzar tablas: mayúsculas, LYNNER→LINER, quita "MM" y
-// puntuación, y ordena las palabras — así "VALVULA TERRA 15MM * 48" (costos) cruza
-// con "valvula 15 mm terra *48" (PROGRAMACIÓN) aunque el orden de palabras difiera.
-function capNorm(s) {
-  const clean = String(s||'').toUpperCase().replace(/LYNNER/g,'LINER').replace(/MM/g,' ');
-  return (clean.match(/[A-Z0-9]+/g) || []).sort().join(' ');
-}
-
-// "1" → [INY#1] · "1-2" → [INY#1, INY#2] · "TV1-TV2" → [TV#1, TV#2] · "Maquila" → []
-function capMaquinas(str) {
-  const s = String(str||'').trim().toUpperCase();
-  if (!s || s === 'MAQUILA') return [];
-  const out = [];
-  (s.match(/TV\s*#?\s*(\d+)/g) || []).forEach(m => out.push('TV#' + m.replace(/\D/g,'')));
-  if (!out.length) (s.match(/\d+/g) || []).forEach(n => out.push('INY#' + n));
-  return out;
-}
+// capNorm(s) y capMaquinas(str) viven en capacidad.js (cargado antes que este
+// script), junto con calcCapacidadMotor — fuente única de turnos requeridos/
+// disponibles por máquina, compartida entre esta pestaña y Tablero Plan.
 
 // costo Fylco vs Maquila por producto — pestaña fija "COSTOS" dentro de cada
 // archivo PROGRAMACION (no cambia mes a mes)
@@ -8401,62 +8421,23 @@ function renderCapacidadMensual() {
   }
   if (tit) tit.textContent = `Plan ${PROG_MES[mes]} ${anio} · fuente PROGRAMACIÓN · ${blocks.length} productos`;
 
-  // turnos reales del mes (festivos y ajustes ya conciliados en el propio calendario
-  // de PROGRAMACIÓN) — se toma el calendario de la planta (mismo para todas las máquinas,
-  // simplificación consciente: si una máquina puntual trabaja domingos distinto, no se
-  // separa por máquina todavía)
-  const calBlock = blocks.find(b => b.turnosUsado && b.turnosUsado.length) || { turnosUsado: [] };
-  const turnosDisp = calBlock.turnosUsado.reduce((s,v)=>s+v, 0) || 71;
-
-  // ajuste manual de cavidades (molde con cavidades bloqueadas/dañadas hoy) —
-  // simulación local, no cambia lo que hay en PROGRAMACIÓN
+  // ajuste manual de cavidades (molde con cavidades bloqueadas/dañadas hoy) y de
+  // turnos-por-día — simulaciones locales, no cambian lo que hay en PROGRAMACIÓN
   const cavOv = capLoadOverrides(anio, mes);
-
-  const maqLoad = {};   // máquina → turnos requeridos
-  let turnosReqIny = 0, turnosReqTV = 0;
-  const items = blocks.map(b => {
-    const cavKey    = capNorm(b.producto);
-    const overridden = cavOv[cavKey] != null;
-    const cavidades  = overridden ? cavOv[cavKey] : b.cavidades;
-    const und8h  = b.ciclo>0 ? Math.floor(cavidades * 28800/b.ciclo * b.rendimiento) : 0;
-    const turnos = und8h>0 ? b.requerida/und8h : 0;
-    const dias   = turnos/3; // asumiendo el máximo de 3 turnos/día L-V
-    const maqLbl = /^\d+$/.test(String(b.maquina).trim()) ? 'INY#'+b.maquina : (b.maquina||'—');
-    const maqs   = capMaquinas(b.maquina);
-    const esMaquila = !maqs.length;
-    maqs.forEach(m => maqLoad[m] = (maqLoad[m]||0) + turnos/maqs.length);
-    if (!esMaquila) { if (maqs[0].startsWith('TV')) turnosReqTV += turnos; else turnosReqIny += turnos; }
-    return { ...b, und8h, turnos, dias, maqLbl, maqs, esMaquila, cavidades, cavKey, overridden, cavReal: b.cavidades };
-  });
-
-  const maqNms = Object.keys(maqLoad).sort();
-
-  // turnos disponibles por máquina, día por día — parte del calendario real
-  // de PROGRAMACIÓN (festivos ya conciliados) y permite ajuste manual por
-  // máquina/día cuando una máquina puntual no va a trabajar a máxima capacidad
   const turnosDiaOv = capLoadTurnosDiaOv(anio, mes);
-  const maqDias = {}, maqTurnosDisp = {};
-  maqNms.forEach(m => {
-    const ovM = turnosDiaOv[m] || {};
-    maqDias[m] = calBlock.turnosUsado.map((v,d) => (ovM[d] != null ? ovM[d] : v));
-    maqTurnosDisp[m] = maqDias[m].reduce((s,v)=>s+v, 0);
-  });
 
-  // sobrecarga por máquina → desborde a maquila (el producto de más turnos en esa
-  // máquina aporta el desborde completo — misma regla que antes, no se reparte)
-  const overflow = [];
-  maqNms.forEach(m => {
-    const exceso = maqLoad[m] - maqTurnosDisp[m];
-    if (exceso <= 0.01) return;
-    const prods = items.filter(i => i.maqs.includes(m)).sort((a,b) => b.turnos - a.turnos);
-    if (!prods.length) return;
-    const p = prods[0];
-    const unidades = Math.round(exceso * p.und8h);
-    const costo = capCostoDe(p.producto);
-    overflow.push({ maquina:m, producto:p.producto, turnos:exceso, unidades,
-      costoMaquila: costo?.maquila ? unidades * costo.maquila : null,
-      costoFylco:   costo?.fylco  ? unidades * costo.fylco  : null,
-      tieneMaquila: !!(costo && costo.maquila) });
+  // motor único (capacidad.js) — mismo cálculo que consume Tablero Plan
+  const {
+    items, maqNms, maqLoad, maqTurnosDisp, maqDias, overflow, calBlock,
+    turnosReqIny, turnosReqTV,
+  } = calcCapacidadMotor(blocks, cavOv, turnosDiaOv);
+
+  // costos de maquila (I/O vía CAP_COSTOS) se añaden aquí — el motor puro no los calcula
+  overflow.forEach(o => {
+    const costo = capCostoDe(o.producto);
+    o.costoMaquila = costo?.maquila ? o.unidades * costo.maquila : null;
+    o.costoFylco   = costo?.fylco  ? o.unidades * costo.fylco  : null;
+    o.tieneMaquila = !!(costo && costo.maquila);
   });
 
   const nIny = maqNms.filter(m=>m.startsWith('INY')).length, nTV = maqNms.filter(m=>m.startsWith('TV')).length;
@@ -8970,7 +8951,7 @@ window.showSection=function(id){
     // quede "Cargando…" si esta es la primera pestaña de Plan Operativo que se abre.
     if(id==='po-capacidad')loadCapacidadMensual();
     else if(_planLoaded){
-      if(id==='po-tablero')renderTablieroPlan();
+      if(id==='po-tablero'){renderTablieroPlan();renderTableroPlanCapacidad();}
       else if(id==='po-plan')renderPlanMaestro();
       else if(id==='po-maquila')renderMaquilaPlan();
       else if(id==='po-personal')renderPersonalPlan();

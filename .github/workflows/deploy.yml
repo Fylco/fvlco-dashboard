@@ -21,6 +21,9 @@ jobs:
       - name: Pruebas de logica de turnos
         run: node turnos.test.js
 
+      - name: Pruebas del motor de capacidad
+        run: node capacidad.test.js
+
   deploy:
     needs: test          # solo despliega si "test" pasó
     runs-on: ubuntu-latest
