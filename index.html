@@ -991,6 +991,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <i class="fa-solid fa-chart-gantt" style="color:#10B981"></i> Avance Real vs Plan — Producción del Mes
           <span id="prog-badge" style="font-size:.68rem;font-weight:400;color:#6B7280;margin-left:4px"></span>
         </div>
+        <div id="prog-alertas-requerido" style="margin-bottom:12px"></div>
         <div id="prog-alertas" style="margin-bottom:12px"></div>
         <div id="prog-tabla" style="overflow-x:auto;background:#111827;border-radius:10px;border:1px solid #1F2937"></div>
         <div id="prog-sugerencias" style="margin-top:14px"></div>
@@ -7933,6 +7934,7 @@ function parseProgBlocks(rows) {
     const rec = reconstruirAcumReal(b.realDiario.slice(0, hoyIdx + 1));
     b.acumReal = b.fechas.map((_, i) => i < rec.acum.length ? rec.acum[i] : rec.total);
     b.acumRealLastIdx = rec.lastIdx;
+    b.hoyIdx = hoyIdx;
     b.inconsistente = datosInconsistentes(rec.total, b.totalReal);
   });
 
@@ -7997,6 +7999,8 @@ function renderProgreso() {
     }</p>`;
     if (alertasEl) alertasEl.innerHTML = '';
     if (sugEl) sugEl.innerHTML = '';
+    const alertasReqEl0 = document.getElementById('prog-alertas-requerido');
+    if (alertasReqEl0) alertasReqEl0.innerHTML = '';
     const cliEl0 = document.getElementById('prog-clientes');
     if (cliEl0) cliEl0.innerHTML = '';
     return;
@@ -8004,6 +8008,37 @@ function renderProgreso() {
 
   if (badgeEl) { const nP = PROG_BLOCKS.filter(b=>!/MAQUILA/i.test(b.maquina)).length;
     badgeEl.textContent = `· ${nP} producto(s) en planta · ${new Date().toLocaleTimeString('es-CO')}`; }
+
+  // ── coherencia del "Requerido": ¿está calibrado frente a la demanda real de
+  // clientes y frente al plan turno-a-turno que arma la propia PROGRAMACIÓN?
+  // Separado de las alertas de ritmo (abajo) porque son avisos de otra
+  // naturaleza — no dicen "vamos atrasados", dicen "el número base puede estar
+  // mal puesto y hay que ajustarlo a mano en el Sheet".
+  const alertasReqEl = document.getElementById('prog-alertas-requerido');
+  if (alertasReqEl) {
+    const blocksNoMaquila = PROG_BLOCKS.filter(b=>!/MAQUILA/i.test(b.maquina));
+    const pedidosDelMes   = (PLAN_DATA.plan||[]).map(i=>({producto:i.prod, cant:i.cant}));
+    const alertasPedidos  = comparaRequeridoVsPedidos(blocksNoMaquila, pedidosDelMes, capNorm);
+    const alertasPlan     = comparaRequeridoVsPlan(blocksNoMaquila);
+
+    const filas = [
+      ...alertasPedidos.map(a=>`
+        <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.35);border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:.76rem;color:#BFDBFE">
+          <i class="fa-solid fa-users" style="margin-right:6px"></i>
+          <strong>${a.producto}:</strong> los pedidos de clientes suman <b>${a.pedidos.toLocaleString('es-CO')}</b> pero el Requerido en PROGRAMACIÓN es solo <b>${a.requerido.toLocaleString('es-CO')}</b> (${a.diferencia.toLocaleString('es-CO')} sin cubrir en el plan) — ajusta el Requerido.
+        </div>`),
+      ...alertasPlan.map(a=> a.tipo==='sin_requerido'
+        ? `<div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.35);border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:.76rem;color:#DDD6FE">
+            <i class="fa-solid fa-circle-question" style="margin-right:6px"></i>
+            <strong>${a.producto}:</strong> no tiene Requerido registrado, pero el plan trae <b>${a.plan.toLocaleString('es-CO')}</b> unidades programadas — revisa si falta llenar CANTIDAD REQUERIDA.
+          </div>`
+        : `<div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.35);border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:.76rem;color:#DDD6FE">
+            <i class="fa-solid fa-scale-unbalanced" style="margin-right:6px"></i>
+            <strong>${a.producto}:</strong> el plan turno-a-turno ${a.tipo==='plan_de_mas'?'produce':'no llega a producir'} <b>${Math.abs(a.diferencia).toLocaleString('es-CO')}</b> unidades ${a.tipo==='plan_de_mas'?'de más':'de menos'} frente al Requerido (${a.requerido.toLocaleString('es-CO')}) — ajusta cavidades/turnos asignados a este producto.
+          </div>`),
+    ];
+    alertasReqEl.innerHTML = filas.join('');
+  }
 
   const alertas = [], sugerencias = [];
 
@@ -8042,7 +8077,10 @@ function renderProgreso() {
     if (faltante > 0 && b.cavidades > 0 && b.ciclo > 0 && b.fechas.length) {
       const diasTransc  = lastRealIdx >= 0 ? lastRealIdx + 1 : 1;
       const ritmo       = realHoy / diasTransc;                 // und/día promedio
-      const diasRest    = b.fechas.length - (lastRealIdx + 1);
+      // días restantes SIEMPRE desde HOY (b.hoyIdx), no desde el último día con
+      // dato reportado: si el operario reporta con un día de rezago (normal),
+      // contar desde lastRealIdx corría el número en ±1 según ese rezago
+      const diasRest    = b.fechas.length - (b.hoyIdx + 1);
       const undPorTurno = Math.floor(b.cavidades * (28800 / b.ciclo) * b.rendimiento);
       const undPorDia2T = undPorTurno * 2;
 
@@ -8057,7 +8095,7 @@ function renderProgreso() {
 
           sugerencias.push(`⏰ <b>${b.producto}</b>: ${extraTurnos} turno(s) extra para llegar al requerido (~${Math.ceil(extraTurnos/3)} día(s) extra). Produce ${undPorTurno.toLocaleString('es-CO')} und/turno.`);
 
-          const doms = _domingosRestantes(b.fechas, lastRealIdx);
+          const doms = _domingosRestantes(b.fechas, b.hoyIdx);
           if (doms > 0) {
             const ganDom = doms * undPorDia2T;
             sugerencias.push(`📅 <b>${b.producto}</b>: trabajar ${doms} domingo(s) aporta +${ganDom.toLocaleString('es-CO')} unidades (${undPorDia2T.toLocaleString('es-CO')}/dom · 2 turnos).`);

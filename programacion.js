@@ -55,6 +55,64 @@ function proyectarDiaCumplimiento({ requerida, acum, lastIdx, fechas }) {
   return fechas[lastIdx + diasParaCumplir] || 'No alcanza en el mes';
 }
 
+// El "Requerido" de PROGRAMACIÓN es una celda manual — puede quedar desactualizado
+// frente a lo que los clientes realmente pidieron ese mes. Compara contra la
+// demanda real (hoja "pedidos") y avisa solo cuando los pedidos SUPERAN el
+// requerido más allá de una tolerancia (5%): ese es el sentido en que cumplir
+// el 100% del plan no bastaría para cubrir lo comprometido con clientes.
+// `normalizador` se inyecta (ej. capNorm de capacidad.js) para no acoplar este
+// módulo a esa dependencia — cruza nombres que las dos hojas escriben distinto.
+function comparaRequeridoVsPedidos(blocks, pedidos, normalizador) {
+  const TOL = 1.05;
+  const sumaPorClave = {};
+  (pedidos || []).forEach(p => {
+    const k = normalizador(p.producto);
+    sumaPorClave[k] = (sumaPorClave[k] || 0) + (p.cant || 0);
+  });
+  const alertas = [];
+  (blocks || []).forEach(b => {
+    const sumaPedidos = sumaPorClave[normalizador(b.producto)] || 0;
+    if (sumaPedidos > (b.requerida || 0) * TOL) {
+      alertas.push({
+        producto: b.producto,
+        requerido: b.requerida || 0,
+        pedidos: Math.round(sumaPedidos),
+        diferencia: Math.round(sumaPedidos - (b.requerida || 0)),
+      });
+    }
+  });
+  return alertas;
+}
+
+// El plan turno-a-turno (cavidades × ciclo × turnos asignados, acumulado a fin
+// de mes en SUMA TOTAL PLANEADA) puede no coincidir con la celda "Requerido" —
+// avisa para que el planeador ajuste cavidades/turnos asignados a ese producto.
+function comparaRequeridoVsPlan(blocks) {
+  const TOL_ABS = 50, TOL_PCT = 0.03;
+  const alertas = [];
+  (blocks || []).forEach(b => {
+    const requerida = b.requerida || 0, plan = b.totalPlaneada || 0;
+    if (requerida === 0 && plan === 0) return;
+    if (requerida === 0 && plan > 0) {
+      alertas.push({ producto: b.producto, tipo: 'sin_requerido', plan: Math.round(plan) });
+      return;
+    }
+    const tol = Math.max(TOL_ABS, requerida * TOL_PCT);
+    const diferencia = plan - requerida;
+    if (Math.abs(diferencia) > tol) {
+      alertas.push({
+        producto: b.producto,
+        tipo: diferencia > 0 ? 'plan_de_mas' : 'plan_de_menos',
+        requerido: requerida, plan: Math.round(plan), diferencia: Math.round(diferencia),
+      });
+    }
+  });
+  return alertas;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { reconstruirAcumReal, datosInconsistentes, proyectarDiaCumplimiento };
+  module.exports = {
+    reconstruirAcumReal, datosInconsistentes, proyectarDiaCumplimiento,
+    comparaRequeridoVsPedidos, comparaRequeridoVsPlan,
+  };
 }
