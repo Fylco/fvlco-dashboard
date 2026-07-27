@@ -97,6 +97,9 @@ textarea{resize:none;min-height:42px;height:42px}
 .refresh-hint{color:#94a3b8;font-size:12px;font-weight:500}
 .offline-bar{display:none;align-items:center;gap:10px;background:#7c2d12;border-radius:8px;padding:7px 12px;flex-wrap:wrap;box-shadow:var(--sh);color:#fff;font-weight:700;font-size:12px}
 .offline-bar.show{display:flex}
+.loading-bar{display:flex;align-items:center;gap:10px;background:#0b3a8c;border-radius:8px;padding:9px 14px;flex-wrap:wrap;box-shadow:var(--sh);color:#fff;font-weight:700;font-size:13px}
+.loading-bar .sp{width:14px;height:14px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
 .opbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1e293b;border-radius:8px;padding:7px 12px;box-shadow:var(--sh)}
 .opbar-lbl{color:#94a3b8;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;flex-shrink:0}
 .opb{border:none;border-radius:7px;color:#fff;font-weight:800;font-size:13px;padding:8px 16px;cursor:pointer;flex-shrink:0;transition:opacity .15s,box-shadow .15s}
@@ -167,9 +170,11 @@ textarea{resize:none;min-height:42px;height:42px}
 <div class="brand"><b>Fylco</b></div>
 <div><h1>Registro de Producción</h1><small>Plásticos y Tecnología</small></div>
 <div class="top-right">
-<div class="maqsel"><label style="color:#fff;margin:0">MÁQUINA</label><select id="maquina"></select></div>
+<div class="maqsel"><label style="color:#fff;margin:0">MÁQUINA</label><select id="maquina" disabled><option value="">⏳ Cargando...</option></select></div>
 <span id="eoLabel" class="estado off">SIN ORDEN</span>
 </div></div>
+
+<div class="loading-bar" id="loadingBar"><span class="sp"></span> <span id="loadingMsg">Cargando datos de producción — puede tardar unos segundos, no cierres la página...</span></div>
 
 <div class="offline-bar" id="offlineBar">📴 SIN CONEXIÓN — los registros se guardan en este dispositivo y se enviarán al restablecerse el internet <span id="pendCount"></span></div>
 

@@ -255,7 +255,14 @@ function init(){
       try{ onData(data); }
       catch(e){ alert('Error cargando datos: '+e.message); }
     })
-    .catch(function(e){ toast('❌ Error al cargar: '+e.message,'err'); });
+    .catch(function(e){
+      toast('❌ Error al cargar: '+e.message,'err');
+      var lb=$('loadingBar');
+      if(lb){
+        lb.style.background='#7c2d12';
+        lb.innerHTML='❌ No se pudo conectar — revisa tu internet y presiona <b>↻ Actualizar</b> arriba.';
+      }
+    });
 
   actualizarBadgeOffline();
   if(navigator.onLine) sincronizarPendientes();
@@ -281,6 +288,8 @@ function onData(data){
   GS.turno = sugerido;
 
   construirMaquinas();
+  $('maquina').disabled = false;
+  show('loadingBar', false);
   construirOperarios($('operario'));
   construirOperarios($('operario2'));
 
