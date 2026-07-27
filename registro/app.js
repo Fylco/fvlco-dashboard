@@ -102,12 +102,94 @@ function limpiarErrores(){
 }
 
 /* ═══════════════════════════════════════════════════════
-   PUENTE BACKEND — TODO (paso 4 del plan offline):
-   Hoy sigue llamando google.script.run, que SOLO existe dentro
-   del sandbox de Google Apps Script. Cargado aquí en Vercel,
-   estas llamadas fallarán hasta reemplazarlas por fetch() contra
-   el Web App de GAS (doGet/doPost). Migración intencional por fases.
+   PUENTE BACKEND — fetch() contra el Web App de Google Apps Script.
+   GET  ?action=datos   → obtenerDatosIniciales()
+   POST {accion, datos} → registrarProduccionWeb / registrarParadaWeb /
+                           registrarCalidadWeb / registrarMolino /
+                           registrarManualidades / registrarReproceso
 ═══════════════════════════════════════════════════════ */
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbyuOgZDlZEuBss5oxvg7a80hmBW1WMABpwm8B3SNBWnNuNaBvcHgtCCH9iCVxlCuBcZ7g/exec';
+
+function obtenerDatosDesdeBackend(){
+  return fetch(GAS_URL + '?action=datos').then(function(res){
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    return res.json();
+  });
+}
+
+/* Envía un registro al backend. Si no hay internet o la petición falla,
+   lo guarda en la cola local (IndexedDB) y lo marca offline:true —
+   el operario ve "guardado local" en vez de un error. */
+function llamarBackend(accion, datos){
+  function guardarLocal(){
+    return encolar({ accion:accion, datos:datos, ts:Date.now() }).then(function(){
+      actualizarBadgeOffline();
+      return { status:'success', offline:true };
+    });
+  }
+  if(!navigator.onLine) return guardarLocal();
+
+  return fetch(GAS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },   // evita preflight CORS (GAS no responde OPTIONS)
+    body: JSON.stringify({ accion:accion, datos:datos })
+  }).then(function(res){
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    return res.json();
+  }).catch(function(){
+    return guardarLocal();
+  });
+}
+
+/* Sincroniza la cola local con el Sheet, uno por uno, en orden.
+   Se detiene en el primer fallo (probablemente seguimos sin internet real). */
+function sincronizarPendientes(){
+  return obtenerPendientes().then(function(pendientes){
+    if(!pendientes.length){ actualizarBadgeOffline(); return; }
+    var i = 0;
+    function siguiente(){
+      if(i >= pendientes.length){
+        toast('✅ '+pendientes.length+' registro(s) pendiente(s) sincronizado(s)','ok');
+        actualizarBadgeOffline();
+        return;
+      }
+      var p = pendientes[i];
+      fetch(GAS_URL, {
+        method:'POST',
+        headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+        body: JSON.stringify({ accion:p.accion, datos:p.datos })
+      }).then(function(res){
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        return res.json();
+      }).then(function(){
+        return eliminarDeCola(p.id);
+      }).then(function(){
+        i++; siguiente();
+      }).catch(function(){
+        actualizarBadgeOffline();   // se detiene — seguimos sin conexión real
+      });
+    }
+    siguiente();
+  });
+}
+
+function actualizarBadgeOffline(){
+  obtenerPendientes().then(function(pendientes){
+    var n = pendientes.length;
+    cls('offlineBar','show', n>0 || !navigator.onLine);
+    var badge = $('pendCount');
+    if(badge) badge.textContent = n>0 ? ('· '+n+' pendiente'+(n===1?'':'s')) : '';
+  });
+}
+
+window.addEventListener('online', function(){
+  toast('✅ Conexión restablecida — sincronizando...','ok');
+  sincronizarPendientes();
+});
+window.addEventListener('offline', function(){
+  actualizarBadgeOffline();
+  toast('📴 Sin conexión — los registros se guardarán en este dispositivo','warn');
+});
 
 /* ═══════════════════════════════════════════════════════
    CONSTRUIR PANEL DE OPERACIONES ESPECIALES
@@ -168,13 +250,15 @@ function init(){
     else alert('Elemento no encontrado: '+ev[0]);
   });
 
-  google.script.run
-    .withSuccessHandler(function(data){
+  obtenerDatosDesdeBackend()
+    .then(function(data){
       try{ onData(data); }
       catch(e){ alert('Error cargando datos: '+e.message); }
     })
-    .withFailureHandler(function(e){ toast('❌ Error al cargar: '+e.message,'err'); })
-    .obtenerDatosIniciales();
+    .catch(function(e){ toast('❌ Error al cargar: '+e.message,'err'); });
+
+  actualizarBadgeOffline();
+  if(navigator.onLine) sincronizarPendientes();
 }
 
 function onData(data){
@@ -566,18 +650,18 @@ function registrarProd(){
     ['Operario',datos.operario]
   ], function(){
     $('btnProd').disabled=true;
-    google.script.run
-      .withSuccessHandler(function(r){
-        $('btnProd').disabled=false;
-        try{
-          GS.prodCount++;
-          if(GS.orden){ GS.orden.cajasReportadas=datos.numCaja; $('numCaja').value=datos.numCaja+1; }
-          ['pesoC','observ'].forEach(function(id){ $(id).value=''; });
-        }catch(ex){}
-        mostrarExito(r.message||'Caja '+datos.numCaja+' registrada. ✅');
-      })
-      .withFailureHandler(function(e){ $('btnProd').disabled=false; toast('❌ '+e.message,'err'); })
-      .registrarProduccionWeb(datos);
+    llamarBackend('produccion', datos).then(function(r){
+      $('btnProd').disabled=false;
+      if(r && r.status==='error'){ toast('❌ '+r.message,'err'); return; }
+      try{
+        GS.prodCount++;
+        if(GS.orden){ GS.orden.cajasReportadas=datos.numCaja; $('numCaja').value=datos.numCaja+1; }
+        ['pesoC','observ'].forEach(function(id){ $(id).value=''; });
+      }catch(ex){}
+      mostrarExito(r && r.offline
+        ? '📴 Sin conexión — Caja '+datos.numCaja+' guardada localmente. Se enviará al volver el internet.'
+        : ((r&&r.message)||'Caja '+datos.numCaja+' registrada. ✅'));
+    });
   });
 }
 
@@ -597,17 +681,17 @@ function registrarParo(){
     ['Operario',datos.operario]
   ], function(){
     $('btnParo').disabled=true;
-    google.script.run
-      .withSuccessHandler(function(r){
-        $('btnParo').disabled=false;
-        try{
-          GS.paroCount++;
-          ['tParo','obsParo','motParo'].forEach(function(id){ $(id).value=''; });
-        }catch(ex){}
-        mostrarExito(r.message||'Paro registrado. ✅');
-      })
-      .withFailureHandler(function(e){ $('btnParo').disabled=false; toast('❌ '+e.message,'err'); })
-      .registrarParadaWeb(datos);
+    llamarBackend('paro', datos).then(function(r){
+      $('btnParo').disabled=false;
+      if(r && r.status==='error'){ toast('❌ '+r.message,'err'); return; }
+      try{
+        GS.paroCount++;
+        ['tParo','obsParo','motParo'].forEach(function(id){ $(id).value=''; });
+      }catch(ex){}
+      mostrarExito(r && r.offline
+        ? '📴 Sin conexión — Paro guardado localmente. Se enviará al volver el internet.'
+        : ((r&&r.message)||'Paro registrado. ✅'));
+    });
   });
 }
 
@@ -627,14 +711,14 @@ function registrarCalidad(){
     ['Operario',datos.operario]
   ], function(){
     $('btnCal').disabled=true;
-    google.script.run
-      .withSuccessHandler(function(r){
-        $('btnCal').disabled=false;
-        try{ ['calPeso','calCausa'].forEach(function(id){ $(id).value=''; }); }catch(ex){}
-        mostrarExito(r.message||'Calidad registrada. ✅');
-      })
-      .withFailureHandler(function(e){ $('btnCal').disabled=false; toast('❌ '+e.message,'err'); })
-      .registrarCalidadWeb(datos);
+    llamarBackend('calidad', datos).then(function(r){
+      $('btnCal').disabled=false;
+      if(r && r.status==='error'){ toast('❌ '+r.message,'err'); return; }
+      try{ ['calPeso','calCausa'].forEach(function(id){ $(id).value=''; }); }catch(ex){}
+      mostrarExito(r && r.offline
+        ? '📴 Sin conexión — Calidad guardada localmente. Se enviará al volver el internet.'
+        : ((r&&r.message)||'Calidad registrada. ✅'));
+    });
   });
 }
 
@@ -657,14 +741,16 @@ function regOp(name){
 
   var resumen=[['Operación',op.label],['Turno','T'+turnoId],['Operario',opNom]].concat(op.summary());
 
+  var ACCION_OP = { registrarMolino:'molino', registrarManualidades:'manualidades', registrarReproceso:'reproceso' };
+
   mostrarConfirm(resumen, function(){
-    google.script.run
-      .withSuccessHandler(function(r){
-        mostrarExito(r.message||op.label+' registrado.');
-        op.fields.forEach(function(f){ var e=$(f.id); if(e) e.value=''; });
-      })
-      .withFailureHandler(function(e){ toast('❌ '+e.message,'err'); })
-      [op.backend](datos);
+    llamarBackend(ACCION_OP[op.backend], datos).then(function(r){
+      if(r && r.status==='error'){ toast('❌ '+r.message,'err'); return; }
+      mostrarExito(r && r.offline
+        ? '📴 Sin conexión — '+op.label+' guardado localmente. Se enviará al volver el internet.'
+        : ((r&&r.message)||op.label+' registrado.'));
+      op.fields.forEach(function(f){ var e=$(f.id); if(e) e.value=''; });
+    });
   });
 }
 
@@ -674,16 +760,15 @@ function regOp(name){
 function recargarOrdenes(){
   var btn=document.querySelector('.btn-refresh');
   if(btn){btn.textContent='⏳ Cargando...';btn.disabled=true;}
-  google.script.run
-    .withSuccessHandler(function(data){
+  obtenerDatosDesdeBackend()
+    .then(function(data){
       onData(data);
       if(btn){btn.textContent='↻ Actualizar';btn.disabled=false;}
     })
-    .withFailureHandler(function(e){
+    .catch(function(e){
       alert('Error al actualizar: '+(e.message||e));
       if(btn){btn.textContent='↻ Actualizar';btn.disabled=false;}
-    })
-    .obtenerDatosIniciales();
+    });
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -692,13 +777,13 @@ function recargarOrdenes(){
 ═══════════════════════════════════════════════════════ */
 function autoRefreshOrdenes(){
   if(GS.orden) return;   // operario con orden activa → no interrumpir
-  google.script.run
-    .withSuccessHandler(function(data){
+  obtenerDatosDesdeBackend()
+    .then(function(data){
       if(!data || !data.ordenes) return;
       GD.ordenes = data.ordenes;             // actualiza solo el listado en memoria
       llenarOrdenes(GS.maq, false);          // redibuja solo el dropdown de órdenes
     })
-    .obtenerDatosIniciales();
+    .catch(function(){});  // silencioso — reintenta en el próximo ciclo
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -717,6 +802,7 @@ function iniciarReloj(){
   refrescarBordeTurnos();
   setInterval(refrescarBordeTurnos, 60000);
   setInterval(autoRefreshOrdenes, 30 * 60 * 1000);  // actualiza órdenes cada 30 min
+  setInterval(function(){ if(navigator.onLine) sincronizarPendientes(); }, 60000);  // reintento de sync cada minuto
 }
 
 /* ═══════════════════════════════════════════════════════
