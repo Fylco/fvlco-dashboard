@@ -720,6 +720,17 @@ function iniciarReloj(){
 }
 
 /* ═══════════════════════════════════════════════════════
+   SERVICE WORKER — instala la app y permite abrir sin internet
+═══════════════════════════════════════════════════════ */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(e){
+      console.warn('No se pudo registrar el Service Worker:', e);
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
    ARRANQUE
 ═══════════════════════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', init);
