@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>FYL · Registro de Producción</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a73e8">
+<style>
+:root{--az:#1a73e8;--ao:#0b4ec0;--ok:#188038;--wn:#f9ab00;--er:#d93025;--mo:#7c3aed;--na:#ea580c;--bo:#d4d7dc;--sh:0 1px 4px rgba(60,64,67,.16)}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:#eef1f5;color:#1f2733;font-size:13px;line-height:1.2}
+.wrap{max-width:1300px;margin:0 auto;padding:7px 9px;height:100%;display:flex;flex-direction:column;gap:7px}
+.topbar{display:flex;align-items:center;gap:9px;background:linear-gradient(135deg,var(--az),var(--ao));color:#fff;border-radius:8px;padding:6px 11px;box-shadow:var(--sh)}
+.brand{background:#fff;border-radius:8px;padding:4px 10px;flex:none}
+.brand b{font-weight:900;font-size:21px;color:#0b3a8c;letter-spacing:-.5px}
+.topbar h1{font-size:14px;margin:0}.topbar small{opacity:.9;font-size:10px}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.maqsel{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.15);padding:3px 8px;border-radius:6px}
+.maqsel select{border:none;background:#fff;color:var(--az);font-weight:800;border-radius:5px;padding:3px 6px;font-size:13px;max-width:160px}
+.estado{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.estado.on{background:#e6f4ea;color:var(--ok)}.estado.off{background:#fde7e6;color:var(--er)}
+.dash{background:#0f1b2d;color:#e8f0fe;border-radius:8px;padding:6px 11px;box-shadow:var(--sh);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.metrics{display:flex;gap:5px;flex-wrap:wrap;flex:1;min-width:230px}
+.metric{background:#1b2c44;border-radius:6px;padding:3px 8px;min-width:70px}
+.metric .k{font-size:9px;text-transform:uppercase;color:#8ab4f8;letter-spacing:.3px}
+.metric .v{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.barbox{flex:1;min-width:150px;max-width:320px}
+.barra{height:20px;background:#24344d;border-radius:6px;overflow:hidden;position:relative}
+.barra>span{display:block;height:100%;width:0;transition:width .5s,background .5s}
+.barra .pct{position:absolute;inset:0;display:grid;place-items:center;font-weight:800;font-size:11px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.cols{display:grid;grid-template-columns:1fr;gap:7px;flex:1;min-height:0}
+@media(min-width:760px){.cols{grid-template-columns:1fr 1fr}}
+@media(min-width:1080px){.cols{grid-template-columns:1.2fr 1fr 1fr 1fr}}
+.op-panel{display:none;flex:1;min-height:0;gap:7px}
+.op-panel.show{display:grid;grid-template-columns:1fr 1fr}
+@media(min-width:1080px){.op-panel.show{grid-template-columns:1.3fr 1fr}}
+.op-sec{display:none}.op-sec.show{display:contents}
+.card{background:#fff;border-radius:8px;box-shadow:var(--sh);display:flex;flex-direction:column;overflow:hidden}
+.hd{color:#fff;padding:5px 9px;font-size:11px;font-weight:800;letter-spacing:.4px;display:flex;align-items:center;gap:6px}
+.hd-gr{background:#334155}.hd-vd{background:var(--ok)}.hd-rj{background:var(--er)}.hd-mo{background:var(--mo)}.hd-na{background:var(--na)}
+.bd{padding:8px 9px;display:flex;flex-direction:column;gap:7px;flex:1}
+label{font-size:9.5px;font-weight:700;color:#5f6368;text-transform:uppercase;letter-spacing:.2px}
+.req{color:var(--er)}
+select,input,textarea{font-size:14px;padding:5px 7px;border:1.3px solid var(--bo);border-radius:6px;background:#fff;color:#1f2733;width:100%;font-family:inherit}
+select,input{height:31px}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--az);box-shadow:0 0 0 2px rgba(26,115,232,.18)}
+.ro{background:#e8eaed!important;color:#5f6368!important;cursor:not-allowed!important;font-weight:700!important;text-align:center!important}
+.err-f{border-color:var(--er)!important;background:#fde7e6!important}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.fld{display:flex;flex-direction:column;gap:2px}
+.pimg{display:none;align-items:center;justify-content:center;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;height:84px;overflow:hidden;position:relative}
+.pimg.show{display:flex}
+.pimg img{max-height:80px;max-width:100%;object-fit:contain}
+.oi{background:#f8fafc;border:1px solid #e7ebf0;border-radius:6px;padding:6px;font-size:11px;display:flex;flex-direction:column;gap:4px}
+.oi .ln{display:flex;justify-content:space-between;gap:6px}
+.oi .ln b{font-weight:800;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.av{background:#e9f7ef;border:1px solid #cdeeda;border-radius:5px;padding:3px 5px}
+.av .k{font-size:8.5px;color:#0a7a3d;text-transform:uppercase}.av .v{font-weight:800;color:#0a7a3d;font-size:12px}
+.ult{background:#e8f0fe;border:1px solid #cfe0fd;border-radius:5px;padding:3px 6px;display:flex;justify-content:space-between;align-items:center}
+.ult .k{font-size:9px;font-weight:800;color:#0b4ec0;text-transform:uppercase}.ult .v{font-weight:800;color:#0b4ec0;font-size:11px}
+.seg{display:flex;gap:4px}
+.seg button{flex:1;padding:4px 1px;border:1.4px solid var(--bo);background:#fff;border-radius:6px;font-weight:800;font-size:12px;cursor:pointer;color:#444;line-height:1}
+.seg button small{display:block;font-size:8px;font-weight:600;color:#80868b;margin-top:1px}
+.seg button.act{background:var(--az);border-color:var(--az);color:#fff}
+.seg button.act small{color:#dbe9ff}
+.seg button.ok{border-color:var(--ok)}
+.tal{display:none;background:#fde7e6;border:1.4px solid var(--er);color:var(--er);font-weight:800;border-radius:6px;padding:4px;text-align:center;font-size:11px;animation:bk 1s infinite}
+.tal.show{display:block}@keyframes bk{50%{opacity:.5}}
+.btn{padding:9px;border:none;border-radius:7px;font-size:14px;font-weight:800;cursor:pointer;color:#fff;width:100%;margin-top:auto}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.bvd{background:var(--ok)}.brj{background:var(--er)}.bna{background:var(--na)}.bmo{background:var(--mo)}.bgr{background:#6b7280}
+textarea{resize:none;min-height:42px;height:42px}
+.hint{font-size:9.5px;color:#9aa0a6}
+.modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;justify-content:center;align-items:center;padding:12px;z-index:60}
+.modal.show{display:flex}
+.mbox{background:#fff;width:100%;max-width:500px;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;max-height:90vh}
+.mhd{color:#fff;padding:9px 14px;font-weight:800;display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.mhd button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1}
+.mbd{padding:12px;overflow:auto}
+.cr{display:flex;justify-content:space-between;border-bottom:1px solid #f1f3f4;padding:5px 2px;font-size:12px;gap:8px}
+.cr span{color:#5f6368;font-size:11px;flex-shrink:0}.cr b{font-weight:800;text-align:right}
+.mft{padding:12px;border-top:1px solid #f1f3f4;display:flex;gap:8px}
+#exitoOv{position:fixed;inset:0;background:rgba(15,23,42,.6);display:none;justify-content:center;align-items:center;z-index:80}
+#exitoOv.show{display:flex}
+.exb{background:#fff;border-radius:16px;padding:32px 40px;text-align:center;animation:pi .35s ease;box-shadow:0 8px 40px rgba(0,0,0,.25)}
+@keyframes pi{from{transform:scale(.65);opacity:0}to{transform:scale(1);opacity:1}}
+.exb .ic{font-size:56px;line-height:1}.exb h2{margin:12px 0 4px;color:#14532d;font-size:22px}.exb p{color:#5f6368;margin:0;font-size:14px}
+#toast{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);min-width:240px;max-width:92%;padding:11px 16px;border-radius:9px;color:#fff;font-weight:700;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.3);display:none;z-index:99;text-align:center}
+#toast.ok{background:var(--ok)}#toast.err{background:var(--er)}#toast.warn{background:var(--wn);color:#000}
+.refresh-bar{display:flex;align-items:center;gap:10px;background:#0d1f30;border-radius:8px;padding:7px 12px;flex-wrap:wrap;box-shadow:var(--sh)}
+.btn-refresh{background:#0b4ec0;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;letter-spacing:.3px}
+.btn-refresh:hover{background:#1a5fd4}.btn-refresh:disabled{opacity:.6;cursor:not-allowed}
+.refresh-hint{color:#94a3b8;font-size:12px;font-weight:500}
+.offline-bar{display:none;align-items:center;gap:10px;background:#7c2d12;border-radius:8px;padding:7px 12px;flex-wrap:wrap;box-shadow:var(--sh);color:#fff;font-weight:700;font-size:12px}
+.offline-bar.show{display:flex}
+.opbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1e293b;border-radius:8px;padding:7px 12px;box-shadow:var(--sh)}
+.opbar-lbl{color:#94a3b8;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;flex-shrink:0}
+.opb{border:none;border-radius:7px;color:#fff;font-weight:800;font-size:13px;padding:8px 16px;cursor:pointer;flex-shrink:0;transition:opacity .15s,box-shadow .15s}
+.opb:hover{opacity:.88}
+.opb.act{box-shadow:0 0 0 3px #fff,0 0 0 5px rgba(255,255,255,.4);opacity:1}
+.opb-volver{background:#475569!important}
+@media(max-width:759px){.opb{padding:11px 14px;font-size:14px}.opbar{gap:6px}}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE — TABLET Y MÓVIL
+   ═══════════════════════════════════════════ */
+@media(max-width:759px){
+  html,body{height:auto;min-height:100%}
+  .wrap{height:auto;min-height:100%;padding:5px 7px;gap:6px}
+  .cols{flex:none}
+  .op-panel{flex:none}
+
+  select,input{height:46px;font-size:16px;padding:6px 9px}
+  textarea{font-size:16px;min-height:60px;height:60px;padding:7px 9px}
+  label{font-size:11.5px;letter-spacing:0}
+
+  .btn{padding:15px;font-size:16px;border-radius:8px}
+  .seg button{padding:10px 2px;font-size:14px}
+  .seg button small{font-size:9.5px}
+
+  .r2{grid-template-columns:1fr}
+  .r3{grid-template-columns:1fr 1fr}
+
+  .topbar{flex-wrap:wrap;padding:7px 9px;gap:6px}
+  .top-right{width:100%;margin-left:0;justify-content:space-between}
+  .maqsel{flex:1}
+  .maqsel select{max-width:none;width:100%}
+
+  .dash{padding:7px 9px;gap:7px;overflow-x:auto}
+  .metrics{flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:2px}
+  .metric{flex-shrink:0;min-width:68px;padding:5px 9px}
+  .metric .v{font-size:15px}
+  .barbox{min-width:130px;flex-shrink:0}
+
+  .bd{padding:10px 11px;gap:9px}
+  .hd{padding:8px 11px;font-size:12.5px}
+
+  .oi .ln{font-size:12.5px}
+  .oi .ln b{font-size:12.5px}
+  .av .v{font-size:14px}
+
+  .mbox{max-height:95vh}
+  .mbd{padding:14px}
+  .mft{padding:12px;gap:10px}
+  .cr{font-size:13px}
+  .cr span{font-size:12px}
+}
+
+@media(max-width:479px){
+  .r3{grid-template-columns:1fr}
+  .brand b{font-size:18px}
+  .topbar h1{font-size:13px}
+  .topbar small{display:none}
+  .metric{min-width:60px}
+  .metric .k{font-size:8.5px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="topbar">
+<div class="brand"><b>Fylco</b></div>
+<div><h1>Registro de Producción</h1><small>Plásticos y Tecnología</small></div>
+<div class="top-right">
+<div class="maqsel"><label style="color:#fff;margin:0">MÁQUINA</label><select id="maquina"></select></div>
+<span id="eoLabel" class="estado off">SIN ORDEN</span>
+</div></div>
+
+<div class="offline-bar" id="offlineBar">📴 SIN CONEXIÓN — los registros se guardan en este dispositivo y se enviarán al restablecerse el internet <span id="pendCount"></span></div>
+
+<div class="refresh-bar">
+  <button class="btn-refresh" onclick="recargarOrdenes()">&#x21BB; Actualizar</button>
+  <span class="refresh-hint">Presiona si tu orden no aparece &middot; si a&uacute;n no sale est&aacute; pendiente, ll&eacute;nala manual</span>
+</div>
+
+<div class="opbar">
+<span class="opbar-lbl">Operaciones especiales:</span>
+<button class="opb" data-op="MOLINO"       style="background:#ea580c" onclick="selOp('MOLINO')">⚙️ MOLINO</button>
+<button class="opb" data-op="MANUALIDADES" style="background:#7c3aed" onclick="selOp('MANUALIDADES')">✋ MANUALIDADES</button>
+<button class="opb" data-op="REPROCESOS"   style="background:#0b4ec0" onclick="selOp('REPROCESOS')">🔄 REPROCESOS</button>
+<button class="opb opb-volver" id="btnVolver" style="display:none" onclick="selOp(null)">← Volver</button>
+</div>
+
+<div class="cols" id="colsN">
+<!-- COL 1: ORDEN -->
+<div class="card"><div class="hd hd-gr">📋 DATOS DE LA ORDEN</div><div class="bd">
+<div class="fld"><label>Orden <span class="req">*</span></label>
+<select id="orden"><option value="">— Seleccione orden —</option></select>
+<input id="ordenM" type="text" placeholder="N° de orden física" autocomplete="off" style="display:none">
+<label style="font-size:15px;font-weight:900;color:#92400e;display:flex;align-items:center;gap:7px;text-transform:none;margin-top:6px;cursor:pointer;background:#fff7ed;border:2px solid #f59e0b;border-radius:7px;padding:6px 10px;">
+<input type="checkbox" id="ordenNL" style="width:18px;height:18px;margin:0;flex-shrink:0;cursor:pointer"> <b>Mi orden no aparece (pendiente activación)</b></label>
+</div>
+<div class="pimg" id="pImgB"><img id="pImg" alt="P"><span style="position:absolute;bottom:2px;right:5px;font-size:8px;color:#94a3b8">ilustración</span></div>
+<div class="oi" id="ordI" style="display:none">
+<div class="ln"><span>Producto</span><b id="iPro">—</b></div>
+<div class="ln"><span>Cliente</span><b id="iCli">—</b></div>
+<div class="ln"><span>Color/MP</span><b id="iCol">—</b></div>
+<div class="ln"><span>Lote P / M</span><b id="iLot">—</b></div>
+<div class="g2">
+<div class="av"><div class="k">Avance cajas</div><div class="v" id="iACj">0/0</div></div>
+<div class="av"><div class="k">Avance unid.</div><div class="v" id="iAUn">0/0</div></div>
+</div>
+<div class="ult"><span class="k">Último reporte</span><span class="v" id="iUlt">—</span></div>
+</div>
+<div class="r2">
+<div class="fld"><label>Cav. estándar 🔒</label><input id="cavEstd" class="ro" readonly tabindex="-1" placeholder="—"></div>
+<div class="fld"><label>Ciclo est. (s) 🔒</label><input id="cicloEst" class="ro" readonly tabindex="-1"></div>
+</div>
+<label style="margin-top:2px">Turno <span class="req">*</span> <span style="font-size:9.5px;color:#9aa0a6" id="tHint"></span></label>
+<div class="seg" id="segT"></div>
+<div class="tal" id="tAl">⚠️ CORREGIR TURNO — valide ciclo y cavidades</div>
+<div class="fld"><label>Operario <span class="req">*</span></label><select id="operario"></select></div>
+<div class="fld" id="bxOp2" style="display:none"><label>Operario 2 (tapadora)</label><select id="operario2"></select></div>
+</div></div>
+
+<!-- COL 2: PRODUCCIÓN -->
+<div class="card"><div class="hd hd-vd">📦 REPORTE PRODUCCIÓN</div><div class="bd">
+<div class="r2">
+<div class="fld"><label>Caja N° <span class="req">*</span></label><input id="numCaja" type="number" min="0"></div>
+<div class="fld"><label>Cantidad <span class="req">*</span></label><input id="cantR" type="number" min="0"></div>
+</div>
+<div class="r3">
+<div class="fld"><label>Cav. real <span class="req">*</span></label><input id="cavidades" type="number" min="1" step="1" placeholder="ej. 8"></div>
+<div class="fld"><label>Ciclo real (s) <span class="req">*</span></label><input id="cicloR" type="number" min="0" step="0.1"></div>
+<div class="fld"><label>Peso (kg)</label><input id="pesoC" type="number" min="0" step="0.01"></div>
+</div>
+<div class="fld" style="flex:1"><label>Observaciones</label><textarea id="observ"></textarea></div>
+<button class="btn bvd" id="btnProd">▶ REGISTRAR PROD.</button>
+</div></div>
+
+<!-- COL 3: PARADAS -->
+<div class="card"><div class="hd hd-rj">⛔ REGISTRO DE PARADAS</div><div class="bd">
+<div class="fld"><label>Motivo de paro <span class="req">*</span></label><select id="motParo"></select></div>
+<div class="fld"><label>Tiempo (min) <span class="req">*</span></label><input id="tParo" type="number" min="0"></div>
+<div class="fld" style="flex:1"><label>Detalles del paro</label><textarea id="obsParo"></textarea></div>
+<button class="btn brj" id="btnParo">⛔ REGISTRAR PARO</button>
+</div></div>
+
+<!-- COL 4: CALIDAD -->
+<div class="card"><div class="hd hd-mo">⚠ NO CONFORMES</div><div class="bd">
+<div class="fld"><label>Causa <span class="req">*</span></label><select id="calCausa"></select></div>
+<div class="fld"><label>Peso (kg) <span class="req">*</span></label><input id="calPeso" type="number" min="0" step="0.01"></div>
+<div class="hint" style="flex:1">Una causa por vez → hoja NO CONFORMES.</div>
+<button class="btn bmo" id="btnCal">⚠ REGISTRAR CALIDAD</button>
+</div></div>
+</div>
+
+<!-- PANEL OPERACIONES (generado por JS) -->
+<div class="op-panel" id="opPanel"></div>
+
+</div><!-- /wrap -->
+<div id="toast"></div>
+
+<!-- MODAL CONFIRMACIÓN -->
+<div class="modal" id="mConf">
+<div class="mbox">
+<div class="mhd" style="background:var(--az)">✅ Confirme los datos <button onclick="cConf()">×</button></div>
+<div class="mbd" id="mConfC"></div>
+<div class="mft">
+<button class="btn bgr" style="flex:1;margin:0" onclick="cConf()">CANCELAR</button>
+<button class="btn bvd" style="flex:2;margin:0" id="btnCfOk">✅ CONFIRMAR Y ENVIAR</button>
+</div></div></div>
+
+<!-- ÉXITO -->
+<div id="exitoOv"><div class="exb"><div class="ic">🎉</div><h2>¡Trabajo bien hecho!</h2><p id="exitoM">Registro guardado.</p></div></div>
+
+<script src="app.js"></script>
+</body>
+</html>
