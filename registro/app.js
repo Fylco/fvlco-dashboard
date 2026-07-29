@@ -6,7 +6,8 @@
 var GD = {
   ordenes:[], operarios:[], maquinasIny:[], maquinasTap:[],
   motivosParoIny:[], motivosParoTap:[], causasIny:[], causasTap:[],
-  turnos:[], tapadoras:['5','6'], turnoSugerido:1, turnosValidos:[1]
+  turnos:[], tapadoras:['5','6'], turnoSugerido:1, turnosValidos:[1],
+  tiempoTurno:{}
 };
 var GS = {
   maq:null, orden:null, turno:1, esTap:false,
@@ -281,6 +282,7 @@ function onData(data){
   GD.tapadoras      = (data.config && data.config.tapadoras) || ['5','6'];
   GD.turnoSugerido  = data.turnoServidor  || 1;
   GD.turnosValidos  = data.turnosValidos  || [1];
+  GD.tiempoTurno    = data.tiempoTurno    || {};
 
   // Calcular sugerido en tiempo real con el reloj del navegador
   var sugerido = calcTurnoSugerido();
@@ -424,6 +426,7 @@ function onMaqChange(maqOverride){
 
   // Sincronizar resaltado de botones
   sincBotonesOp(maq);
+  actualizarTiempoTurno();
 }
 
 function llenarSelect(id, arr){
@@ -567,6 +570,7 @@ function selTurno(id, containerId){
   if(!containerId||containerId==='segT'){
     GS.turno=id;
     cls('tAl','show', invalido);
+    actualizarTiempoTurno();
   } else {
     // Ops especiales: mostrar alerta dentro del mismo panel (tAl_MOLINO, etc.)
     var talOp = containerId.replace('segT_','tAl_');
@@ -589,6 +593,59 @@ function turnoActivo(containerId){
   var cont=$(containerId||'segT'); if(!cont) return GS.turno||GD.turnoSugerido;
   var act=cont.querySelector('button.act');
   return act ? Number(act.dataset.id) : (GS.turno||GD.turnoSugerido);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TIEMPO DE TURNO — producción (cavidades×ciclo) + paros,
+   vs. objetivo del turno (8h/12h). Suma todas las órdenes/
+   clientes reportados en esta máquina durante el turno.
+═══════════════════════════════════════════════════════ */
+function actualizarTiempoTurno(){
+  var box=$('ttBox'); if(!box) return;
+  var esOp = GS.maq==='MOLINO'||GS.maq==='MANUALIDADES'||GS.maq==='REPROCESOS';
+  if(esOp || !GS.maq){ show('ttBox', false); return; }
+
+  var turnoId = turnoActivo('segT');
+  var t = GD.turnos.filter(function(x){ return x.id===turnoId; })[0];
+  if(!t){ show('ttBox', false); return; }
+  show('ttBox', true);
+
+  var reg = (GD.tiempoTurno && GD.tiempoTurno[GS.maq+'_'+turnoId]) || { prodMin:0, paroMin:0, objetivoMin:t.horas*60 };
+  var objetivo = reg.objetivoMin || (t.horas*60);
+  var total = (reg.prodMin||0) + (reg.paroMin||0);
+  var pct = Math.min(100, Math.round((total/objetivo)*100));
+  var faltante = Math.max(0, objetivo-total);
+
+  $('ttTurnoLbl').textContent = 'T'+t.id+' · '+t.horas+'h';
+  $('ttTotal').textContent = Math.round(total)+' / '+objetivo+' min';
+  var fill=$('ttFill'); fill.style.width=pct+'%';
+
+  var msg=$('ttMsg');
+  if(pct>=96){
+    fill.style.background='#188038';
+    msg.style.background='#e6f4ea'; msg.style.color='#188038';
+    msg.textContent='✅ Turno cumplido ('+pct+'%).';
+  } else if(faltante<=90){
+    fill.style.background='#f9ab00';
+    msg.style.background='#fff7ed'; msg.style.color='#92400e';
+    msg.textContent='⚠️ Faltan '+Math.round(faltante)+' min para completar el turno ('+pct+'%).';
+  } else {
+    fill.style.background='#1a73e8';
+    msg.style.background='#e8f0fe'; msg.style.color='#0b4ec0';
+    msg.textContent='Turno en curso — '+pct+'% cumplido.';
+  }
+}
+
+/* Suma localmente el aporte de un registro recién enviado, sin esperar
+   al próximo fetch — se re-sincroniza con el valor real del Sheet en
+   la siguiente carga (inicial, "Actualizar", o auto-refresh). */
+function sumarLocalTiempoTurno(maquina, turnoId, prodMinDelta, paroMinDelta){
+  var t = GD.turnos.filter(function(x){ return x.id===turnoId; })[0];
+  var key = maquina+'_'+turnoId;
+  if(!GD.tiempoTurno) GD.tiempoTurno = {};
+  if(!GD.tiempoTurno[key]) GD.tiempoTurno[key] = { prodMin:0, paroMin:0, objetivoMin:(t?t.horas*60:480) };
+  GD.tiempoTurno[key].prodMin += prodMinDelta||0;
+  GD.tiempoTurno[key].paroMin += paroMinDelta||0;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -666,6 +723,10 @@ function registrarProd(){
         GS.prodCount++;
         if(GS.orden){ GS.orden.cajasReportadas=datos.numCaja; $('numCaja').value=datos.numCaja+1; }
         ['pesoC','observ'].forEach(function(id){ $(id).value=''; });
+        if(datos.cavidades>0 && datos.cicloReal>0 && datos.cantReportada>0){
+          sumarLocalTiempoTurno(datos.maquina, datos.turno, (datos.cantReportada/datos.cavidades)*datos.cicloReal/60, 0);
+          actualizarTiempoTurno();
+        }
       }catch(ex){}
       mostrarExito(r && r.offline
         ? '📴 Sin conexión — Caja '+datos.numCaja+' guardada localmente. Se enviará al volver el internet.'
@@ -696,6 +757,10 @@ function registrarParo(){
       try{
         GS.paroCount++;
         ['tParo','obsParo','motParo'].forEach(function(id){ $(id).value=''; });
+        if(datos.tiempoParo>0){
+          sumarLocalTiempoTurno(datos.maquina, datos.turno, 0, datos.tiempoParo);
+          actualizarTiempoTurno();
+        }
       }catch(ex){}
       mostrarExito(r && r.offline
         ? '📴 Sin conexión — Paro guardado localmente. Se enviará al volver el internet.'
@@ -790,7 +855,9 @@ function autoRefreshOrdenes(){
     .then(function(data){
       if(!data || !data.ordenes) return;
       GD.ordenes = data.ordenes;             // actualiza solo el listado en memoria
+      GD.tiempoTurno = data.tiempoTurno || GD.tiempoTurno;
       llenarOrdenes(GS.maq, false);          // redibuja solo el dropdown de órdenes
+      actualizarTiempoTurno();
     })
     .catch(function(){});  // silencioso — reintenta en el próximo ciclo
 }
