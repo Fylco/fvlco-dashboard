@@ -4,7 +4,7 @@
   "description": "Registro de producción, paradas y calidad en planta — funciona sin conexión.",
   "start_url": "./index.html",
   "scope": "./",
-  "display": "browser",
+  "display": "standalone",
   "orientation": "any",
   "background_color": "#eef1f5",
   "theme_color": "#1a73e8",
