@@ -3167,7 +3167,13 @@ function makeChart(id, type, labels, datasets, opts={}) {
       devicePixelRatio: Math.max(window.devicePixelRatio||1, 2.5),
       plugins:{
         legend:{labels:{color:'#D1D5DB',boxWidth:11,font:{size:11,family:'Tahoma'}}},
-        tooltip:{mode:'index',intersect:false},
+        tooltip:{
+          mode:'index',intersect:false,
+          backgroundColor:'#111827',borderColor:'#374151',borderWidth:1,
+          titleColor:'#F9FAFB',titleFont:{weight:'700'},
+          bodyColor:'#E5E7EB',bodyFont:{weight:'600'},
+          padding:10,boxPadding:5
+        },
         datalabels:{display:false},
         ...extraPlugins
       },
@@ -4315,9 +4321,13 @@ function renderParos() {
   let rAcum=0;
   const rAcumPct=rSorted.map(x=>{ rAcum+=x[1]; return rTotal>0?Math.round(rAcum/rTotal*100):0; });
   makeChart('paro-pareto','bar',rSorted.map(x=>x[0].substring(0,30)),[
-    {label:'Min',data:rSorted.map(x=>x[1]),backgroundColor:rSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4,yAxisID:'y'},
-    {label:'Acumulado %',data:rAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:3,yAxisID:'y1'}
-  ],{indexAxis:'y',extra:{scales:{y:{position:'left'},y1:{position:'right',min:0,max:100,ticks:{callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
+    {label:'Min',data:rSorted.map(x=>x[1]),backgroundColor:rSorted.map((_,i)=>PAL[i%PAL.length]+'cc'),borderRadius:4,xAxisID:'x'},
+    {label:'Acumulado %',data:rAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:3,xAxisID:'x1'}
+  ],{indexAxis:'y',extra:{scales:{
+    x:{position:'bottom'},
+    x1:{position:'top',min:0,max:100,ticks:{callback:v=>v+'%'},grid:{drawOnChartArea:false}},
+    y:{position:'left'}
+  }}});
 
   // Por máquina
   makeChart('paro-maq','bar',maqs.map(m=>'Maq '+m),[
@@ -7446,9 +7456,14 @@ function fvDetectAnomalies(series) { const mean=series.reduce((a,b)=>a+b,0)/seri
 function fvChartDefaults() {
   return {
     responsive:true, maintainAspectRatio:false,
+    interaction:{mode:'index',intersect:false},
     plugins:{
       legend:{labels:{color:'#94a3b8',font:{size:11},boxWidth:12,padding:14}},
-      tooltip:{backgroundColor:'#162032',borderColor:'#253650',borderWidth:1,titleColor:'#e2e8f0',bodyColor:'#94a3b8',
+      tooltip:{mode:'index',intersect:false,
+        backgroundColor:'#111827',borderColor:'#253650',borderWidth:1,
+        titleColor:'#F9FAFB',titleFont:{weight:'700'},
+        bodyColor:'#E5E7EB',bodyFont:{weight:'600'},
+        padding:10,boxPadding:5,
         callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw?.toLocaleString('es-CO')||ctx.raw}`}}
     },
     scales:{
