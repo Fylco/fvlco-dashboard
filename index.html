@@ -3030,7 +3030,9 @@ function populateAllFilters() {
   _syncRazonAllChk(); updateParoRazonBtn();
   // NC & OTIF
   const ncMeses = [...new Set(DATA.nc.map(r=>String(r['MES ']||r['MES']||'').trim()).filter(Boolean))];
-  const ncMaq   = [...new Set(DATA.nc.map(r=>((r['MÁQUINA']??r['MAQUINA'])||'')).filter(Boolean))].sort();
+  // r._maq (no el header 'MÁQUINA' directo): esa columna en la hoja NC llega
+  // con la Á en una codificación distinta y el lookup textual nunca coincide.
+  const ncMaq   = [...new Set(DATA.nc.map(r=>r._maq).filter(Boolean))].sort();
   fillSel('nc-fp-mes', ncMeses.map(cap), 'Mes');
   buildNcMaqDd(ncMaq);
   buildNcDiaDd(dias);
@@ -3102,7 +3104,7 @@ function filterNC() {
   return DATA.nc.filter(r =>
     (!m    || String(r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
-    (!SEL_MAQ_NC.size || SEL_MAQ_NC.has(String((r['MÁQUINA']??r['MAQUINA'])||''))) &&
+    (!SEL_MAQ_NC.size || SEL_MAQ_NC.has(String(r._maq||''))) &&
     (!SEL_CAUSAS.size || SEL_CAUSAS.has((r['CAUSA']||'').trim()))
   );
 }
@@ -4162,7 +4164,7 @@ function renderNC() {
 
   // Por máquina
   const maqs={};
-  d.forEach(r=>{ const k='Maq '+(r['MÁQUINA']||r['MAQUINA']||'?'); const v=pNum(r['CANTIDAD NC'])||0; if(v>0) maqs[k]=(maqs[k]||0)+v; });
+  d.forEach(r=>{ const k='Maq '+(r._maq||'?'); const v=pNum(r['CANTIDAD NC'])||0; if(v>0) maqs[k]=(maqs[k]||0)+v; });
   const mSorted=Object.entries(maqs).sort((a,b)=>b[1]-a[1]);
   makeChart('nc-maq','doughnut',mSorted.map(x=>x[0]),
     [{data:mSorted.map(x=>x[1]),backgroundColor:PAL,borderWidth:0}]);
