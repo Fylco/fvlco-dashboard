@@ -3127,27 +3127,51 @@ function applyGlobalFilter() {
 // =======================================================
 // Alta resolución global para TODAS las gráficas (dashboard + capturas PDF)
 Chart.defaults.devicePixelRatio = Math.max(window.devicePixelRatio||1, 2.5);
+// Jerarquía tipográfica: semi-negrita como base de todo texto de chart (ejes,
+// leyenda, tooltips) — Chart.js rellena cualquier font{} que no especifique
+// weight con este default, así que no hace falta tocar cada chart.
+Chart.defaults.font.weight = '600';
+
+// Combina los defaults de un eje (color/tamaño de letra legibles sobre fondo
+// oscuro + color de grilla) con lo que cada chart quiera personalizar (min,
+// max, position, callback, etc.), sin perder el color por un simple spread
+// superficial — antes, un chart que pasaba su propio `extra.scales` perdía
+// TODO el color/tamaño de letra del eje y quedaba con el gris apagado por
+// defecto de Chart.js (así se veía el % acumulado del Pareto de Paros).
+function _axisDefaults(gridColor, ...overrides) {
+  const merged = Object.assign({}, ...overrides);
+  const { ticks: tOv, grid: gOv, ...rest } = merged;
+  return {
+    ticks: { color:'#D1D5DB', font:{size:11}, ...tOv },
+    grid:  { color:gridColor, ...gOv },
+    ...rest
+  };
+}
 
 function makeChart(id, type, labels, datasets, opts={}) {
   destroyChart(id);
   const ctx = document.getElementById(id); if(!ctx) return;
   const extraPlugins = (opts.extra && opts.extra.plugins) || {};
-  const {plugins: _p, ...restExtra} = opts.extra || {};
+  const extraScales  = (opts.extra && opts.extra.scales) || {};
+  const { plugins: _p, scales: _s, ...restExtra } = opts.extra || {};
+  const { x: xOv, y: yOv, ...otherAxes } = extraScales;
+  const scales = type==='doughnut'||type==='pie' ? {} : {
+    x: _axisDefaults('#1F2937', opts.xScale||{}, xOv||{}),
+    y: _axisDefaults('#374151', opts.yScale||{}, yOv||{})
+  };
+  Object.entries(otherAxes).forEach(([key, ov]) => { scales[key] = _axisDefaults('#374151', ov||{}); });
   CHARTS[id] = new Chart(ctx, {
     type, data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
       devicePixelRatio: Math.max(window.devicePixelRatio||1, 2.5),
       plugins:{
-        legend:{labels:{color:'#9CA3AF',boxWidth:11,font:{size:11,family:'Tahoma'}}},
+        legend:{labels:{color:'#D1D5DB',boxWidth:11,font:{size:11,family:'Tahoma'}}},
         tooltip:{mode:'index',intersect:false},
         datalabels:{display:false},
         ...extraPlugins
       },
-      scales: type==='doughnut'||type==='pie' ? {} : {
-        x:{ticks:{color:'#6B7280',font:{size:11}},grid:{color:'#1F2937'},...(opts.xScale||{})},
-        y:{ticks:{color:'#6B7280',font:{size:11}},grid:{color:'#374151'},...(opts.yScale||{})}
-      },
+      scales,
       indexAxis: opts.indexAxis,
       ...restExtra
     }
@@ -3952,9 +3976,9 @@ function renderOEE() {
     xScale:{ticks:{maxTicksLimit:15}},
     extra:{
       scales:{
-        x:{ticks:{color:'#6B7280',font:{size:10}},grid:{color:'#1F2937'},ticks:{maxTicksLimit:15}},
+        x:{ticks:{color:'#D1D5DB',font:{size:10},maxTicksLimit:15},grid:{color:'#1F2937'}},
         y:{ position:'left',  min:0, max:100, ticks:{color:'#10B981',font:{size:10},callback:v=>v+'%'}, grid:{color:'#374151'}, title:{display:true,text:'OEE',color:'#10B981',font:{size:10}} },
-        y1:{ position:'right', min:compMin, max:100, ticks:{color:'#9CA3AF',font:{size:10},callback:v=>v+'%'}, grid:{drawOnChartArea:false}, title:{display:true,text:'Componentes',color:'#9CA3AF',font:{size:10}} }
+        y1:{ position:'right', min:compMin, max:100, ticks:{color:'#D1D5DB',font:{size:10},callback:v=>v+'%'}, grid:{drawOnChartArea:false}, title:{display:true,text:'Componentes',color:'#D1D5DB',font:{size:10}} }
       }
     }
   });
@@ -4338,7 +4362,7 @@ function renderParos() {
     {label:'Min paro',data:procSorted.map(x=>x[1]),backgroundColor:procSorted.map(x=>_procColor(x[0])+'cc'),borderRadius:4,xAxisID:'x'},
     {label:'Acumulado %',data:pAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:4,borderWidth:2,xAxisID:'x1'}
   ],{indexAxis:'y',extra:{scales:{
-    x:{position:'bottom',ticks:{color:'#6B7280',font:{size:10}},grid:{color:'#1F2937'}},
+    x:{position:'bottom',ticks:{color:'#D1D5DB',font:{size:10}},grid:{color:'#1F2937'}},
     x1:{position:'top',min:0,max:100,ticks:{color:'#FBBF24',font:{size:10},callback:v=>v+'%'},grid:{drawOnChartArea:false}},
     y:{ticks:{color:'#D1D5DB',font:{size:11,weight:'600'}},grid:{color:'#374151'}}
   }}});
@@ -4369,7 +4393,7 @@ function renderParos() {
     {label:'Costo COP',data:rcSorted.map(x=>x[1]),backgroundColor:'#EF4444cc',borderRadius:4,xAxisID:'x'},
     {label:'Acumulado %',data:rcAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:3,borderWidth:2,xAxisID:'x1'}
   ],{indexAxis:'y',extra:{scales:{
-    x:{position:'bottom',ticks:{color:'#6B7280',font:{size:9},callback:v=>fmtCOP(v)},grid:{color:'#1F2937'}},
+    x:{position:'bottom',ticks:{color:'#D1D5DB',font:{size:9},callback:v=>fmtCOP(v)},grid:{color:'#1F2937'}},
     x1:{position:'top',min:0,max:100,ticks:{color:'#FBBF24',font:{size:9},callback:v=>v+'%'},grid:{drawOnChartArea:false}},
     y:{ticks:{color:'#D1D5DB',font:{size:10}},grid:{color:'#374151'}}
   }}});
@@ -4401,7 +4425,7 @@ function renderParos() {
     {label:'Costo COP',data:pcSorted.map(x=>x[1]),backgroundColor:pcSorted.map(x=>_procColor(x[0])+'cc'),borderRadius:4,xAxisID:'x'},
     {label:'Acumulado %',data:pcAcumPct,type:'line',borderColor:'#FBBF24',backgroundColor:'transparent',pointRadius:3,borderWidth:2,xAxisID:'x1'}
   ],{indexAxis:'y',extra:{scales:{
-    x:{position:'bottom',ticks:{color:'#6B7280',font:{size:9},callback:v=>fmtCOP(v)},grid:{color:'#1F2937'}},
+    x:{position:'bottom',ticks:{color:'#D1D5DB',font:{size:9},callback:v=>fmtCOP(v)},grid:{color:'#1F2937'}},
     x1:{position:'top',min:0,max:100,ticks:{color:'#FBBF24',font:{size:9},callback:v=>v+'%'},grid:{drawOnChartArea:false}},
     y:{ticks:{color:'#D1D5DB',font:{size:10,weight:'600'}},grid:{color:'#374151'}}
   }}});
@@ -7428,8 +7452,8 @@ function fvChartDefaults() {
         callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw?.toLocaleString('es-CO')||ctx.raw}`}}
     },
     scales:{
-      x:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'rgba(37,54,80,.4)'}},
-      y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'rgba(37,54,80,.4)'}}
+      x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'rgba(37,54,80,.4)'}},
+      y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'rgba(37,54,80,.4)'}}
     }
   };
 }
@@ -8384,7 +8408,7 @@ function renderTablieroPlan() {
   const top=Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
   destroyChart('po-prods');
   const elP=document.getElementById('po-chart-productos');
-  if(elP&&top.length)CHARTS['po-prods']=new Chart(elP.getContext('2d'),{type:'bar',data:{labels:top.map(e=>e[0].length>22?e[0].slice(0,22)+'…':e[0]),datasets:[{label:'Unidades',data:top.map(e=>e[1]),backgroundColor:PAL.map(c=>c+'bb'),borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#9CA3AF',font:{size:10}},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
+  if(elP&&top.length)CHARTS['po-prods']=new Chart(elP.getContext('2d'),{type:'bar',data:{labels:top.map(e=>e[0].length>22?e[0].slice(0,22)+'…':e[0]),datasets:[{label:'Unidades',data:top.map(e=>e[1]),backgroundColor:PAL.map(c=>c+'bb'),borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB',font:{size:10}},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
 }
 
 // ── Capacidad vs Requerida (Tablero Plan) — mismo motor que la pestaña
@@ -8415,7 +8439,7 @@ function renderTableroPlanCapacidad() {
 
   destroyChart('po-cap2');
   const elC=document.getElementById('po-chart-capacidad');
-  if(elC&&maqNms.length)CHARTS['po-cap2']=new Chart(elC.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(m=>maqTurnosDisp[m]),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),backgroundColor:'#8B5CF688',borderColor:'#8B5CF6',borderWidth:1,borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}}},responsive:true,maintainAspectRatio:false}});
+  if(elC&&maqNms.length)CHARTS['po-cap2']=new Chart(elC.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(m=>maqTurnosDisp[m]),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),backgroundColor:'#8B5CF688',borderColor:'#8B5CF6',borderWidth:1,borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#D1D5DB',font:{size:10}}}},scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#D1D5DB',font:{size:10}}}},responsive:true,maintainAspectRatio:false}});
 }
 
 // ── Plan Maestro ────────────────────────────────────────
@@ -8742,8 +8766,8 @@ function renderCapacidadMensual() {
       { label:'Disponibles', data:maqNms.map(m=>maqTurnosDisp[m]), backgroundColor:'#3B82F644', borderColor:'#3B82F6', borderWidth:1, borderRadius:4 },
       { label:'Requeridos', data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),
         backgroundColor:maqNms.map(m=>{const p=maqTurnosDisp[m]?maqLoad[m]/maqTurnosDisp[m]*100:0;return p>100?'#EF444488':p>85?'#F59E0B88':'#10B98188';}), borderRadius:4 }]},
-    options:{ plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},
-      scales:{x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},y:{ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}}},
+    options:{ plugins:{legend:{labels:{color:'#D1D5DB',font:{size:10}}}},
+      scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#D1D5DB',font:{size:10}}}},
       responsive:true, maintainAspectRatio:false }});
 
   // turnos disponibles día por día, editable por máquina — vista de calendario
@@ -8900,9 +8924,9 @@ function capRenderHistorico() {
     data:{ labels:serie.map(s=>s.label), datasets:[
       { label:'Turnos requeridos', data:serie.map(s=>s.turnos), backgroundColor:'#8B5CF688', borderRadius:4, yAxisID:'y' },
       { label:'% Ocupación inyección', data:serie.map(s=>s.ocup), type:'line', borderColor:'#F59E0B', backgroundColor:'#F59E0B', tension:.3, yAxisID:'y2' }]},
-    options:{ plugins:{legend:{labels:{color:'#9CA3AF',font:{size:10}}}},
-      scales:{ x:{ticks:{color:'#6B7280'},grid:{color:'#374151'}},
-        y:{position:'left',ticks:{color:'#6B7280'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#6B7280',font:{size:10}}},
+    options:{ plugins:{legend:{labels:{color:'#D1D5DB',font:{size:10}}}},
+      scales:{ x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},
+        y:{position:'left',ticks:{color:'#D1D5DB'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#D1D5DB',font:{size:10}}},
         y2:{position:'right',ticks:{color:'#F59E0B',callback:v=>v+'%'},grid:{display:false},suggestedMax:120} },
       responsive:true, maintainAspectRatio:false }});
 
