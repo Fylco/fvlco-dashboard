@@ -3170,16 +3170,24 @@ function makeChart(id, type, labels, datasets, opts={}) {
   const hoverMode = explicitInteraction.mode || opts.hoverMode || (hasLine ? 'index' : 'nearest');
   const hoverIntersect = explicitInteraction.intersect != null ? explicitInteraction.intersect
     : (opts.hoverIntersect != null ? opts.hoverIntersect : !hasLine);
+  // Chart.js NO deduce el eje de interacción a partir de indexAxis: si no se
+  // indica explícitamente, siempre usa 'x' para decidir "cuál es la barra más
+  // cercana al mouse" — incluso en un chart horizontal (indexAxis:'y'), donde
+  // lo que realmente cambia de fila a fila es la posición vertical. Sin este
+  // axis:'y', el tooltip de los charts horizontales queda "pegado" comparando
+  // posiciones X (que casi no cambian entre barras) y termina mostrando la
+  // fila incorrecta.
+  const hoverAxis = explicitInteraction.axis || opts.hoverAxis || (opts.indexAxis === 'y' ? 'y' : 'x');
   CHARTS[id] = new Chart(ctx, {
     type, data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
       devicePixelRatio: Math.max(window.devicePixelRatio||1, 2.5),
-      interaction:{mode:hoverMode, intersect:hoverIntersect},
+      interaction:{mode:hoverMode, intersect:hoverIntersect, axis:hoverAxis},
       plugins:{
         legend:{labels:{color:'#D1D5DB',boxWidth:11,font:{size:11,family:'Tahoma'}}},
         tooltip:{
-          mode:hoverMode, intersect:hoverIntersect,
+          mode:hoverMode, intersect:hoverIntersect, axis:hoverAxis,
           backgroundColor:'#111827',borderColor:'#374151',borderWidth:1,
           titleColor:'#F9FAFB',titleFont:{weight:'700'},
           bodyColor:'#E5E7EB',bodyFont:{weight:'600'},
@@ -7637,7 +7645,10 @@ function fvRenderErrorChart(models, metric) {
   fvCharts['errors']=new Chart(el.getContext('2d'),{type:'bar',data:{
     labels:models.map(m=>m.name),
     datasets:[{label:'RMSE',data:models.map(m=>m.err.rmse),backgroundColor:models.map(m=>m.color+'bb'),borderColor:models.map(m=>m.color),borderWidth:1,borderRadius:6}]
-  },options:{...fvChartDefaults(),plugins:{...fvChartDefaults().plugins,legend:{display:false}},indexAxis:'y'}});
+  },options:{...fvChartDefaults(),
+    interaction:{mode:'nearest',intersect:true,axis:'y'},
+    plugins:{...fvChartDefaults().plugins,legend:{display:false},tooltip:{...fvChartDefaults().plugins.tooltip,mode:'nearest',intersect:true,axis:'y'}},
+    indexAxis:'y'}});
 }
 
 function fvResetFilters() {
@@ -8434,7 +8445,7 @@ function renderTablieroPlan() {
   const top=Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
   destroyChart('po-prods');
   const elP=document.getElementById('po-chart-productos');
-  if(elP&&top.length)CHARTS['po-prods']=new Chart(elP.getContext('2d'),{type:'bar',data:{labels:top.map(e=>e[0].length>22?e[0].slice(0,22)+'…':e[0]),datasets:[{label:'Unidades',data:top.map(e=>e[1]),backgroundColor:PAL.map(c=>c+'bb'),borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB',font:{size:10}},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
+  if(elP&&top.length)CHARTS['po-prods']=new Chart(elP.getContext('2d'),{type:'bar',data:{labels:top.map(e=>e[0].length>22?e[0].slice(0,22)+'…':e[0]),datasets:[{label:'Unidades',data:top.map(e=>e[1]),backgroundColor:PAL.map(c=>c+'bb'),borderRadius:6}]},options:{indexAxis:'y',interaction:{mode:'nearest',intersect:true,axis:'y'},plugins:{legend:{display:false},tooltip:{mode:'nearest',intersect:true,axis:'y'}},scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB',font:{size:10}},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
 }
 
 // ── Capacidad vs Requerida (Tablero Plan) — mismo motor que la pestaña
