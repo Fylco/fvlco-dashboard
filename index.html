@@ -3153,22 +3153,33 @@ function makeChart(id, type, labels, datasets, opts={}) {
   const ctx = document.getElementById(id); if(!ctx) return;
   const extraPlugins = (opts.extra && opts.extra.plugins) || {};
   const extraScales  = (opts.extra && opts.extra.scales) || {};
-  const { plugins: _p, scales: _s, ...restExtra } = opts.extra || {};
+  const explicitInteraction = (opts.extra && opts.extra.interaction) || {};
+  const { plugins: _p, scales: _s, interaction: _i, ...restExtra } = opts.extra || {};
   const { x: xOv, y: yOv, ...otherAxes } = extraScales;
   const scales = type==='doughnut'||type==='pie' ? {} : {
     x: _axisDefaults('#1F2937', opts.xScale||{}, xOv||{}),
     y: _axisDefaults('#374151', opts.yScale||{}, yOv||{})
   };
   Object.entries(otherAxes).forEach(([key, ov]) => { scales[key] = _axisDefaults('#374151', ov||{}); });
+  // Precisión de hover: si el chart mezcla una línea (tendencia/acumulado),
+  // se mantiene "index" para ver todas las series de esa fila/columna juntas
+  // (ej. Pareto barra+línea). Si es un chart de barras puro (una o varias
+  // series, sin línea), se usa "nearest"+intersect para que el tooltip
+  // muestre EXACTAMENTE la barra señalada, no todas las del mismo grupo.
+  const hasLine = type === 'line' || datasets.some(d => d.type === 'line');
+  const hoverMode = explicitInteraction.mode || opts.hoverMode || (hasLine ? 'index' : 'nearest');
+  const hoverIntersect = explicitInteraction.intersect != null ? explicitInteraction.intersect
+    : (opts.hoverIntersect != null ? opts.hoverIntersect : !hasLine);
   CHARTS[id] = new Chart(ctx, {
     type, data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
       devicePixelRatio: Math.max(window.devicePixelRatio||1, 2.5),
+      interaction:{mode:hoverMode, intersect:hoverIntersect},
       plugins:{
         legend:{labels:{color:'#D1D5DB',boxWidth:11,font:{size:11,family:'Tahoma'}}},
         tooltip:{
-          mode:'index',intersect:false,
+          mode:hoverMode, intersect:hoverIntersect,
           backgroundColor:'#111827',borderColor:'#374151',borderWidth:1,
           titleColor:'#F9FAFB',titleFont:{weight:'700'},
           bodyColor:'#E5E7EB',bodyFont:{weight:'600'},
@@ -8454,7 +8465,7 @@ function renderTableroPlanCapacidad() {
 
   destroyChart('po-cap2');
   const elC=document.getElementById('po-chart-capacidad');
-  if(elC&&maqNms.length)CHARTS['po-cap2']=new Chart(elC.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(m=>maqTurnosDisp[m]),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),backgroundColor:'#8B5CF688',borderColor:'#8B5CF6',borderWidth:1,borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#D1D5DB',font:{size:10}}}},scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#D1D5DB',font:{size:10}}}},responsive:true,maintainAspectRatio:false}});
+  if(elC&&maqNms.length)CHARTS['po-cap2']=new Chart(elC.getContext('2d'),{type:'bar',data:{labels:maqNms,datasets:[{label:'Disponibles',data:maqNms.map(m=>maqTurnosDisp[m]),backgroundColor:'#3B82F644',borderColor:'#3B82F6',borderWidth:1,borderRadius:4},{label:'Requeridas',data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),backgroundColor:'#8B5CF688',borderColor:'#8B5CF6',borderWidth:1,borderRadius:4}]},options:{interaction:{mode:'nearest',intersect:true},plugins:{legend:{labels:{color:'#D1D5DB',font:{size:10}}},tooltip:{mode:'nearest',intersect:true}},scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#D1D5DB',font:{size:10}}}},responsive:true,maintainAspectRatio:false}});
 }
 
 // ── Plan Maestro ────────────────────────────────────────
@@ -8781,7 +8792,8 @@ function renderCapacidadMensual() {
       { label:'Disponibles', data:maqNms.map(m=>maqTurnosDisp[m]), backgroundColor:'#3B82F644', borderColor:'#3B82F6', borderWidth:1, borderRadius:4 },
       { label:'Requeridos', data:maqNms.map(m=>Math.round(maqLoad[m]*10)/10),
         backgroundColor:maqNms.map(m=>{const p=maqTurnosDisp[m]?maqLoad[m]/maqTurnosDisp[m]*100:0;return p>100?'#EF444488':p>85?'#F59E0B88':'#10B98188';}), borderRadius:4 }]},
-    options:{ plugins:{legend:{labels:{color:'#D1D5DB',font:{size:10}}}},
+    options:{ interaction:{mode:'nearest',intersect:true},
+      plugins:{legend:{labels:{color:'#D1D5DB',font:{size:10}}},tooltip:{mode:'nearest',intersect:true}},
       scales:{x:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'}},y:{ticks:{color:'#D1D5DB'},grid:{color:'#374151'},title:{display:true,text:'Turnos',color:'#D1D5DB',font:{size:10}}}},
       responsive:true, maintainAspectRatio:false }});
 
