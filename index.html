@@ -385,7 +385,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================= OEE == -->
     <div class="section" id="sec-oee">
       <div class="filter-bar">
-        <select id="oee-f-maq"><option value="">Todas las máquinas</option></select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="oee-maq-btn" onclick="toggleOeeMaqDD(event)">Todas las máquinas ▾</button>
+          <div class="multi-sel-dropdown" id="oee-maq-dd"></div>
+        </div>
         <select id="oee-f-turno">
           <option value="">Todos los turnos</option>
           <option value="1">Turno 1 — 6:00 AM a 2:00 PM</option>
@@ -395,7 +398,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="5">Turno 2 — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-filter" onclick="renderOEE()">Filtrar</button>
-        <button class="btn-clear" onclick="clearFilters('oee');renderOEE()">Limpiar</button>
+        <button class="btn-clear" onclick="clearFilters('oee');clearOeeMaqs();renderOEE()">Limpiar</button>
       </div>
       <!-- Gauges -->
       <div id="cov-note-oee"></div>
@@ -445,9 +448,12 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="4">Turno 1 — 6:00 AM a 6:00 PM</option>
           <option value="5">Turno 2 — 6:00 PM a 6:00 AM</option>
         </select>
-        <select id="rd-f-maq"><option value="">Todas las máquinas</option></select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="rd-maq-btn" onclick="toggleRdMaqDD(event)">Todas las máquinas ▾</button>
+          <div class="multi-sel-dropdown" id="rd-maq-dd"></div>
+        </div>
         <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
-        <button class="btn-clear" onclick="clearFilters('rd');renderReporteDiario()">Limpiar</button>
+        <button class="btn-clear" onclick="clearFilters('rd');clearRdMaqs();renderReporteDiario()">Limpiar</button>
       </div>
       <div id="rd-dup-note"></div>
       <!-- OEE ensayo -->
@@ -540,9 +546,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div class="multi-sel-dropdown" id="nc-dia-dd"></div>
         </div>
         <button class="btn-x" onclick="clearNcDias()" title="Quitar filtro de días">✕ días</button>
-        <select id="nc-f-maq" class="fp-select" style="width:auto;margin-bottom:0" onchange="renderNC()">
-          <option value="">Todas las máquinas</option>
-        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="nc-maq-btn" onclick="toggleNcMaqDD(event)">Todas las máquinas ▾</button>
+          <div class="multi-sel-dropdown" id="nc-maq-dd"></div>
+        </div>
         <div class="multi-sel-wrap">
           <button class="multi-sel-btn" id="nc-causa-btn" onclick="toggleNcCausaDD(event)">Todas las causas ▾</button>
           <div class="multi-sel-dropdown" id="nc-causas-list" style="max-height:320px;overflow-y:auto;min-width:230px"></div>
@@ -606,9 +613,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
         <div style="display:flex;flex-direction:column;gap:4px">
           <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Máquina</span>
-          <select id="paro-f-maq" class="fp-select" style="min-width:140px">
-            <option value="">Todas las máquinas</option>
-          </select>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="paro-maq-btn" onclick="toggleParoMaqDD(event)" style="min-width:140px;text-align:left">Todas las máquinas ▾</button>
+            <div class="multi-sel-dropdown" id="paro-maq-dd"></div>
+          </div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:4px;min-width:220px">
@@ -785,9 +793,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
               <option value="">Todos los meses</option>
             </select>
             <div class="fp-label" style="margin-top:10px">Máquina</div>
-            <select id="costos-f-maq" class="fp-select" onchange="renderCostos()">
-              <option value="">Todas</option>
-            </select>
+            <div class="multi-sel-wrap">
+              <button class="multi-sel-btn" id="costos-maq-btn" onclick="toggleCostosMaqDD(event)" style="width:100%;text-align:left">Todas las máquinas ▾</button>
+              <div class="multi-sel-dropdown" id="costos-maq-dd"></div>
+            </div>
             <div class="fp-label" style="margin-top:10px">Días</div>
             <div class="multi-sel-wrap">
               <button class="multi-sel-btn" id="costos-dia-btn" onclick="toggleCostosDiaDD(event)">Todos los días ▾</button>
@@ -1714,6 +1723,12 @@ let SEL_PROCESOS  = new Set();
 let SEL_DIAS_PARO   = new Set();
 let SEL_DIAS_COSTOS = new Set();
 let SEL_CAUSAS    = new Set();
+// ── Multi-selección de máquina (por pestaña) ──
+let SEL_MAQ_OEE    = new Set();
+let SEL_MAQ_RD      = new Set();
+let SEL_MAQ_NC      = new Set();
+let SEL_MAQ_PARO    = new Set();
+let SEL_MAQ_COSTOS  = new Set();
 
 // Helpers para columnas H, I, J del sheet "lista"
 // Detección dinámica de columnas H/I/J del sheet "lista" (insensible a espacios/tildes/mayúsculas)
@@ -2107,10 +2122,10 @@ function updateParoRazonBtn() {
   else { btn.textContent = `${SEL_RAZONES.size} razón(es) ▾`; btn.classList.add('active'); }
 }
 function clearParoPanel() {
-  SEL_RAZONES.clear(); SEL_DIAS_PARO.clear(); SEL_PROCESOS.clear();
+  SEL_RAZONES.clear(); SEL_DIAS_PARO.clear(); SEL_PROCESOS.clear(); SEL_MAQ_PARO.clear();
   document.getElementById('paro-fp-mes').value='';
-  document.getElementById('paro-f-maq').value='';
-  document.querySelectorAll('#paro-razones-list input,#paro-dia-dd input,#paro-proc-list input').forEach(cb=>cb.checked=false);
+  _updateMaqBtn('paro-maq-btn', SEL_MAQ_PARO);
+  document.querySelectorAll('#paro-razones-list input,#paro-dia-dd input,#paro-proc-list input,#paro-maq-dd input').forEach(cb=>cb.checked=false);
   const allChk = document.getElementById('paro-razon-all');
   if (allChk) { allChk.checked=false; allChk.indeterminate=false; }
   const allPChk = document.getElementById('paro-proc-all');
@@ -2190,10 +2205,10 @@ function toggleCausa(c) {
   if (SEL_CAUSAS.has(c)) SEL_CAUSAS.delete(c); else SEL_CAUSAS.add(c);
 }
 function clearNcPanel() {
-  SEL_CAUSAS.clear(); SEL_DIAS_NC.clear();
+  SEL_CAUSAS.clear(); SEL_DIAS_NC.clear(); SEL_MAQ_NC.clear();
   document.getElementById('nc-fp-mes').value='';
-  document.getElementById('nc-f-maq').value='';
-  document.querySelectorAll('#nc-causas-list input,#nc-dia-dd input').forEach(cb=>cb.checked=false);
+  _updateMaqBtn('nc-maq-btn', SEL_MAQ_NC);
+  document.querySelectorAll('#nc-causas-list input,#nc-dia-dd input,#nc-maq-dd input').forEach(cb=>cb.checked=false);
   const btn=document.getElementById('nc-dia-btn'); if(btn){btn.textContent='Todos los días ▾';btn.classList.remove('active');}
   renderNC();
 }
@@ -2201,6 +2216,93 @@ function buildNcDiaDd(dias) {
   const dd = document.getElementById('nc-dia-dd'); if(!dd) return;
   dd.innerHTML = dias.map(d=>`<label class="ms-item"><input type="checkbox" onchange="toggleNcDia('${d}')"> Día ${d}</label>`).join('');
 }
+
+// ── Multi-selección de máquina, una por una (mismo patrón que "días") ──
+function _buildMaqDd(ddId, maqs, toggleFn) {
+  const dd = document.getElementById(ddId); if (!dd) return;
+  dd.innerHTML = maqs.map(m=>`<label class="ms-item"><input type="checkbox" onchange="${toggleFn}('${m}')"> ${m}</label>`).join('');
+}
+function _updateMaqBtn(btnId, sel) {
+  const btn = document.getElementById(btnId); if (!btn) return;
+  btn.textContent = sel.size===0 ? 'Todas las máquinas ▾' : `${sel.size} máquina(s) ▾`;
+  btn.classList.toggle('active', sel.size>0);
+}
+
+// OEE
+function toggleOeeMaqDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('oee-maq-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleOeeMaq(m) {
+  if (SEL_MAQ_OEE.has(m)) SEL_MAQ_OEE.delete(m); else SEL_MAQ_OEE.add(m);
+  _updateMaqBtn('oee-maq-btn', SEL_MAQ_OEE);
+}
+function clearOeeMaqs() {
+  SEL_MAQ_OEE.clear();
+  document.querySelectorAll('#oee-maq-dd input').forEach(cb=>cb.checked=false);
+  _updateMaqBtn('oee-maq-btn', SEL_MAQ_OEE);
+}
+function buildOeeMaqDd(maqs) { _buildMaqDd('oee-maq-dd', maqs, 'toggleOeeMaq'); }
+
+// Reporte Diario
+function toggleRdMaqDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('rd-maq-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleRdMaq(m) {
+  if (SEL_MAQ_RD.has(m)) SEL_MAQ_RD.delete(m); else SEL_MAQ_RD.add(m);
+  _updateMaqBtn('rd-maq-btn', SEL_MAQ_RD);
+}
+function clearRdMaqs() {
+  SEL_MAQ_RD.clear();
+  document.querySelectorAll('#rd-maq-dd input').forEach(cb=>cb.checked=false);
+  _updateMaqBtn('rd-maq-btn', SEL_MAQ_RD);
+}
+function buildRdMaqDd(maqs) { _buildMaqDd('rd-maq-dd', maqs, 'toggleRdMaq'); }
+
+// No Conformes
+function toggleNcMaqDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('nc-maq-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleNcMaq(m) {
+  if (SEL_MAQ_NC.has(m)) SEL_MAQ_NC.delete(m); else SEL_MAQ_NC.add(m);
+  _updateMaqBtn('nc-maq-btn', SEL_MAQ_NC);
+}
+function buildNcMaqDd(maqs) { _buildMaqDd('nc-maq-dd', maqs, 'toggleNcMaq'); }
+
+// Tiempos de Paro
+function toggleParoMaqDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('paro-maq-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleParoMaq(m) {
+  if (SEL_MAQ_PARO.has(m)) SEL_MAQ_PARO.delete(m); else SEL_MAQ_PARO.add(m);
+  _updateMaqBtn('paro-maq-btn', SEL_MAQ_PARO);
+}
+function buildParoMaqDd(maqs) { _buildMaqDd('paro-maq-dd', maqs, 'toggleParoMaq'); }
+
+// Costos (sin botón "Filtrar" en esta pestaña — aplica al toque, como "días")
+function toggleCostosMaqDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('costos-maq-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleCostosMaq(m) {
+  if (SEL_MAQ_COSTOS.has(m)) SEL_MAQ_COSTOS.delete(m); else SEL_MAQ_COSTOS.add(m);
+  _updateMaqBtn('costos-maq-btn', SEL_MAQ_COSTOS);
+  renderCostos();
+}
+function buildCostosMaqDd(maqs) { _buildMaqDd('costos-maq-dd', maqs, 'toggleCostosMaq'); }
 
 // ── Cerrar dropdowns al hacer clic fuera
 document.addEventListener('click', ()=>{
@@ -2900,16 +3002,18 @@ function populateAllFilters() {
   const procesos = [...new Set(DATA.prod.filter(r=>r._paro>0).map(_getProc).filter(Boolean))].sort();
   buildGProcDd(procesos);
   // OEE section
-  fillSel('oee-f-maq', maqs, 'Máquina');
+  buildOeeMaqDd(maqs);
+  // Reporte Diario
+  buildRdMaqDd(maqs);
   // Paros panel
   fillSel('paro-fp-mes', meses.map(cap), 'Mes');
-  fillSel('paro-f-maq', maqs, 'Máquina');
+  buildParoMaqDd(maqs);
   buildParoDiaDd(dias);
   // Costos panel — usa meses y días derivados de FECHAS SEGUN TURNO
   const mesesTurno = [...new Set(DATA.prod.map(r=>r._mesTurno).filter(Boolean))];
   const diasTurno  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
   fillSel('costos-f-mes', (mesesTurno.length ? mesesTurno : meses).map(cap), 'Mes');
-  fillSel('costos-f-maq', maqs, 'Máquina');
+  buildCostosMaqDd(maqs);
   buildCostosDiaDd(diasTurno.length ? diasTurno : dias);
   // Razones de paro
   const razonMap = {};
@@ -2928,7 +3032,7 @@ function populateAllFilters() {
   const ncMeses = [...new Set(DATA.nc.map(r=>String(r['MES ']||r['MES']||'').trim()).filter(Boolean))];
   const ncMaq   = [...new Set(DATA.nc.map(r=>((r['MÁQUINA']??r['MAQUINA'])||'')).filter(Boolean))].sort();
   fillSel('nc-fp-mes', ncMeses.map(cap), 'Mes');
-  fillSel('nc-f-maq', ncMaq, 'Máquina');
+  buildNcMaqDd(ncMaq);
   buildNcDiaDd(dias);
   // Causas NC
   const causaMap = {};
@@ -2960,11 +3064,11 @@ function gDia() { return SEL_DIAS; } // Set
 
 function filterProd() {
   const m = gMes(); const dias = gDia();
-  const maq = getVal('oee-f-maq'); const t = getVal('oee-f-turno');
+  const t = getVal('oee-f-turno');
   return DATA.prod.filter(r =>
     (!m        || r._mes === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
-    (!maq      || String(r._maq) === maq) &&
+    (!SEL_MAQ_OEE.size || SEL_MAQ_OEE.has(String(r._maq))) &&
     (!t        || turnoNum(r._turno) === turnoNum(t)) &&
     // Proceso: excluye solo filas con paro de otro proceso; filas sin paro siempre pasan
     (!SEL_PROCESOS.size || !_getProc(r) || SEL_PROCESOS.has(_getProc(r)))
@@ -2972,36 +3076,33 @@ function filterProd() {
 }
 function filterCostos() {
   const m   = (getVal('costos-f-mes') || getVal('g-mes')).toLowerCase();
-  const maq = getVal('costos-f-maq');
   const dias = SEL_DIAS_COSTOS.size ? SEL_DIAS_COSTOS : SEL_DIAS;
   return DATA.prod.filter(r => {
     const mes = r._mesTurno || r._mes || '';
     return (!m    || mes === m) &&
            (!dias.size || dias.has(r._diaTurno||'')) &&
-           (!maq  || String(r._maq) === maq);
+           (!SEL_MAQ_COSTOS.size || SEL_MAQ_COSTOS.has(String(r._maq)));
   });
 }
 function filterParo() {
   const m   = (getVal('paro-fp-mes')||getVal('g-mes')).toLowerCase();
-  const maq = getVal('paro-f-maq');
   const dias = SEL_DIAS_PARO.size ? SEL_DIAS_PARO : SEL_DIAS;
   return DATA.prod.filter(r =>
     (!m        || (r._mesTurno || r._mes) === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
-    (!maq      || String(r._maq) === maq) &&
+    (!SEL_MAQ_PARO.size || SEL_MAQ_PARO.has(String(r._maq))) &&
     (!SEL_RAZONES.size || SEL_RAZONES.has(String(r['RAZON PARO']||'').trim())) &&
     (!SEL_PROCESOS.size || SEL_PROCESOS.has(_getProc(r)))
   );
 }
 function filterNC() {
   const m   = (getVal('nc-fp-mes')||getVal('g-mes')).toLowerCase();
-  const maq = getVal('nc-f-maq');
   // NC sheet has no DIA column — only use panel's own day filter (SEL_DIAS_NC)
   const dias = SEL_DIAS_NC;
   return DATA.nc.filter(r =>
     (!m    || String(r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
-    (!maq  || String(((r['MÁQUINA']??r['MAQUINA'])||'')) === maq) &&
+    (!SEL_MAQ_NC.size || SEL_MAQ_NC.has(String((r['MÁQUINA']??r['MAQUINA'])||''))) &&
     (!SEL_CAUSAS.size || SEL_CAUSAS.has((r['CAUSA']||'').trim()))
   );
 }
@@ -4878,14 +4979,14 @@ function _oeeCard(titulo, oee, disp, rend, cal, info) {
 }
 
 // =======================================================
-function _rdFilter(rows, fMes, fDia, fTurno, fMaq) {
+function _rdFilter(rows, fMes, fDia, fTurno, selMaq) {
   const m = fMes.toLowerCase();
   return rows.filter(r => {
     const mes = (r._mesTurno || r._mes || '').toLowerCase();
     if (m     && mes                      !== m)     return false;
     if (fDia  && String(r._diaTurno)      !== fDia)  return false;
     if (fTurno && String(r._turno)        !== fTurno) return false;
-    if (fMaq  && String(r._maq)           !== fMaq)  return false;
+    if (selMaq.size && !selMaq.has(String(r._maq)))  return false;
     return true;
   });
 }
@@ -4906,7 +5007,6 @@ function renderReporteDiario() {
   const fMes   = (document.getElementById('rd-f-mes')?.value   || '').trim();
   const fDia   = (document.getElementById('rd-f-dia')?.value   || '').trim();
   const fTurno = (document.getElementById('rd-f-turno')?.value || '').trim();
-  const fMaq   = (document.getElementById('rd-f-maq')?.value   || '').trim();
 
   // Populate selectors once
   const diaEl = document.getElementById('rd-f-dia');
@@ -4914,13 +5014,8 @@ function renderReporteDiario() {
     [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b))
       .forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
   }
-  const maqEl = document.getElementById('rd-f-maq');
-  if (maqEl && maqEl.options.length <= 1) {
-    [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort()
-      .forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; maqEl.appendChild(o); });
-  }
 
-  const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, fMaq);
+  const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, SEL_MAQ_RD);
   const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
 
   // ── Aviso de reportes duplicados excluidos (mismos filtros del panel) ──
@@ -4931,7 +5026,7 @@ function renderReporteDiario() {
       (!fMesLow || String(d._mesTurno || d._mes || '').toLowerCase() === fMesLow) &&
       (!fDia   || String(d._diaTurno || '') === fDia) &&
       (!fTurno || String(d._turno || '') === fTurno) &&
-      (!fMaq   || String(d._maq || '') === fMaq));
+      (!SEL_MAQ_RD.size || SEL_MAQ_RD.has(String(d._maq || ''))));
     if (!dups.length) { dupEl.innerHTML = ''; }
     else {
       const tot = dups.reduce((s, d) => s + (d._cant || 0), 0);
