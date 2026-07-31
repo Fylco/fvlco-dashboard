@@ -143,8 +143,19 @@ function llamarBackend(accion, datos){
 }
 
 /* Sincroniza la cola local con el Sheet, uno por uno, en orden.
-   Se detiene en el primer fallo (probablemente seguimos sin internet real). */
+   Se detiene en el primer fallo (probablemente seguimos sin internet real).
+   Usa Web Locks para que, con varias pestañas/ventanas de la misma máquina
+   abiertas (una cola compartida por origen), SOLO UNA sincronice a la vez —
+   evita que dos pestañas envíen el mismo registro pendiente duplicado. */
 function sincronizarPendientes(){
+  if(!navigator.locks){ return _sincronizarPendientesInterno_(); }
+  return navigator.locks.request('fvl-sync-lock', {ifAvailable:true}, function(lock){
+    if(!lock) return;  // otra pestaña ya está sincronizando ahora mismo
+    return _sincronizarPendientesInterno_();
+  });
+}
+
+function _sincronizarPendientesInterno_(){
   return obtenerPendientes().then(function(pendientes){
     if(!pendientes.length){ actualizarBadgeOffline(); return; }
     var i = 0;
