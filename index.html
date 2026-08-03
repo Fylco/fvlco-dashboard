@@ -2692,7 +2692,18 @@ function buildCoverage() {
     paroYM[ym]   = (paroYM[ym]||0)   + (r._paro||0);
     prodByYM[ym] = (prodByYM[ym]||0) + (r._cant||0);
   });
-  DATA.covParo = new Set([...prodYM].filter(ym => (paroYM[ym]||0) >= 480));
+  // El mes EN CURSO aún no acumula un mes completo: exigirle los 480 min de
+  // golpe (el umbral pensado para meses YA CERRADOS) apaga Disp/Rend los
+  // primeros días de cada mes aunque los paros SÍ se estén registrando bien
+  // (ej. 2026-08: 332 min en los primeros 3 días, ritmo normal). Se prorratea
+  // el umbral por los días ya transcurridos solo para el mes actual.
+  const hoy = new Date();
+  const ymHoy = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
+  const diasEnMesHoy = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0).getDate();
+  DATA.covParo = new Set([...prodYM].filter(ym => {
+    const umbral = ym === ymHoy ? 480 * hoy.getDate() / diasEnMesHoy : 480;
+    return (paroYM[ym]||0) >= umbral;
+  }));
   DATA.prodByYM = prodByYM;
   const ncFirst = (DATA.nc||[]).map(r => String(r._fechaKey||'').slice(0,7))
     .filter(ym => /^\d{4}-\d{2}$/.test(ym)).sort()[0] || '';
