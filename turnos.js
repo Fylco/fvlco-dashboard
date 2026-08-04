@@ -97,6 +97,44 @@ function unidadesTeoricas(tiempoSeg, cicloEst, cavTeor) {
   return Math.round((tiempoSeg / cicloEst) * cavTeor);
 }
 
+// Columna cruda de fecha de turno para una fila del sheet de producción/NC.
+// El día de planta va de 6:00am a 6:00am del día siguiente (ej. "3 de agosto"
+// arranca 6am del 3 y cierra 6am del 4); el sheet ya resuelve esto para TODOS
+// los turnos en "FECHAS SEGUN TURNO DE TRABAJO" — se usa siempre, sin
+// excepción por turno ni por hora de digitación.
+// "FECHA Y HORA ULTIMO REPORTE" es la hora en que se DIGITÓ la caja (puede
+// ser horas o incluso días después de producida, ej. corrección tardía) y
+// NUNCA debe usarse para decidir a qué día de planta pertenece un reporte.
+// Antes se usaba como prioridad 1 para turnos 1/2/4 pensando que corregía un
+// caso puntual (reportes de Turno 1 ~6:00-6:15am mal fechados un día atrás
+// por la fórmula del sheet); en la práctica esa regla no era un caso puntual:
+// desvió ~1.282 de 10.560 filas históricas (turnos 1/2/4) a un día distinto
+// al real, ocultando turnos completos en Reporte Diario/Compacto (ej.
+// Máquina 5, 3-ago-2026: el Turno 1 quedó archivado como si fuera 1-ago).
+// Ver 2026-08-04.
+function resolveFechaTurnoRaw(row) {
+  // Prioridad 1: columna que contenga FECHA y TURNO en el encabezado
+  for (const k of Object.keys(row)) {
+    const ku = k.toUpperCase();
+    if (ku.includes('FECHA') && ku.includes('TURNO')) { return String(row[k] || '').trim(); }
+  }
+  // Prioridad 2 (fallback si falta la columna de arriba): cualquier columna
+  // FECHA con formato de fecha válido
+  for (const k of Object.keys(row)) {
+    const ku = k.toUpperCase();
+    if (ku.includes('FECH')) {
+      const v = String(row[k] || '').trim();
+      if (v.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/)) return v;
+    }
+  }
+  // Prioridad 3: cualquier columna con valor de formato fecha DD/MM/YYYY
+  for (const k of Object.keys(row)) {
+    const v = String(row[k] || '').trim();
+    if (v.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/)) return v;
+  }
+  return '';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas };
+  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw };
 }

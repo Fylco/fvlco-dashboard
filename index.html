@@ -2425,41 +2425,12 @@ function normalizeProd(r) {
   for (const k in r) out[k.trim()] = r[k];
 
   // ── Extraer fecha de turno ANTES de la conversión numérica masiva
-  // Solo los turnos 3 (22:00-06:00) y 5 (18:00-06:00) cruzan medianoche, por
-  // eso el sheet tiene "FECHAS SEGUN TURNO DE TRABAJO": agrupa sus filas de
-  // madrugada bajo el día en que arrancó el turno. Los turnos 1/2/4 nunca
-  // cruzan medianoche, así que su día de trabajo es el propio calendario de
-  // "FECHA Y HORA" — usar esa columna de agrupación para ellos es un error
-  // de la fórmula del Sheet: retrocede un día también en los PRIMEROS
-  // reportes de turno 1 (~6:00-6:15am, típicamente los de paro/arranque),
-  // sacándolos silenciosamente del día correcto (dejaban de verse sus paros).
-  const _turnoCrudo = String(out['TURNO'] || '').trim();
-  const _cruzaMedianoche = (_turnoCrudo === '3' || _turnoCrudo === '5');
-  let _ftRaw = '';
-  // Prioridad 1 (solo turnos que cruzan medianoche): columna FECHA + TURNO
-  if (_cruzaMedianoche) {
-    for (const _k of Object.keys(out)) {
-      const _ku = _k.toUpperCase();
-      if (_ku.includes('FECHA') && _ku.includes('TURNO')) { _ftRaw = String(out[_k]||'').trim(); break; }
-    }
-  }
-  // Prioridad 2: columna que contenga solo FECHA (con formato de fecha)
-  if (!_ftRaw) {
-    for (const _k of Object.keys(out)) {
-      const _ku = _k.toUpperCase();
-      if (_ku.includes('FECH')) {
-        const _v = String(out[_k]||'').trim();
-        if (_v.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/)) { _ftRaw = _v; break; }
-      }
-    }
-  }
-  // Prioridad 3: cualquier columna con valor de formato fecha DD/MM/YYYY
-  if (!_ftRaw) {
-    for (const _k of Object.keys(out)) {
-      const _v = String(out[_k]||'').trim();
-      if (_v.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/)) { _ftRaw = _v; break; }
-    }
-  }
+  // El día de planta va de 6:00am a 6:00am del día siguiente; el sheet ya
+  // resuelve esto para TODOS los turnos en "FECHAS SEGUN TURNO DE TRABAJO"
+  // (ver resolveFechaTurnoRaw en turnos.js — no hay excepción por turno ni
+  // por hora de digitación: usar "FECHA Y HORA ULTIMO REPORTE" para esto
+  // desvió ~1.282 filas históricas a un día distinto al real).
+  const _ftRaw = resolveFechaTurnoRaw(out);
   // Parsear fecha: acepta DD/MM/YYYY, DD-MM-YYYY y también ISO YYYY-MM-DD / YYYY/MM/DD
   const _dtParts = _ftRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
   const _dtIso   = !_dtParts ? _ftRaw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/) : null;

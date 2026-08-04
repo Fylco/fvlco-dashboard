@@ -1,5 +1,5 @@
 const assert = require('node:assert');
-const { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas } = require('./turnos.js');
+const { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw } = require('./turnos.js');
 const S = (...t) => new Set(t.map(String));
 
 const ts = (h, m = 0) => new Date(2026, 5, 10, h, m, 0).getTime(); // hora local del 2026-06-10
@@ -140,5 +140,41 @@ t('unidadesTeoricas: ciclo 0 → 0 (guarda)', () =>
   assert.strictEqual(unidadesTeoricas(43200, 0, 24), 0));
 t('unidadesTeoricas: tiempo 0 → 0', () =>
   assert.strictEqual(unidadesTeoricas(0, 13, 24), 0));
+
+// ── resolveFechaTurnoRaw: "FECHAS SEGUN TURNO DE TRABAJO" manda SIEMPRE,
+//    sin excepción por turno ni por hora de digitación (ver bug 2026-08-04:
+//    Máquina 5 turno 1 del 3-ago quedaba archivada como 1-ago) ─────────────
+t('Turno 1: usa FECHAS SEGUN TURNO aunque el reporte se digitó otro día', () => {
+  // Caso real: caja digitada la noche del 1-ago (21:49) para un turno 1 del 3-ago
+  const row = {
+    'TURNO': '1',
+    'FECHA Y HORA ULTIMO REPORTE': '01/08/2026 21:49:42',
+    'FECHAS SEGUN TURNO DE TRABAJO': '3/8/2026',
+  };
+  assert.strictEqual(resolveFechaTurnoRaw(row), '3/8/2026');
+});
+t('Turno 1 de madrugada (6:00-6:15am): NO hay excepción, manda FECHAS SEGUN TURNO', () => {
+  const row = {
+    'TURNO': '1',
+    'FECHA Y HORA ULTIMO REPORTE': '02/01/2026 06:45:47',
+    'FECHAS SEGUN TURNO DE TRABAJO': '1/1/2026',
+  };
+  assert.strictEqual(resolveFechaTurnoRaw(row), '1/1/2026');
+});
+t('Turno 3 (cruza medianoche): sigue usando FECHAS SEGUN TURNO', () => {
+  const row = {
+    'TURNO': '3',
+    'FECHA Y HORA ULTIMO REPORTE': '10/06/2026 23:30:00',
+    'FECHAS SEGUN TURNO DE TRABAJO': '10/6/2026',
+  };
+  assert.strictEqual(resolveFechaTurnoRaw(row), '10/6/2026');
+});
+t('Sin columna FECHAS SEGUN TURNO: cae a cualquier columna FECHA con formato válido', () => {
+  const row = {
+    'TURNO': '2',
+    'FECHA Y HORA ULTIMO REPORTE': '10/06/2026 15:00:00',
+  };
+  assert.strictEqual(resolveFechaTurnoRaw(row), '10/06/2026 15:00:00');
+});
 
 console.log(`\n${passed} pruebas OK`);
