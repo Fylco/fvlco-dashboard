@@ -2425,11 +2425,11 @@ function normalizeProd(r) {
   for (const k in r) out[k.trim()] = r[k];
 
   // ── Extraer fecha de turno ANTES de la conversión numérica masiva
-  // El día de planta va de 6:00am a 6:00am del día siguiente; el sheet ya
-  // resuelve esto para TODOS los turnos en "FECHAS SEGUN TURNO DE TRABAJO"
-  // (ver resolveFechaTurnoRaw en turnos.js — no hay excepción por turno ni
-  // por hora de digitación: usar "FECHA Y HORA ULTIMO REPORTE" para esto
-  // desvió ~1.282 filas históricas a un día distinto al real).
+  // El día de planta va de 6:00am a 6:00am del día siguiente. Turnos 1/2/4
+  // (no cruzan medianoche): DIA/MES/AÑO manda. Turnos 3/5 (sí cruzan):
+  // "FECHAS SEGUN TURNO DE TRABAJO" manda. Ver resolveFechaTurnoRaw en
+  // turnos.js para el detalle y por qué ni "FECHA Y HORA ULTIMO REPORTE" ni
+  // "FECHAS SEGUN TURNO DE TRABAJO" (para 1/2/4) son confiables.
   const _ftRaw = resolveFechaTurnoRaw(out);
   // Parsear fecha: acepta DD/MM/YYYY, DD-MM-YYYY y también ISO YYYY-MM-DD / YYYY/MM/DD
   const _dtParts = _ftRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);

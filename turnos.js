@@ -97,29 +97,63 @@ function unidadesTeoricas(tiempoSeg, cicloEst, cavTeor) {
   return Math.round((tiempoSeg / cicloEst) * cavTeor);
 }
 
+const _MESES_ES_NUM = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+  julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
+// Arma "D/M/YYYY" desde las columnas DIA/MES/AÑO (selección directa del
+// operario en el formulario), o '' si no son usables (blanco, #REF!, etc.)
+function _diaMesAnoToFecha(row) {
+  const dia = parseInt(row['DIA'], 10);
+  const mesRaw = row['MES'];
+  let mes = null;
+  if (typeof mesRaw === 'number') mes = mesRaw;
+  else if (typeof mesRaw === 'string') mes = _MESES_ES_NUM[mesRaw.trim().toLowerCase()] || (parseInt(mesRaw, 10) || null);
+  const anio = parseInt(row['AÑO'], 10);
+  if (dia >= 1 && dia <= 31 && mes >= 1 && mes <= 12 && anio) return `${dia}/${mes}/${anio}`;
+  return '';
+}
+
 // Columna cruda de fecha de turno para una fila del sheet de producción/NC.
 // El día de planta va de 6:00am a 6:00am del día siguiente (ej. "3 de agosto"
-// arranca 6am del 3 y cierra 6am del 4); el sheet ya resuelve esto para TODOS
-// los turnos en "FECHAS SEGUN TURNO DE TRABAJO" — se usa siempre, sin
-// excepción por turno ni por hora de digitación.
-// "FECHA Y HORA ULTIMO REPORTE" es la hora en que se DIGITÓ la caja (puede
-// ser horas o incluso días después de producida, ej. corrección tardía) y
-// NUNCA debe usarse para decidir a qué día de planta pertenece un reporte.
-// Antes se usaba como prioridad 1 para turnos 1/2/4 pensando que corregía un
-// caso puntual (reportes de Turno 1 ~6:00-6:15am mal fechados un día atrás
-// por la fórmula del sheet); en la práctica esa regla no era un caso puntual:
-// desvió ~1.282 de 10.560 filas históricas (turnos 1/2/4) a un día distinto
-// al real, ocultando turnos completos en Reporte Diario/Compacto (ej.
-// Máquina 5, 3-ago-2026: el Turno 1 quedó archivado como si fuera 1-ago).
+// arranca 6am del 3 y cierra 6am del 4).
+//
+// Turnos 1/2/4 NUNCA cruzan medianoche: su día es DIRECTAMENTE el de las
+// columnas DIA/MES/AÑO (lo que el operario seleccionó al reportar). NO usar
+// "FECHAS SEGUN TURNO DE TRABAJO" para estos turnos — esa columna es una
+// fórmula del sheet pensada para turnos 3/5 y le hereda a un T1/T2/T4 vecino
+// el ajuste "día en que arrancó" de un T3/T5 de la MISMA caja partida entre
+// turnos (ej. caja partida 11.000 en T3 + 1.000 en T4: la fórmula copiaba el
+// día del T3 también a la fila del T4, corriendo esas 1.000 und un día atrás
+// — Máquina 1, caja 40, 3/4-ago-2026). También retrasa un día los reportes
+// de Turno 1 de madrugada (~6:00-6:15am, los de arranque/paro), cuando DIA
+// ya trae el día correcto (verificado contra la hora real del reporte).
+// NUNCA usar "FECHA Y HORA ULTIMO REPORTE" (hora de DIGITACIÓN, no de
+// producción) para esto: puede ser horas o días después de producida, y en
+// el sheet no es un timestamp confiable por caja (se repite igual en varias
+// filas de un mismo lote de digitación).
+//
+// Turnos 3/5 SÍ cruzan medianoche: ahí "FECHAS SEGUN TURNO DE TRABAJO" es la
+// autoridad (agrupa correctamente bajo el día en que arrancó el turno; DIA
+// por sí solo reflejaría el día CALENDARIO del reporte, partiendo un mismo
+// turno físico en dos días si cruzó la medianoche).
 // Ver 2026-08-04.
 function resolveFechaTurnoRaw(row) {
-  // Prioridad 1: columna que contenga FECHA y TURNO en el encabezado
+  const turno = String(row['TURNO'] ?? '').trim();
+  const cruzaMedianoche = (turno === '3' || turno === '5');
+
+  if (!cruzaMedianoche) {
+    const dmy = _diaMesAnoToFecha(row);
+    if (dmy) return dmy;
+  }
+
+  // Prioridad 1 (turnos 3/5, o fallback si DIA/MES/AÑO no sirven): columna
+  // que contenga FECHA y TURNO en el encabezado
   for (const k of Object.keys(row)) {
     const ku = k.toUpperCase();
     if (ku.includes('FECHA') && ku.includes('TURNO')) { return String(row[k] || '').trim(); }
   }
-  // Prioridad 2 (fallback si falta la columna de arriba): cualquier columna
-  // FECHA con formato de fecha válido
+  // Prioridad 2: cualquier columna FECHA con formato de fecha válido
   for (const k of Object.keys(row)) {
     const ku = k.toUpperCase();
     if (ku.includes('FECH')) {
@@ -132,7 +166,8 @@ function resolveFechaTurnoRaw(row) {
     const v = String(row[k] || '').trim();
     if (v.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/)) return v;
   }
-  return '';
+  // Último recurso: DIA/MES/AÑO aunque el turno cruce medianoche
+  return _diaMesAnoToFecha(row);
 }
 
 if (typeof module !== 'undefined' && module.exports) {

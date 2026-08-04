@@ -141,40 +141,74 @@ t('unidadesTeoricas: ciclo 0 → 0 (guarda)', () =>
 t('unidadesTeoricas: tiempo 0 → 0', () =>
   assert.strictEqual(unidadesTeoricas(0, 13, 24), 0));
 
-// ── resolveFechaTurnoRaw: "FECHAS SEGUN TURNO DE TRABAJO" manda SIEMPRE,
-//    sin excepción por turno ni por hora de digitación (ver bug 2026-08-04:
-//    Máquina 5 turno 1 del 3-ago quedaba archivada como 1-ago) ─────────────
-t('Turno 1: usa FECHAS SEGUN TURNO aunque el reporte se digitó otro día', () => {
-  // Caso real: caja digitada la noche del 1-ago (21:49) para un turno 1 del 3-ago
+// ── resolveFechaTurnoRaw ───────────────────────────────────────────────────
+// Turnos 1/2/4 (no cruzan medianoche): DIA/MES/AÑO manda SIEMPRE — es la
+// selección directa del operario, y ni "FECHAS SEGUN TURNO DE TRABAJO" ni
+// "FECHA Y HORA ULTIMO REPORTE" son confiables para ellos (ver 2026-08-04).
+// Turnos 3/5 (cruzan medianoche): "FECHAS SEGUN TURNO DE TRABAJO" manda.
+t('Turno 1: usa DIA/MES/AÑO, ignora FECHAS SEGUN TURNO y FECHA Y HORA', () => {
   const row = {
     'TURNO': '1',
+    'DIA': 3, 'MES': 'agosto', 'AÑO': 2026,
     'FECHA Y HORA ULTIMO REPORTE': '01/08/2026 21:49:42',
-    'FECHAS SEGUN TURNO DE TRABAJO': '3/8/2026',
+    'FECHAS SEGUN TURNO DE TRABAJO': '1/8/2026', // formula del sheet, desfasada
   };
   assert.strictEqual(resolveFechaTurnoRaw(row), '3/8/2026');
 });
-t('Turno 1 de madrugada (6:00-6:15am): NO hay excepción, manda FECHAS SEGUN TURNO', () => {
+t('Turno 1 de madrugada (6:00-6:15am): DIA ya trae el día correcto, no la fórmula', () => {
+  // Caso real: reporte de arranque a las 06:45 del día 2, pero la fórmula
+  // "FECHAS SEGUN TURNO DE TRABAJO" retrocede un día (bug conocido del sheet)
   const row = {
     'TURNO': '1',
+    'DIA': 2, 'MES': 'enero', 'AÑO': 2026,
     'FECHA Y HORA ULTIMO REPORTE': '02/01/2026 06:45:47',
     'FECHAS SEGUN TURNO DE TRABAJO': '1/1/2026',
   };
-  assert.strictEqual(resolveFechaTurnoRaw(row), '1/1/2026');
+  assert.strictEqual(resolveFechaTurnoRaw(row), '2/1/2026');
 });
-t('Turno 3 (cruza medianoche): sigue usando FECHAS SEGUN TURNO', () => {
+t('Turno 3 (cruza medianoche): sigue usando FECHAS SEGUN TURNO, no DIA', () => {
   const row = {
     'TURNO': '3',
-    'FECHA Y HORA ULTIMO REPORTE': '10/06/2026 23:30:00',
+    'DIA': 4, 'MES': 'agosto', 'AÑO': 2026, // día calendario del reporte (después de medianoche)
+    'FECHAS SEGUN TURNO DE TRABAJO': '3/8/2026', // día en que arrancó el turno — el correcto
+  };
+  assert.strictEqual(resolveFechaTurnoRaw(row), '3/8/2026');
+});
+t('Caja partida T3/T4 (Máquina 1, caja 40, 3/4-ago-2026): cada turno a su día', () => {
+  // Misma caja partida entre el turno 3 que termina y el turno 4 que arranca;
+  // la fórmula del sheet copiaba el día del T3 (3/8) también a la fila del T4.
+  const filaT3 = {
+    'TURNO': '3', 'DIA': 4, 'MES': 'agosto', 'AÑO': 2026,
+    'FECHAS SEGUN TURNO DE TRABAJO': '3/8/2026',
+  };
+  const filaT4 = {
+    'TURNO': '4', 'DIA': 4, 'MES': 'agosto', 'AÑO': 2026,
+    'FECHAS SEGUN TURNO DE TRABAJO': '3/8/2026', // heredado por error del T3 vecino
+  };
+  assert.strictEqual(resolveFechaTurnoRaw(filaT3), '3/8/2026'); // T3: arrancó el 3
+  assert.strictEqual(resolveFechaTurnoRaw(filaT4), '4/8/2026'); // T4: es del 4, no del 3
+});
+t('Turno 2 sin DIA/MES/AÑO usables: cae a FECHAS SEGUN TURNO', () => {
+  const row = {
+    'TURNO': '2',
     'FECHAS SEGUN TURNO DE TRABAJO': '10/6/2026',
   };
   assert.strictEqual(resolveFechaTurnoRaw(row), '10/6/2026');
 });
-t('Sin columna FECHAS SEGUN TURNO: cae a cualquier columna FECHA con formato válido', () => {
+t('Sin ninguna columna de fecha de turno: cae a cualquier columna FECHA con formato válido', () => {
   const row = {
     'TURNO': '2',
     'FECHA Y HORA ULTIMO REPORTE': '10/06/2026 15:00:00',
   };
   assert.strictEqual(resolveFechaTurnoRaw(row), '10/06/2026 15:00:00');
+});
+t('Turno 5 sin FECHAS SEGUN TURNO: último recurso, DIA/MES/AÑO', () => {
+  const row = { 'TURNO': '5', 'DIA': 15, 'MES': 'marzo', 'AÑO': 2026 };
+  assert.strictEqual(resolveFechaTurnoRaw(row), '15/3/2026');
+});
+t('MES numérico (no texto): también resuelve DIA/MES/AÑO', () => {
+  const row = { 'TURNO': '1', 'DIA': 9, 'MES': 8, 'AÑO': 2026 };
+  assert.strictEqual(resolveFechaTurnoRaw(row), '9/8/2026');
 });
 
 console.log(`\n${passed} pruebas OK`);
