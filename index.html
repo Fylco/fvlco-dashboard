@@ -604,9 +604,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 
         <div style="display:flex;flex-direction:column;gap:4px">
           <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Mes</span>
-          <select id="paro-fp-mes" class="fp-select" style="min-width:130px" onchange="syncParoMes()">
-            <option value="">Todo (Mes)</option>
-          </select>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="paro-mes-btn" onclick="toggleMesMultiDD('paro-mes-dd', event)" style="min-width:140px;text-align:left">Todos los meses ▾</button>
+            <div class="multi-sel-dropdown" id="paro-mes-dd"></div>
+          </div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:4px">
@@ -2138,7 +2139,9 @@ function updateParoRazonBtn() {
 }
 function clearParoPanel() {
   SEL_RAZONES.clear(); SEL_DIAS_PARO.clear(); SEL_PROCESOS.clear(); SEL_MAQ_PARO.clear();
-  document.getElementById('paro-fp-mes').value='';
+  SEL_MESES_PARO.clear();
+  document.querySelectorAll('#paro-mes-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
+  updateMesMultiBtn('paro-mes-dd');
   _updateMaqBtn('paro-maq-btn', SEL_MAQ_PARO);
   document.querySelectorAll('#paro-razones-list input,#paro-dia-dd input,#paro-proc-list input,#paro-maq-dd input').forEach(cb=>cb.checked=false);
   const allChk = document.getElementById('paro-razon-all');
@@ -3010,7 +3013,8 @@ function populateAllFilters() {
   // Reporte Diario
   buildRdMaqDd(maqs);
   // Paros panel
-  fillSel('paro-fp-mes', meses.map(cap), 'Mes');
+  registrarFiltroMes('paro-mes-dd', 'paro-mes-btn', SEL_MESES_PARO, renderParos);
+  buildMesMultiDd('paro-mes-dd', meses);
   buildParoMaqDd(maqs);
   buildParoDiaDd(dias);
   // Costos panel — usa meses y días derivados de FECHAS SEGUN TURNO
@@ -3150,10 +3154,10 @@ function filterCostos() {
   });
 }
 function filterParo() {
-  const m   = (getVal('paro-fp-mes')||getVal('g-mes')).toLowerCase();
+  const m   = SEL_MESES_PARO.size ? SEL_MESES_PARO : SEL_MESES;
   const dias = SEL_DIAS_PARO.size ? SEL_DIAS_PARO : SEL_DIAS;
   return DATA.prod.filter(r =>
-    (!m        || (r._mesTurno || r._mes) === m) &&
+    (mesMatch(m, r._mesTurno || r._mes)) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_PARO.size || SEL_MAQ_PARO.has(String(r._maq))) &&
     (!SEL_RAZONES.size || SEL_RAZONES.has(String(r['RAZON PARO']||'').trim())) &&
@@ -6961,8 +6965,8 @@ async function exportPDFParos(shareMode = false) {
     const pageW=210, pageH=297, ml=14, mr=14, usableW=pageW-ml-mr;
     let y = 0;
 
-    const mesFiltro = getVal('paro-fp-mes') || getVal('g-mes');
-    const mesLabel  = mesFiltro ? cap(mesFiltro) : 'Todos los meses';
+    const _mesEfectParo = SEL_MESES_PARO.size ? SEL_MESES_PARO : SEL_MESES;
+    const mesLabel  = _mesEfectParo.size ? [..._mesEfectParo].map(cap).join(', ') : 'Todos los meses';
     const fechaGen  = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 
     // ── datos (mismos cálculos que renderParos) ──
