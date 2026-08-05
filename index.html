@@ -439,12 +439,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================= REPORTE DIARIO == -->
     <div class="section" id="sec-reporte-diario">
       <div class="filter-bar">
-        <select id="rd-f-mes">
-          <option value="">Todos los meses</option>
-          <option>Enero</option><option>Febrero</option><option>Marzo</option><option>Abril</option>
-          <option>Mayo</option><option>Junio</option><option>Julio</option><option>Agosto</option>
-          <option>Septiembre</option><option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
-        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="rd-mes-btn" onclick="toggleMesMultiDD('rd-mes-dd', event)">Todos los meses ▾</button>
+          <div class="multi-sel-dropdown" id="rd-mes-dd"></div>
+        </div>
         <select id="rd-f-dia"><option value="">Todos los días</option></select>
         <select id="rd-f-turno">
           <option value="">Todos los turnos</option>
@@ -459,7 +457,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div class="multi-sel-dropdown" id="rd-maq-dd"></div>
         </div>
         <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
-        <button class="btn-clear" onclick="clearFilters('rd');clearRdMaqs();renderReporteDiario()">Limpiar</button>
+        <button class="btn-clear" onclick="clearFilters('rd');clearRdMaqs();clearMesMulti('rd-mes-dd')">Limpiar</button>
       </div>
       <div id="rd-dup-note"></div>
       <!-- OEE ensayo -->
@@ -3013,6 +3011,8 @@ function populateAllFilters() {
   // OEE section
   buildOeeMaqDd(maqs);
   // Reporte Diario
+  registrarFiltroMes('rd-mes-dd', 'rd-mes-btn', SEL_MESES_RD, renderReporteDiario);
+  buildMesMultiDd('rd-mes-dd', MESES_CAP);
   buildRdMaqDd(maqs);
   // Plan vs Real Referencias
   registrarFiltroMes('pref-mes-dd', 'pref-mes-btn', SEL_MESES_PREF, renderPlanRef);
@@ -5106,11 +5106,10 @@ function _oeeCard(titulo, oee, disp, rend, cal, info) {
 }
 
 // =======================================================
-function _rdFilter(rows, fMes, fDia, fTurno, selMaq) {
-  const m = fMes.toLowerCase();
+function _rdFilter(rows, mesSet, fDia, fTurno, selMaq) {
   return rows.filter(r => {
-    const mes = (r._mesTurno || r._mes || '').toLowerCase();
-    if (m     && mes                      !== m)     return false;
+    const mes = (r._mesTurno || r._mes || '');
+    if (!mesMatch(mesSet, mes))            return false;
     if (fDia  && String(r._diaTurno)      !== fDia)  return false;
     if (fTurno && String(r._turno)        !== fTurno) return false;
     if (selMaq.size && !selMaq.has(String(r._maq)))  return false;
@@ -5123,15 +5122,13 @@ function renderReporteDiario() {
   // (sin mes); si se ven varios meses juntos, el mismo número de día de meses
   // distintos colapsaría en un slot. Acotar a un mes lo evita (igual que el
   // Reporte Compacto arranca en el último día).
-  const _mesSelEl = document.getElementById('rd-f-mes');
-  if (_mesSelEl && !_mesSelEl.dataset.def) {
-    _mesSelEl.dataset.def = '1';
+  if (!SEL_MESES_RD.size && !window._rdMesDefaulted) {
+    window._rdMesDefaulted = true;
     const _last = (DATA.prod||[]).map(r=>r._fechaKey).filter(Boolean).sort().pop();
     const _lastRow = _last ? (DATA.prod||[]).find(r=>r._fechaKey===_last) : null;
     const _mn = _lastRow && _lastRow._mesTurno ? String(_lastRow._mesTurno).toLowerCase() : '';
-    if (_mn) [..._mesSelEl.options].forEach(o => { if (o.text.toLowerCase() === _mn) _mesSelEl.value = o.value; });
+    if (_mn) { SEL_MESES_RD.add(_mn); updateMesMultiBtn('rd-mes-dd'); buildMesMultiDd('rd-mes-dd', MESES_CAP); }
   }
-  const fMes   = (document.getElementById('rd-f-mes')?.value   || '').trim();
   const fDia   = (document.getElementById('rd-f-dia')?.value   || '').trim();
   const fTurno = (document.getElementById('rd-f-turno')?.value || '').trim();
 
@@ -5142,15 +5139,14 @@ function renderReporteDiario() {
       .forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
   }
 
-  const rows = _rdFilter(DATA.prod, fMes, fDia, fTurno, SEL_MAQ_RD);
+  const rows = _rdFilter(DATA.prod, SEL_MESES_RD, fDia, fTurno, SEL_MAQ_RD);
   const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
 
   // ── Aviso de reportes duplicados excluidos (mismos filtros del panel) ──
   const dupEl = document.getElementById('rd-dup-note');
   if (dupEl) {
-    const fMesLow = fMes.toLowerCase();
     const dups = (DATA.dupes || []).filter(d =>
-      (!fMesLow || String(d._mesTurno || d._mes || '').toLowerCase() === fMesLow) &&
+      (mesMatch(SEL_MESES_RD, d._mesTurno || d._mes || '')) &&
       (!fDia   || String(d._diaTurno || '') === fDia) &&
       (!fTurno || String(d._turno || '') === fTurno) &&
       (!SEL_MAQ_RD.size || SEL_MAQ_RD.has(String(d._maq || ''))));
@@ -5283,7 +5279,6 @@ function renderReporteDiario() {
   const maqNorm = {};  // nombre_normalizado → clave en oeeByMaq
   Object.keys(oeeByMaq).forEach(k => { maqNorm[String(k).trim().toLowerCase()] = k; });
 
-  const ncMesLow = fMes.toLowerCase();
   DATA.nc.forEach(r => {
     // _maq primero (derivado en el parseo, robusto): el header de la hoja NC
     // llega con encoding dañado ("MÃ�QUINA") y el lookup textual nunca coincide,
@@ -5291,8 +5286,8 @@ function renderReporteDiario() {
     const rawMaq = String(r._maq ?? r['MÁQUINA'] ?? r['MAQUINA'] ?? '').trim();
     const maqKey = maqNorm[rawMaq.toLowerCase()];
     if (!rawMaq || !maqKey) return;
-    const mes = String(r['MES '] || r['MES'] || '').trim().toLowerCase();
-    if (fMes && mes !== ncMesLow) return;
+    const mes = String(r['MES '] || r['MES'] || '').trim();
+    if (!mesMatch(SEL_MESES_RD, mes)) return;
     if (fDia && (!r._diaTurno || String(r._diaTurno) !== fDia)) return;
     if (fTurno && r['TURNO'] && String(r['TURNO']).trim() !== fTurno) return;
     const nc = pNum(r['CANTIDAD NC']);
