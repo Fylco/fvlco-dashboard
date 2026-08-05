@@ -443,7 +443,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <button class="multi-sel-btn" id="rd-mes-btn" onclick="toggleMesMultiDD('rd-mes-dd', event)">Todos los meses ▾</button>
           <div class="multi-sel-dropdown" id="rd-mes-dd"></div>
         </div>
-        <select id="rd-f-dia"><option value="">Todos los días</option></select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="rd-dia-btn" onclick="toggleRdDiaDD(event)">Todos los días ▾</button>
+          <div class="multi-sel-dropdown" id="rd-dia-dd"></div>
+        </div>
         <select id="rd-f-turno">
           <option value="">Todos los turnos</option>
           <option value="1">Turno 1 — 6:00 AM a 2:00 PM</option>
@@ -457,7 +460,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div class="multi-sel-dropdown" id="rd-maq-dd"></div>
         </div>
         <button class="btn-filter" onclick="renderReporteDiario()">Filtrar</button>
-        <button class="btn-clear" onclick="clearFilters('rd');clearRdMaqs();clearMesMulti('rd-mes-dd')">Limpiar</button>
+        <button class="btn-clear" onclick="clearFilters('rd');clearRdMaqs();clearRdDias();clearMesMulti('rd-mes-dd')">Limpiar</button>
       </div>
       <div id="rd-dup-note"></div>
       <!-- OEE ensayo -->
@@ -1729,6 +1732,7 @@ let SEL_RAZONES   = new Set();
 let SEL_PROCESOS  = new Set();
 let SEL_DIAS_PARO   = new Set();
 let SEL_DIAS_COSTOS = new Set();
+let SEL_DIAS_RD     = new Set();
 let SEL_CAUSAS    = new Set();
 // ── Multi-selección de máquina (por pestaña) ──
 let SEL_MAQ_OEE    = new Set();
@@ -2279,6 +2283,38 @@ function clearRdMaqs() {
   SEL_MAQ_RD.clear();
   document.querySelectorAll('#rd-maq-dd input').forEach(cb=>cb.checked=false);
   _updateMaqBtn('rd-maq-btn', SEL_MAQ_RD);
+}
+function toggleRdDiaDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('rd-dia-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
+}
+function toggleRdDia(dia) {
+  if (SEL_DIAS_RD.has(dia)) SEL_DIAS_RD.delete(dia); else SEL_DIAS_RD.add(dia);
+  updateRdDiaBtn();
+  renderReporteDiario();
+}
+function clearRdDias() {
+  SEL_DIAS_RD.clear();
+  document.querySelectorAll('#rd-dia-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
+  updateRdDiaBtn();
+  renderReporteDiario();
+}
+function updateRdDiaBtn() {
+  const btn = document.getElementById('rd-dia-btn');
+  if (!btn) return;
+  if (SEL_DIAS_RD.size===0) { btn.textContent='Todos los días ▾'; btn.classList.remove('active'); }
+  else { btn.textContent=`${SEL_DIAS_RD.size} día(s) ▾`; btn.classList.add('active'); }
+}
+function buildRdDiaDd(dias) {
+  const dd = document.getElementById('rd-dia-dd');
+  if (!dd) return;
+  dd.innerHTML = dias.map(d=>`
+    <label class="ms-item">
+      <input type="checkbox" onchange="toggleRdDia('${d}')" ${SEL_DIAS_RD.has(d)?'checked':''}>
+      Día ${d}
+    </label>`).join('');
 }
 function buildRdMaqDd(maqs) { _buildMaqDd('rd-maq-dd', maqs, 'toggleRdMaq'); }
 
@@ -3013,6 +3049,7 @@ function populateAllFilters() {
   // Reporte Diario
   registrarFiltroMes('rd-mes-dd', 'rd-mes-btn', SEL_MESES_RD, renderReporteDiario);
   buildMesMultiDd('rd-mes-dd', MESES_CAP);
+  buildRdDiaDd(dias);
   buildRdMaqDd(maqs);
   // Plan vs Real Referencias
   registrarFiltroMes('pref-mes-dd', 'pref-mes-btn', SEL_MESES_PREF, renderPlanRef);
@@ -5106,11 +5143,11 @@ function _oeeCard(titulo, oee, disp, rend, cal, info) {
 }
 
 // =======================================================
-function _rdFilter(rows, mesSet, fDia, fTurno, selMaq) {
+function _rdFilter(rows, mesSet, diaSet, fTurno, selMaq) {
   return rows.filter(r => {
     const mes = (r._mesTurno || r._mes || '');
     if (!mesMatch(mesSet, mes))            return false;
-    if (fDia  && String(r._diaTurno)      !== fDia)  return false;
+    if (diaSet.size && !diaSet.has(String(r._diaTurno||''))) return false;
     if (fTurno && String(r._turno)        !== fTurno) return false;
     if (selMaq.size && !selMaq.has(String(r._maq)))  return false;
     return true;
@@ -5129,17 +5166,9 @@ function renderReporteDiario() {
     const _mn = _lastRow && _lastRow._mesTurno ? String(_lastRow._mesTurno).toLowerCase() : '';
     if (_mn) { SEL_MESES_RD.add(_mn); updateMesMultiBtn('rd-mes-dd'); buildMesMultiDd('rd-mes-dd', MESES_CAP); }
   }
-  const fDia   = (document.getElementById('rd-f-dia')?.value   || '').trim();
   const fTurno = (document.getElementById('rd-f-turno')?.value || '').trim();
 
-  // Populate selectors once
-  const diaEl = document.getElementById('rd-f-dia');
-  if (diaEl && diaEl.options.length <= 1) {
-    [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b))
-      .forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent='Día '+d; diaEl.appendChild(o); });
-  }
-
-  const rows = _rdFilter(DATA.prod, SEL_MESES_RD, fDia, fTurno, SEL_MAQ_RD);
+  const rows = _rdFilter(DATA.prod, SEL_MESES_RD, SEL_DIAS_RD, fTurno, SEL_MAQ_RD);
   const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
 
   // ── Aviso de reportes duplicados excluidos (mismos filtros del panel) ──
@@ -5147,7 +5176,7 @@ function renderReporteDiario() {
   if (dupEl) {
     const dups = (DATA.dupes || []).filter(d =>
       (mesMatch(SEL_MESES_RD, d._mesTurno || d._mes || '')) &&
-      (!fDia   || String(d._diaTurno || '') === fDia) &&
+      (!SEL_DIAS_RD.size || SEL_DIAS_RD.has(String(d._diaTurno || ''))) &&
       (!fTurno || String(d._turno || '') === fTurno) &&
       (!SEL_MAQ_RD.size || SEL_MAQ_RD.has(String(d._maq || ''))));
     if (!dups.length) { dupEl.innerHTML = ''; }
@@ -5288,7 +5317,7 @@ function renderReporteDiario() {
     if (!rawMaq || !maqKey) return;
     const mes = String(r['MES '] || r['MES'] || '').trim();
     if (!mesMatch(SEL_MESES_RD, mes)) return;
-    if (fDia && (!r._diaTurno || String(r._diaTurno) !== fDia)) return;
+    if (SEL_DIAS_RD.size && (!r._diaTurno || !SEL_DIAS_RD.has(String(r._diaTurno)))) return;
     if (fTurno && r['TURNO'] && String(r['TURNO']).trim() !== fTurno) return;
     const nc = pNum(r['CANTIDAD NC']);
     if (nc > 0) oeeByMaq[maqKey]._nc += nc;
