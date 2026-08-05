@@ -2575,10 +2575,15 @@ function normalizeProd(r) {
 // las vistas: ej. 8-jul maq 4, caja 11 orden 1260 reportada 3×8.000 → el
 // turno quedó con 52.000 producidas sobre 51.200 programables (imposible).
 // Regla por grupo (orden, máquina, caja):
-//   1. Reportes a <10 min uno del otro → corrección/reenvío: vale el ÚLTIMO.
+//   1. Reportes a <10 min uno del otro, MISMO turno → corrección/reenvío: vale el ÚLTIMO.
 //   2. Misma cantidad repetida en el mismo día+turno → vale solo el último.
-// Los splits legítimos (caja llenada entre dos turnos con parciales, ej.
-// 6.000 T2 + 2.000 T3) no cumplen ninguna regla y se conservan intactos.
+// Los splits legítimos entre turnos consecutivos (T1 deja saldo para T2, T2
+// para T3, T3 para T1) se conservan SIEMPRE, aunque el reporte de cierre de
+// un turno y el de apertura del siguiente caigan a <10 min uno del otro —
+// ej. 6.000 T2 + 2.000 T3 reportados casi al mismo tiempo del cambio de
+// turno son DOS producciones reales, no un reenvío (caso real 5-ago-2026,
+// Máquina 6, orden 1243, caja 11: 3.300 T1 se excluía por error solo por
+// caer <10 min del siguiente reporte). Por eso la regla 1 exige turno IGUAL.
 // Los descartados se sacan de DATA.prod y quedan en DATA.dupes, visibles en
 // Reporte Diario para que se corrijan en el sheet de origen.
 function dedupeProd(rows) {
@@ -2594,10 +2599,11 @@ function dedupeProd(rows) {
   Object.values(groups).forEach(g => {
     if (g.length < 2) return;
     g.sort((a, b) => (a._ts || 0) - (b._ts || 0));
-    // Pase 1: reenvíos/correcciones en <10 min → se conserva el más reciente
+    // Pase 1: reenvíos/correcciones en <10 min, MISMO turno → se conserva el más reciente
     for (let i = 0; i < g.length - 1; i++) {
       const a = g[i], b = g[i + 1];
       if (a._dup || a._ts == null || b._ts == null) continue;
+      if (a._turno !== b._turno) continue;   // turnos distintos → saldo entre turnos, no reenvío
       if (b._ts - a._ts <= VENTANA_MS) marcar(a, 'corrección/reenvío a <10 min');
     }
     // Pase 2: misma caja con la misma cantidad en el mismo día+turno
