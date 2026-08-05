@@ -5638,6 +5638,15 @@ async function exportCompactImage() {
 // comparte al instante (sin await previo, con el gesto fresco del nuevo clic).
 let _rcShareCache = { key:null, file:null };
 
+// Saludo según la hora REAL de envío (no la fecha del reporte): 6:00am-12:00pm
+// Buenos días, 12:01pm-6:00pm Buenas tardes, 6:00pm-6:00am Buenas noches.
+function saludoPorHora() {
+  const h = new Date().getHours();
+  if (h >= 6 && h < 12) return 'Buenos días';
+  if (h >= 12 && h < 18) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
 async function shareCompactImage() {
   const el  = document.getElementById('rc-content');
   const btn = document.getElementById('rc-share-btn');
@@ -5647,7 +5656,7 @@ async function shareCompactImage() {
   const turno = (document.getElementById('rc-f-turno')?.value || '');
   const key   = `${fecha}|${turno}`;
   const fname = `Reporte_Compacto_${fecha}.png`;
-  const shareData = f => ({ files:[f], title:'Reporte de Producción FVLco', text:`Reporte de Producción FVLco — ${fecha}` });
+  const shareData = f => ({ files:[f], title:'Reporte de Producción FVLco', text:`${saludoPorHora()}, aquí el Reporte de Producción FVLco — ${fecha}` });
   const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
 
   // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
