@@ -1734,6 +1734,13 @@ let SEL_MAQ_RD      = new Set();
 let SEL_MAQ_NC      = new Set();
 let SEL_MAQ_PARO    = new Set();
 let SEL_MAQ_COSTOS  = new Set();
+// ── Multi-selección de mes (por pestaña) — filtros de reporte histórico ──
+let SEL_MESES         = new Set();  // filtro global (Informe de Cierre)
+let SEL_MESES_COSTOS  = new Set();
+let SEL_MESES_PARO    = new Set();
+let SEL_MESES_NC      = new Set();
+let SEL_MESES_PREF    = new Set();
+let SEL_MESES_RD      = new Set();
 
 // Helpers para columnas H, I, J del sheet "lista"
 // Detección dinámica de columnas H/I/J del sheet "lista" (insensible a espacios/tildes/mayúsculas)
@@ -3053,6 +3060,64 @@ function turnoNum(t)  { return ({'1':'1','2':'2','3':'3','4':'1','5':'2'})[Strin
 function turnoTag(t)  { return ({'4':'Diurno','5':'Nocturno'})[String(t)] || ''; }
 // Etiqueta de turno = SOLO el número entero (sin texto Diurno/Nocturno)
 function turnoLabel(t){ return turnoNum(t); }
+
+// ── Filtro de mes de selección múltiple (genérico, reutilizado en 6 pestañas) ──
+// Registro: ddId -> { selSet, btnId, onChange }. Los checkboxes del dropdown
+// llaman a toggleMesMulti(ddId, mes) con el ddId como clave, así una sola
+// función sirve para las 6 instancias sin duplicar código por pestaña.
+const MES_MULTI_REG = {};
+
+function registrarFiltroMes(ddId, btnId, selSet, onChange) {
+  MES_MULTI_REG[ddId] = { selSet, btnId, onChange };
+}
+
+// true si no hay filtro (set vacío = "todos") o si mesStr está en el set
+// (comparación insensible a mayúsculas — los Set guardan valores en minúsculas).
+function mesMatch(selSet, mesStr) {
+  return !selSet.size || selSet.has(String(mesStr || '').toLowerCase());
+}
+
+function buildMesMultiDd(ddId, meses) {
+  const dd = document.getElementById(ddId);
+  const reg = MES_MULTI_REG[ddId];
+  if (!dd || !reg) return;
+  dd.innerHTML = meses.map(m => {
+    const ml = m.toLowerCase();
+    return `<label class="ms-item">
+      <input type="checkbox" onchange="toggleMesMulti('${ddId}','${ml}')" ${reg.selSet.has(ml)?'checked':''}>
+      <span>${cap(ml)}</span>
+    </label>`;
+  }).join('');
+}
+
+function toggleMesMultiDD(ddId, e) {
+  e.stopPropagation();
+  const dd = document.getElementById(ddId);
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
+}
+
+function toggleMesMulti(ddId, mes) {
+  const reg = MES_MULTI_REG[ddId]; if (!reg) return;
+  if (reg.selSet.has(mes)) reg.selSet.delete(mes); else reg.selSet.add(mes);
+  updateMesMultiBtn(ddId);
+  reg.onChange();
+}
+
+function clearMesMulti(ddId) {
+  const reg = MES_MULTI_REG[ddId]; if (!reg) return;
+  reg.selSet.clear();
+  document.querySelectorAll(`#${ddId} input[type=checkbox]`).forEach(cb => cb.checked = false);
+  updateMesMultiBtn(ddId);
+  reg.onChange();
+}
+
+function updateMesMultiBtn(ddId) {
+  const reg = MES_MULTI_REG[ddId]; if (!reg) return;
+  const btn = document.getElementById(reg.btnId); if (!btn) return;
+  if (reg.selSet.size === 0) { btn.textContent = 'Todos los meses ▾'; btn.classList.remove('active'); }
+  else { btn.textContent = `${reg.selSet.size} mes(es) ▾`; btn.classList.add('active'); }
+}
 
 function gMes() { return getVal('g-mes').toLowerCase(); }
 function gDia() { return SEL_DIAS; } // Set
