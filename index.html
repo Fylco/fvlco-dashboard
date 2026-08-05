@@ -795,9 +795,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div class="filter-panel">
             <div class="fp-title">Filtros</div>
             <div class="fp-label">Mes</div>
-            <select id="costos-f-mes" class="fp-select" onchange="renderCostos()">
-              <option value="">Todos los meses</option>
-            </select>
+            <div class="multi-sel-wrap">
+              <button class="multi-sel-btn" id="costos-mes-btn" onclick="toggleMesMultiDD('costos-mes-dd', event)" style="width:100%;text-align:left">Todos los meses ▾</button>
+              <div class="multi-sel-dropdown" id="costos-mes-dd"></div>
+            </div>
+            <button onclick="clearMesMulti('costos-mes-dd')" style="margin-top:4px;background:none;border:1px solid #374151;color:#9CA3AF;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.68rem;width:100%">✕ Limpiar mes</button>
             <div class="fp-label" style="margin-top:10px">Máquina</div>
             <div class="multi-sel-wrap">
               <button class="multi-sel-btn" id="costos-maq-btn" onclick="toggleCostosMaqDD(event)" style="width:100%;text-align:left">Todas las máquinas ▾</button>
@@ -3014,7 +3016,8 @@ function populateAllFilters() {
   // Costos panel — usa meses y días derivados de FECHAS SEGUN TURNO
   const mesesTurno = [...new Set(DATA.prod.map(r=>r._mesTurno).filter(Boolean))];
   const diasTurno  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
-  fillSel('costos-f-mes', (mesesTurno.length ? mesesTurno : meses).map(cap), 'Mes');
+  registrarFiltroMes('costos-mes-dd', 'costos-mes-btn', SEL_MESES_COSTOS, renderCostos);
+  buildMesMultiDd('costos-mes-dd', mesesTurno.length ? mesesTurno : meses);
   buildCostosMaqDd(maqs);
   buildCostosDiaDd(diasTurno.length ? diasTurno : dias);
   // Razones de paro
@@ -3137,11 +3140,11 @@ function filterProd() {
   );
 }
 function filterCostos() {
-  const m   = (getVal('costos-f-mes') || getVal('g-mes')).toLowerCase();
+  const m   = SEL_MESES_COSTOS.size ? SEL_MESES_COSTOS : SEL_MESES;
   const dias = SEL_DIAS_COSTOS.size ? SEL_DIAS_COSTOS : SEL_DIAS;
   return DATA.prod.filter(r => {
     const mes = r._mesTurno || r._mes || '';
-    return (!m    || mes === m) &&
+    return mesMatch(m, mes) &&
            (!dias.size || dias.has(r._diaTurno||'')) &&
            (!SEL_MAQ_COSTOS.size || SEL_MAQ_COSTOS.has(String(r._maq)));
   });
