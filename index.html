@@ -524,13 +524,12 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================= PLAN REFERENCIAS == -->
     <div class="section" id="sec-plan-ref">
       <div class="filter-bar">
-        <select id="pref-f-mes"><option value="">Todos los meses</option>
-          <option>Enero</option><option>Febrero</option><option>Marzo</option><option>Abril</option>
-          <option>Mayo</option><option>Junio</option><option>Julio</option><option>Agosto</option>
-          <option>Septiembre</option><option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
-        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="pref-mes-btn" onclick="toggleMesMultiDD('pref-mes-dd', event)">Todos los meses ▾</button>
+          <div class="multi-sel-dropdown" id="pref-mes-dd"></div>
+        </div>
         <button class="btn-filter" onclick="renderPlanRef()">Filtrar</button>
-        <button class="btn-clear" onclick="clearFilters('pref');renderPlanRef()">Limpiar</button>
+        <button class="btn-clear" onclick="clearMesMulti('pref-mes-dd')">Limpiar</button>
       </div>
       <div class="chart-card" style="margin-bottom:18px"><div class="section-title">Plan vs Real por Referencia</div><div style="height:320px"><canvas id="pref-chart"></canvas></div></div>
       <div class="chart-card" style="overflow-x:auto">
@@ -3015,6 +3014,9 @@ function populateAllFilters() {
   buildOeeMaqDd(maqs);
   // Reporte Diario
   buildRdMaqDd(maqs);
+  // Plan vs Real Referencias
+  registrarFiltroMes('pref-mes-dd', 'pref-mes-btn', SEL_MESES_PREF, renderPlanRef);
+  buildMesMultiDd('pref-mes-dd', MESES_CAP);
   // Paros panel
   registrarFiltroMes('paro-mes-dd', 'paro-mes-btn', SEL_MESES_PARO, renderParos);
   buildMesMultiDd('paro-mes-dd', meses);
@@ -4149,8 +4151,8 @@ function renderPlanMensual() {
 
 // ── PLAN REFERENCIAS
 function renderPlanRef() {
-  const mesSel = getVal('pref-f-mes');
-  const meses = mesSel ? [mesSel] : MESES_CAP;
+  const _mesesEfect = SEL_MESES_PREF.size ? SEL_MESES_PREF : SEL_MESES;
+  const meses = _mesesEfect.size ? [..._mesesEfect].map(cap) : MESES_CAP;
   // Elimina TODOS los espacios para comparar: "38 MM" == "38MM", "CON LINER" == "CONLINER"
   const normRef = s => String(s||'').trim().toUpperCase().replace(/\s+/g,'');
 
@@ -4175,7 +4177,7 @@ function renderPlanRef() {
   });
 
   // Producción filtrada
-  const prodFilt = DATA.prod.filter(r => !mesSel || r._mes === mesSel.toLowerCase());
+  const prodFilt = DATA.prod.filter(r => mesMatch(_mesesEfect, r._mes));
 
   // Producción real agrupada por producto (normalizado)
   const realMap = {};  // normRef → {ref, real}
@@ -4192,7 +4194,7 @@ function renderPlanRef() {
   (DATA.maquilas||[]).forEach(m => {
     const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
     if (!mm) return;
-    if (mesSel && _MES_IDX2[parseInt(mm[2])] !== mesSel.toLowerCase()) return;
+    if (!mesMatch(_mesesEfect, _MES_IDX2[parseInt(mm[2])])) return;
     const k = normRef(m.referencia);
     if (!k) return;
     const cant = parseFloat(String(m.cantidad||'').replace(/[^0-9.-]/g,''))||0;
