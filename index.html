@@ -297,9 +297,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span id="global-filter-group" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="gf-label" style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
-        <select id="g-mes" onchange="applyGlobalFilter()" style="background:#1F2937;border:1px solid #374151;border-radius:6px;padding:4px 10px;color:#EEEEEE;font-size:.73rem;outline:none;font-family:Tahoma,Arial,sans-serif">
-          <option value="">Todos los meses</option>
-        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="g-mes-btn" onclick="toggleMesMultiDD('g-mes-dd', event)">Todos los meses ▾</button>
+          <div class="multi-sel-dropdown" id="g-mes-dd"></div>
+        </div>
         <div class="multi-sel-wrap">
           <button class="multi-sel-btn" id="g-dia-btn" onclick="toggleDiaDD(event)">Todos los días ▾</button>
           <div class="multi-sel-dropdown" id="g-dia-dd"></div>
@@ -2997,7 +2998,8 @@ function populateAllFilters() {
   const maqs  = [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort();
   const dias  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(x=>x!=null&&x!==''))].sort((a,b)=>Number(a)-Number(b));
   // Global top bar
-  fillSel('g-mes', meses.map(cap), 'Mes');
+  registrarFiltroMes('g-mes-dd', 'g-mes-btn', SEL_MESES, applyGlobalFilter);
+  buildMesMultiDd('g-mes-dd', meses);
   buildDiaDd(dias);
   const procesos = [...new Set(DATA.prod.filter(r=>r._paro>0).map(_getProc).filter(Boolean))].sort();
   buildGProcDd(procesos);
@@ -3119,14 +3121,14 @@ function updateMesMultiBtn(ddId) {
   else { btn.textContent = `${reg.selSet.size} mes(es) ▾`; btn.classList.add('active'); }
 }
 
-function gMes() { return getVal('g-mes').toLowerCase(); }
+function gMes() { return SEL_MESES; }
 function gDia() { return SEL_DIAS; } // Set
 
 function filterProd() {
   const m = gMes(); const dias = gDia();
   const t = getVal('oee-f-turno');
   return DATA.prod.filter(r =>
-    (!m        || r._mes === m) &&
+    (mesMatch(m, r._mes)) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_OEE.size || SEL_MAQ_OEE.has(String(r._maq))) &&
     (!t        || turnoNum(r._turno) === turnoNum(t)) &&
@@ -3169,7 +3171,7 @@ function filterNC() {
 function filterVentas() {
   const m = gMes(); const c = getVal('otif-f-cliente');
   return DATA.ventas.filter(r =>
-    (!m || String(r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
+    (mesMatch(m, String(r['MES ']||r['MES']||'').trim())) &&
     (!c || (r['Nombre tercero']||'').trim() === c)
   );
 }
@@ -3295,8 +3297,7 @@ function renderResumen() {
   const oee  = calcOEEFromDRC(d);
   const otif = calcOTIF(vnts);
   const accDias = getAccDias();
-  const mesSel  = getVal('g-mes');
-  const mesLabel = mesSel ? ` — ${cap(mesSel)}` : '';
+  const mesLabel = SEL_MESES.size ? ` — ${[...SEL_MESES].map(cap).join(', ')}` : '';
 
   document.getElementById('resumen-kpis').innerHTML =
     kpiCard('OEE Final', pct(oee), oee>=85?'#10B981':oee>=65?'#F59E0B':'#EF4444','Meta ≥ 85%','fa-solid fa-circle-nodes') +
@@ -3311,7 +3312,7 @@ function renderResumen() {
   if (_covElR) _covElR.innerHTML = coverageNote(d);
 
   // ── Semáforo Plan vs Real + Clientes incumplidos ────────────────────────
-  const meses = mesSel ? [mesSel] : MESES_CAP;
+  const meses = SEL_MESES.size ? [...SEL_MESES].map(cap) : MESES_CAP;
   const normRef = s => String(s||'').trim().toUpperCase().replace(/\s+/g,'');
   const _rk = row => (row['REFERENCIA / PRODUCTO'] || row[''] || Object.values(row)[0] || '').toString().trim();
 
@@ -3342,7 +3343,7 @@ function renderResumen() {
   (DATA.maquilas||[]).forEach(m => {
     const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
     if (!mm) return;
-    if (mesSel && _MES_IDX[parseInt(mm[2])] !== mesSel.toLowerCase()) return;
+    if (!mesMatch(SEL_MESES, _MES_IDX[parseInt(mm[2])])) return;
     const k = normRef(m.referencia);
     if (!k) return;
     const cant = parseFloat(String(m.cantidad||'').replace(/[^0-9.-]/g,''))||0;
@@ -3422,7 +3423,7 @@ function renderResumen() {
   // para que siempre muestre TODAS las máquinas independientemente del filtro activo
   const _mSel = gMes(); const _dias = gDia();
   const dAllMaqs = DATA.prod.filter(r =>
-    (!_mSel || r._mes === _mSel) && (!_dias.size || _dias.has(r._diaTurno||''))
+    (mesMatch(_mSel, r._mes)) && (!_dias.size || _dias.has(r._diaTurno||''))
   );
   const maqs = [...new Set(dAllMaqs.map(r=>r._maq).filter(Boolean))].sort();
   const oeeByMaqVal = maqs.map(m => calcOEEFromDRC(dAllMaqs.filter(r=>r._maq==m)) ?? 0);
@@ -3642,7 +3643,7 @@ function renderResumen() {
       </tr>`;
     }).join('');
 
-    const _periodoUnd = mesSel ? `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7;margin-left:10px">📅 ${cap(mesSel)}</span>` : `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;margin-left:10px">⚠️ Todos los meses — filtra por mes para ver un período específico</span>`;
+    const _periodoUnd = SEL_MESES.size ? `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7;margin-left:10px">📅 ${[...SEL_MESES].map(cap).join(', ')}</span>` : `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;margin-left:10px">⚠️ Todos los meses — filtra por mes para ver un período específico</span>`;
     undPerdEl.innerHTML = `
       <div style="background:#FFFFFF;border:1px solid #FECACA;border-radius:10px;overflow:hidden">
         <div style="background:#FEF2F2;padding:12px 18px;border-bottom:2px solid #FECACA;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -3810,15 +3811,15 @@ function renderResumen() {
     const _MES2 = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
     const maqData = (DATA.maquilas||[]).filter(m => {
       const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-      if (!mm) return !mesSel;
-      if (mesSel && _MES2[parseInt(mm[2])] !== mesSel.toLowerCase()) return false;
+      if (!mm) return !SEL_MESES.size;
+      if (!mesMatch(SEL_MESES, _MES2[parseInt(mm[2])])) return false;
       return true;
     });
     const totalMaq = maqData.reduce((s,m)=>s+_pN(m.cantidad),0);
     const byCli = {};
     maqData.forEach(m => { (byCli[m.cliente]||=[]).push(m); });
-    const _maqPeriodo = mesSel
-      ? `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD;margin-left:10px">📅 ${cap(mesSel)}</span>`
+    const _maqPeriodo = SEL_MESES.size
+      ? `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD;margin-left:10px">📅 ${[...SEL_MESES].map(cap).join(', ')}</span>`
       : `<span style="font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:20px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;margin-left:10px">⚠️ Todos los meses</span>`;
 
     if (!maqData.length) {
@@ -5823,9 +5824,9 @@ function renderMaquilas() {
   const _MES = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const data = (DATA.maquilas || []).filter(m => {
     const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-    if (!mm) return !_gm && !_gd.size;            // sin fecha válida: solo si no hay filtro
+    if (!mm) return !_gm.size && !_gd.size;       // sin fecha válida: solo si no hay filtro
     const dia = String(parseInt(mm[1])), mes = _MES[parseInt(mm[2])] || '';
-    if (_gm && mes !== _gm) return false;
+    if (!mesMatch(_gm, mes)) return false;
     if (_gd.size && !_gd.has(dia)) return false;
     return true;
   });
@@ -6556,7 +6557,7 @@ async function exportPDF(shareMode = false) {
     const pageW=210, pageH=297, ml=14, mr=14, usableW=pageW-ml-mr;
     let y = 0;
 
-    const mesLabel  = getVal('g-mes') ? cap(getVal('g-mes')) : 'Todos los meses';
+    const mesLabel  = SEL_MESES.size ? [...SEL_MESES].map(cap).join(', ') : 'Todos los meses';
     const diasLabel = SEL_DIAS.size ? [...SEL_DIAS].sort((a,b)=>a-b).join(', ') : 'Todos los días';
     const fechaGen  = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 
@@ -6695,8 +6696,8 @@ async function exportPDF(shareMode = false) {
 
     // ── PLAN VS REAL ─────────────────────────────────────────────────────
     secTitle('Plan vs Real — Cumplimiento por Referencia');
-    const mesSel2  = getVal('pref-f-mes')||getVal('g-mes');
-    const mesesR2  = mesSel2 ? [cap(mesSel2)] : MESES_CAP;
+    const _mesesEfectPref = SEL_MESES_PREF.size ? SEL_MESES_PREF : SEL_MESES;
+    const mesesR2  = _mesesEfectPref.size ? [..._mesesEfectPref].map(cap) : MESES_CAP;
     const _rk2 = row => (row['REFERENCIA / PRODUCTO']||row['']||Object.values(row)[0]||'').toString().trim();
     const planRows2 = DATA.planRef.filter(row=>{ const r=_rk2(row); return r && r.toUpperCase()!=='TOTAL'; });
     const refsData2 = planRows2.map(row => {
@@ -6833,8 +6834,8 @@ async function exportPDF(shareMode = false) {
       const _MES2p = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
       const maqDataP = (DATA.maquilas||[]).filter(m => {
         const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-        if (!mm) return !getVal('g-mes');
-        if (getVal('g-mes') && _MES2p[parseInt(mm[2])] !== getVal('g-mes').toLowerCase()) return false;
+        if (!mm) return !SEL_MESES.size;
+        if (!mesMatch(SEL_MESES, _MES2p[parseInt(mm[2])])) return false;
         return true;
       });
       if (y > pageH-50) addPage('Informe de Cierre de Mes — FVLco');
