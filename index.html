@@ -544,9 +544,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <!-- FILTROS HORIZONTALES (arriba) -->
       <div class="filter-bar" style="align-items:center;background:#111827;border:1px solid #374151;border-radius:10px;padding:10px 14px">
         <span style="font-size:.62rem;font-weight:700;color:#4B5563;text-transform:uppercase;letter-spacing:.1em">Filtros:</span>
-        <select id="nc-fp-mes" class="fp-select" style="width:auto;margin-bottom:0" onchange="renderNC()">
-          <option value="">Todos los meses</option>
-        </select>
+        <div class="multi-sel-wrap">
+          <button class="multi-sel-btn" id="nc-mes-btn" onclick="toggleMesMultiDD('nc-mes-dd', event)">Todos los meses ▾</button>
+          <div class="multi-sel-dropdown" id="nc-mes-dd"></div>
+        </div>
         <div class="multi-sel-wrap">
           <button class="multi-sel-btn" id="nc-dia-btn" onclick="toggleNcDiaDD(event)">Todos los días ▾</button>
           <div class="multi-sel-dropdown" id="nc-dia-dd"></div>
@@ -2224,7 +2225,9 @@ function toggleCausa(c) {
 }
 function clearNcPanel() {
   SEL_CAUSAS.clear(); SEL_DIAS_NC.clear(); SEL_MAQ_NC.clear();
-  document.getElementById('nc-fp-mes').value='';
+  SEL_MESES_NC.clear();
+  document.querySelectorAll('#nc-mes-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
+  updateMesMultiBtn('nc-mes-dd');
   _updateMaqBtn('nc-maq-btn', SEL_MAQ_NC);
   document.querySelectorAll('#nc-causas-list input,#nc-dia-dd input,#nc-maq-dd input').forEach(cb=>cb.checked=false);
   const btn=document.getElementById('nc-dia-btn'); if(btn){btn.textContent='Todos los días ▾';btn.classList.remove('active');}
@@ -3042,7 +3045,8 @@ function populateAllFilters() {
   // r._maq (no el header 'MÁQUINA' directo): esa columna en la hoja NC llega
   // con la Á en una codificación distinta y el lookup textual nunca coincide.
   const ncMaq   = [...new Set(DATA.nc.map(r=>r._maq).filter(Boolean))].sort();
-  fillSel('nc-fp-mes', ncMeses.map(cap), 'Mes');
+  registrarFiltroMes('nc-mes-dd', 'nc-mes-btn', SEL_MESES_NC, renderNC);
+  buildMesMultiDd('nc-mes-dd', ncMeses);
   buildNcMaqDd(ncMaq);
   buildNcDiaDd(dias);
   // Causas NC
@@ -3165,11 +3169,11 @@ function filterParo() {
   );
 }
 function filterNC() {
-  const m   = (getVal('nc-fp-mes')||getVal('g-mes')).toLowerCase();
+  const m   = SEL_MESES_NC.size ? SEL_MESES_NC : SEL_MESES;
   // NC sheet has no DIA column — only use panel's own day filter (SEL_DIAS_NC)
   const dias = SEL_DIAS_NC;
   return DATA.nc.filter(r =>
-    (!m    || String(r['MES ']||r['MES']||'').trim().toLowerCase() === m) &&
+    (mesMatch(m, String(r['MES ']||r['MES']||'').trim())) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_NC.size || SEL_MAQ_NC.has(String(r._maq||''))) &&
     (!SEL_CAUSAS.size || SEL_CAUSAS.has((r['CAUSA']||'').trim()))
@@ -4241,9 +4245,9 @@ function groupNC(col) {
 function renderNC() {
   const d = filterNC();
   // Mes del panel NC (independiente del filtro global)
-  const ncMes = (getVal('nc-fp-mes')||getVal('g-mes')||'').toLowerCase();
+  const ncMes = SEL_MESES_NC.size ? SEL_MESES_NC : SEL_MESES;
   // Producción del MISMO mes → kilos procesados y unidades, para % consistente
-  const prodMes = DATA.prod.filter(r => !ncMes || (r._mes||'') === ncMes);
+  const prodMes = DATA.prod.filter(r => mesMatch(ncMes, r._mes||''));
   const kgProcesados = prodMes.reduce((s,r)=>s+(pNum(r['KILOS CONSUMIDOS'])||0),0);
   const totalProd    = sum(prodMes,'_cant');
 
@@ -4266,7 +4270,7 @@ function renderNC() {
     kpiCard('Total NC (Und)',fmt(totalNC),'#EF4444',`${d.length} registros`,'fa-solid fa-circle-xmark')+
     kpiCard('Kg NC Total',fmt(kgTotal,1),'#8B5CF6',`${pct(pctKgNC)} de lo procesado`,'fa-solid fa-weight-hanging')+
     kpiCard('Pitorro (Rama) kg',fmt(kgPitorro,1),'#F97316',`${pct(kgTotal>0?kgPitorro/kgTotal*100:0)} del NC kg`,'fa-solid fa-code-branch')+
-    kpiCard('Total Kg Procesados',fmt(kgProcesados,1),'#10B981',ncMes?cap(ncMes):'Todos los meses','fa-solid fa-industry')+
+    kpiCard('Total Kg Procesados',fmt(kgProcesados,1),'#10B981',ncMes.size?[...ncMes].map(cap).join(', '):'Todos los meses','fa-solid fa-industry')+
     kpiCard('% NC / Producción',pct(pctNC),'#F59E0B','Meta < 2%','fa-solid fa-percent');
 
   // Pareto causas
