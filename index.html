@@ -5868,39 +5868,39 @@ function renderReporteCompacto() {
     };
     const g = maqMap[maq];
     g.rows.push(r);
-    // t (canonicalizado 4/5 si el turno es parte de un físico de 12h): SOLO
-    // para horas/ventanas (dtSet) — ahí sí hay que unir T1+T4, T2+T4/T5, T3+T5
-    // en un solo bloque físico. tRaw (turno tal cual se digitó, 1/2/3/4/5):
-    // para el desglose de producción por turno — cada turno digitado debe
-    // verse en su propia línea (T1 y T2 NO se suman entre sí solo porque
-    // ambos caen dentro del mismo turno físico de 12h junto a un T4/T5).
+    // t = _turno YA canonicalizado (4/5 cuando el turno digitado forma parte
+    // de un físico de 12h: T1→4, T2 diurno→4, T2 nocturno→5, T3→5). Se usa
+    // para TODO — horas/ventanas (dtSet) Y desglose de producción (porTurno/
+    // porProd) — porque un T1 y un T4 del mismo bloque de 12h son el MISMO
+    // turno físico: deben verse sumados en una sola línea "Turno 4", no en
+    // dos líneas separadas "Turno 1"/"Turno 4" (ver ejemplo del usuario:
+    // T1 9am + T4 11am = un solo turno de 6am-6pm). Ver [[fvlco-turnos-canonicalizacion]].
     const t = String(r._turno||'');
-    const tRaw = String(r._turnoRaw ?? r._turno ?? '');
     if (t) g.turnos.add(t);
     const dia = String(r._diaTurno||'');
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia] ||= new Set()).add(t); }
 
-    // porTurno: solo paros (para capping), sin producción — por turno CRUDO
-    if (!g.porTurno[tRaw]) g.porTurno[tRaw] = { prod:0, paro:0, paroProg:0, paroNoProg:0, razones:[] };
-    g.porTurno[tRaw].prod += pN(r._cant);
-    g.porTurno[tRaw].paro += pN(r._paro);
+    // porTurno: solo paros (para capping), sin producción — por turno canonicalizado
+    if (!g.porTurno[t]) g.porTurno[t] = { prod:0, paro:0, paroProg:0, paroNoProg:0, razones:[] };
+    g.porTurno[t].prod += pN(r._cant);
+    g.porTurno[t].paro += pN(r._paro);
 
-    // porProd: producción y paros por producto + turno CRUDO (captura TODOS los productos de la máquina)
+    // porProd: producción y paros por producto + turno canonicalizado (captura TODOS los productos de la máquina)
     if (!g.porProd[prod]) g.porProd[prod] = {};
-    if (!g.porProd[prod][tRaw]) g.porProd[prod][tRaw] = { prod:0, paro:0, razones:[] };
-    g.porProd[prod][tRaw].prod += pN(r._cant);
-    g.porProd[prod][tRaw].paro += pN(r._paro);
+    if (!g.porProd[prod][t]) g.porProd[prod][t] = { prod:0, paro:0, razones:[] };
+    g.porProd[prod][t].prod += pN(r._cant);
+    g.porProd[prod][t].paro += pN(r._paro);
 
     // Razones de paro: en todos los niveles sin duplicar
     if (pN(r._paro) > 0) {
       const rz = String(r['RAZON PARO'] || r['RAZÓN PARO'] || '').trim();
       if (rz) {
-        if (!g.porTurno[tRaw].razones.includes(rz)) g.porTurno[tRaw].razones.push(rz);
-        if (!g.porProd[prod][tRaw].razones.includes(rz)) g.porProd[prod][tRaw].razones.push(rz);
+        if (!g.porTurno[t].razones.includes(rz)) g.porTurno[t].razones.push(rz);
+        if (!g.porProd[prod][t].razones.includes(rz)) g.porProd[prod][t].razones.push(rz);
         if (!g.razones.includes(rz)) g.razones.push(rz);
       }
-      if (esProgramado(rz)) g.porTurno[tRaw].paroProg += pN(r._paro);
-      else g.porTurno[tRaw].paroNoProg += pN(r._paro);
+      if (esProgramado(rz)) g.porTurno[t].paroProg += pN(r._paro);
+      else g.porTurno[t].paroNoProg += pN(r._paro);
     }
     if (!g.cavTeor)   g.cavTeor   = _cavTeorOf(r);
     if (!g.cicloEst)  g.cicloEst  = pN(r['T. CICLO EST']);
@@ -6125,7 +6125,7 @@ function renderReporteCompacto() {
 
       if (prodThisTurn === 0 && paroThisTurn === 0) return '';
 
-      const label = t === '' ? 'Sin turno' : `Turno ${turnoNum(t)}`;
+      const label = t === '' ? 'Sin turno' : `Turno ${t}`;
       // Una línea por producto: "NOMBRE — cantidad"
       const prodListHtml = prodsThisTurn.map(x =>
         `<div style="padding:1px 0;font-size:.8rem"><span style="color:#374151">${x.prod}</span> — <strong style="color:#111827">${ri(x.q)}</strong></div>`
