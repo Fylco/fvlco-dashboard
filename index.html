@@ -309,7 +309,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         <div class="multi-sel-wrap">
           <button class="multi-sel-btn" id="g-proc-btn" onclick="toggleGProcDD(event)" style="min-width:150px;text-align:left">Todos los procesos ▾</button>
           <div class="multi-sel-dropdown" id="g-proc-dd" style="min-width:220px;max-height:280px;overflow-y:auto">
-            <label class="razon-item" style="border-bottom:1px solid #374151;margin-bottom:4px;padding-bottom:6px;font-weight:600;color:#F3F4F6">
+            <label class="ms-item" style="border-bottom:1px solid #374151;margin-bottom:4px;padding-bottom:6px;font-weight:600;color:#F3F4F6">
               <input type="checkbox" id="g-proc-all" onchange="toggleAllGProc(this)"> Seleccionar todos
             </label>
             <div id="g-proc-list"></div>
@@ -645,7 +645,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div class="multi-sel-wrap">
             <button class="multi-sel-btn" id="paro-proc-btn" onclick="toggleParoProcDD(event)" style="min-width:180px;text-align:left">Todos los procesos ▾</button>
             <div class="multi-sel-dropdown" id="paro-proc-dd" style="min-width:220px;max-height:280px;overflow-y:auto">
-              <label class="razon-item" style="border-bottom:1px solid #374151;margin-bottom:4px;padding-bottom:6px;font-weight:600;color:#F3F4F6">
+              <label class="ms-item" style="border-bottom:1px solid #374151;margin-bottom:4px;padding-bottom:6px;font-weight:600;color:#F3F4F6">
                 <input type="checkbox" id="paro-proc-all" onchange="toggleAllProcesos(this)"> Seleccionar todos
               </label>
               <div id="paro-proc-list"></div>
@@ -2021,7 +2021,7 @@ function buildGProcDd(procesos) {
   const container = document.getElementById('g-proc-list');
   if (!container) return;
   container.innerHTML = procesos.map(p => `
-    <label class="ms-item razon-item">
+    <label class="ms-item">
       <input type="checkbox" data-proc="${p}" onchange="toggleGProc('${p.replace(/'/g,"\\'")}')" ${SEL_PROCESOS.has(p)?'checked':''}>
       <span>${p||'Sin dato'}</span>
     </label>`).join('');
@@ -2190,7 +2190,7 @@ function buildProcList(procesos) {
   const container = document.getElementById('paro-proc-list');
   if (!container) return;
   container.innerHTML = procesos.map(p => `
-    <label class="ms-item razon-item">
+    <label class="ms-item">
       <input type="checkbox" data-proc="${p}" onchange="toggleProceso('${p.replace(/'/g,"\\'")}')" ${SEL_PROCESOS.has(p)?'checked':''}>
       <span>${p}</span>
     </label>`).join('');
