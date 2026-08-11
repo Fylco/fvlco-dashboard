@@ -5171,38 +5171,10 @@ function renderReporteDiario() {
   const rows = _rdFilter(DATA.prod, SEL_MESES_RD, SEL_DIAS_RD, fTurno, SEL_MAQ_RD);
   const pNum = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
 
-  // ── Aviso de reportes duplicados excluidos (mismos filtros del panel) ──
+  // ── Aviso de reportes duplicados excluidos: oculto a pedido del usuario ──
+  // (la exclusión de duplicados de los totales sigue activa; solo se quitó el banner)
   const dupEl = document.getElementById('rd-dup-note');
-  if (dupEl) {
-    const dups = (DATA.dupes || []).filter(d =>
-      (mesMatch(SEL_MESES_RD, d._mesTurno || d._mes || '')) &&
-      (!SEL_DIAS_RD.size || SEL_DIAS_RD.has(String(d._diaTurno || ''))) &&
-      (!fTurno || String(d._turno || '') === fTurno) &&
-      (!SEL_MAQ_RD.size || SEL_MAQ_RD.has(String(d._maq || ''))));
-    if (!dups.length) { dupEl.innerHTML = ''; }
-    else {
-      const tot = dups.reduce((s, d) => s + (d._cant || 0), 0);
-      dupEl.innerHTML = `<details style="background:#FFFBEB;border:1px solid #FCD34D;border-left:4px solid #D97706;border-radius:8px;padding:10px 14px;margin-bottom:16px">
-        <summary style="cursor:pointer;color:#92400E;font-size:.82rem;font-weight:700">
-          ⚠️ ${dups.length} reporte(s) duplicado(s) detectados y EXCLUIDOS de los totales (${fmt(tot)} und) — clic para ver el detalle y corregirlos en el sheet
-        </summary>
-        <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:.78rem;color:#78350F">
-          <tr style="text-align:left;border-bottom:1px solid #FCD34D">
-            <th style="padding:4px 8px">Fecha</th><th style="padding:4px 8px">Máquina</th><th style="padding:4px 8px">Orden</th>
-            <th style="padding:4px 8px">Caja</th><th style="padding:4px 8px;text-align:right">Cant. excluida</th><th style="padding:4px 8px">Motivo</th>
-          </tr>
-          ${dups.map(d => `<tr style="border-bottom:1px solid #FDE68A">
-            <td style="padding:4px 8px">${d._fechaLabel || d._fechaKey || '—'}</td>
-            <td style="padding:4px 8px">${d._maq}</td><td style="padding:4px 8px">${d._orden}</td>
-            <td style="padding:4px 8px">${d._caja}</td>
-            <td style="padding:4px 8px;text-align:right;font-weight:700">${fmt(d._cant)}</td>
-            <td style="padding:4px 8px">${d._dup}</td>
-          </tr>`).join('')}
-        </table>
-        <div style="font-size:.72rem;color:#92400E;margin-top:8px">Se conserva el reporte más reciente de cada caja. Para que el dato quede limpio de raíz, elimine la fila duplicada en la hoja BD REPORTES PRODUCCIÓN.</div>
-      </details>`;
-    }
-  }
+  if (dupEl) { dupEl.innerHTML = ''; }
 
   // Todos los turnos se suman; no hay filtrado T4/T5
   const effRowsRd = rows.slice();
