@@ -5928,7 +5928,10 @@ function renderReporteCompacto() {
 
   // ── Navegador de día: poblar fechas reales (YYYY-MM-DD) y default al último ──
   const diaEl = document.getElementById('rc-f-dia');
-  const fechas = [...new Set((DATA.prod||[]).map(r=>r._fechaKey).filter(Boolean))].sort();
+  // Solo fechas bien formadas: el sheet trae alguna fecha mal digitada
+  // (ej. "202-07-01") que ensuciaba el navegador de días con una opción
+  // inservible. Mismo criterio que usa el cálculo de cobertura por mes.
+  const fechas = [...new Set((DATA.prod||[]).map(r=>r._fechaKey).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(String(k||''))))].sort();
   if (diaEl && diaEl.options.length === 0) {
     fechas.forEach(k=>{
       const o=document.createElement('option');
@@ -5946,6 +5949,19 @@ function renderReporteCompacto() {
   const _ymRc = String(fKey).slice(0,7);
   const _cvParoRc = !DATA.covParo || !DATA.covParo.size || DATA.covParo.has(_ymRc);
   const _cvNCRc   = !DATA.covNC   || !DATA.covNC.size   || DATA.covNC.has(_ymRc);
+  // Consultando meses anteriores (ene/feb: sin paros cargados; ene–mar: sin NC)
+  // los tres OEE salen '—' a propósito: sin esos datos no se puede afirmar
+  // Disponibilidad ni Calidad. Se explica dentro del reporte para que quede
+  // claro que FALTA EL DATO DE ORIGEN, no que el cálculo esté roto.
+  const _covFaltaRc = [];
+  if (!_cvParoRc) _covFaltaRc.push('paros (Disponibilidad y Rendimiento)');
+  if (!_cvNCRc)   _covFaltaRc.push('No Conformes (Calidad)');
+  const _mesRcLabel = /^\d{4}-\d{2}$/.test(_ymRc)
+    ? `${MESES_CAP[+_ymRc.slice(5,7)-1]} ${_ymRc.slice(0,4)}` : _ymRc;
+  const covNotaRc = _covFaltaRc.length ? `
+          <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:9px 14px;margin-top:12px;font-size:.75rem;color:#92400E;line-height:1.5">
+            <i class="fa-solid fa-circle-info" style="margin-right:6px"></i><b>${_mesRcLabel}</b> no tiene registro de ${_covFaltaRc.join(' ni de ')} en el sheet, por eso los tres OEE aparecen en <b>—</b>. Las unidades producidas, planeadas y el % de cumplimiento sí son válidos.
+          </div>` : '';
 
   // Filtrar a UN día específico (fecha completa) + turno opcional
   const rows = (DATA.prod||[]).filter(r =>
@@ -6439,6 +6455,7 @@ function renderReporteCompacto() {
             <div style="font-size:.65rem;color:#6B7280;margin-top:4px">${gTV.maqs.length?'Máq '+gTV.maqs.join(', '):'Sin tapadoras este día'}</div>
           </div>
         </div>
+        ${covNotaRc}
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
           <div style="flex:1;min-width:180px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
             <div style="font-size:.75rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Prom. por Máquina</div>
