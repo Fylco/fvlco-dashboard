@@ -942,6 +942,12 @@ function supPost(accion, datos){
     if(!r || r.status==='error'){
       var m = (r && r.message) || 'Error desconocido';
       if(m === 'CLAVE_INCORRECTA'){ SUP.pw = null; throw new Error('Clave incorrecta'); }
+      // El backend no conoce las acciones sup*: este equipo guardó una versión
+      // vieja de la app. No es problema de clave — hay que recargar.
+      if(/no reconocida/i.test(m)){
+        SUP.pw = null;
+        throw new Error('Este equipo tiene guardada una versión vieja de la app. Cierra la página y vuelve a abrirla (en PC: Ctrl+Shift+R).');
+      }
       throw new Error(m);
     }
     return r;
@@ -960,10 +966,24 @@ function abrirSupervisor(){
 function cerrarSupModal(){
   cls('mSup','show',false);
   $('supPw').value='';
+  $('supPw').type='password';
+  $('supPwEye').classList.remove('on');
+}
+
+/* Permite VER la clave escrita. Sin esto, un espacio de más metido por el
+   teclado del celular es invisible y parece "clave incorrecta". */
+function supVerClave(){
+  var i=$('supPw'), b=$('supPwEye');
+  var ver = i.type==='password';
+  i.type = ver ? 'text' : 'password';
+  b.classList[ver?'add':'remove']('on');
+  i.focus();
 }
 
 function supEntrar(){
-  var pw = $('supPw').value;
+  // .trim(): los teclados de celular agregan un espacio al final y el campo
+  // muestra puntos, así que el usuario no puede verlo ni corregirlo.
+  var pw = $('supPw').value.trim();
   if(!pw){ show('supPwErr', true); $('supPwErr').textContent='Escribe la clave.'; return; }
 
   var b=$('supBtnEntrar'), txt=b.textContent;

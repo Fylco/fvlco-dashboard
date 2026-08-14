@@ -126,7 +126,18 @@ textarea{resize:none;min-height:42px;height:42px}
 .sup-panel{display:none;flex:1;min-height:0;gap:7px}
 .sup-panel.show{display:grid;grid-template-columns:1fr}
 @media(min-width:900px){.sup-panel.show{grid-template-columns:1fr 1.15fr}}
-.sup-lista{display:flex;flex-direction:column;gap:5px;overflow:auto;flex:1;min-height:60px}
+/* Lista con barra de desplazamiento SIEMPRE visible: con 25+ órdenes la barra
+   fina por defecto de Windows es invisible y parece que la lista está cortada. */
+.sup-lista{display:flex;flex-direction:column;gap:5px;flex:1;
+  overflow-y:scroll;overflow-x:hidden;min-height:120px;max-height:54vh;padding-right:4px;
+  scrollbar-width:thin;scrollbar-color:#8a94a6 #e6eaf0}
+.sup-lista::-webkit-scrollbar{width:12px}
+.sup-lista::-webkit-scrollbar-track{background:#e6eaf0;border-radius:7px}
+.sup-lista::-webkit-scrollbar-thumb{background:#8a94a6;border-radius:7px;border:2.5px solid #e6eaf0}
+.sup-lista::-webkit-scrollbar-thumb:hover{background:#5f6b7f}
+/* El panel completo también desplaza, para que el botón PROGRAMAR siempre se alcance */
+.sup-panel.show>.card{min-height:0}
+.sup-panel.show>.card>.bd{overflow-y:auto;min-height:0}
 .sup-row{border:1px solid #e2e8f0;border-radius:7px;padding:6px 8px;display:flex;align-items:center;gap:9px;background:#fbfcfd}
 .sup-row .ix{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .sup-row .o{font-weight:900;font-size:13px;color:#0b3a8c;line-height:1.15}
@@ -136,9 +147,20 @@ textarea{resize:none;min-height:42px;height:42px}
 .sup-fin{background:var(--ok);color:#fff;border:none;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0;line-height:1.15;text-align:center}
 .sup-fin:hover{opacity:.88}.sup-fin:disabled{opacity:.5;cursor:not-allowed}
 .sup-warn{background:#fef3c7;border:1.4px solid #f59e0b;color:#92400e;border-radius:6px;padding:6px 8px;font-size:11.5px;font-weight:700}
+.pw-wrap{position:relative;display:flex}
+.pw-wrap input{padding-right:40px}
+.pw-eye{position:absolute;right:3px;top:3px;bottom:3px;width:34px;border:none;background:#eef1f5;border-radius:5px;cursor:pointer;font-size:15px;line-height:1;padding:0}
+.pw-eye:hover{background:#e2e8f0}
+.pw-eye.on{background:#d7e6ff}
 @media(max-width:759px){
   .opbar-sep{display:none}
   .opb-sup{width:100%;margin-top:2px}
+  /* En celular NO se anida el desplazamiento: la lista crece y se desplaza la
+     página. Las barras flotantes de móvil no se pueden pintar, así que un área
+     interna con scroll invisible se siente como si la lista estuviera cortada. */
+  .sup-panel{flex:none}
+  .sup-panel.show>.card>.bd{overflow-y:visible}
+  .sup-lista{overflow-y:visible;max-height:none;min-height:0;padding-right:0}
   .sup-row{padding:9px 10px}
   .sup-row .o{font-size:14px}.sup-row .p{font-size:12.5px}.sup-row .m{font-size:11px}
   .sup-fin{padding:11px 12px;font-size:12px}
@@ -374,7 +396,10 @@ textarea{resize:none;min-height:42px;height:42px}
 <div class="mhd hd-sup">🔐 Acceso supervisor <button onclick="cerrarSupModal()">×</button></div>
 <div class="mbd">
 <div class="fld"><label>Clave</label>
-<input id="supPw" type="password" autocomplete="off" inputmode="text" placeholder="Clave de supervisor"></div>
+<div class="pw-wrap">
+<input id="supPw" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" placeholder="Clave de supervisor">
+<button type="button" id="supPwEye" class="pw-eye" onclick="supVerClave()" title="Mostrar/ocultar clave">👁</button>
+</div></div>
 <div id="supPwErr" style="display:none;color:var(--er);font-weight:800;font-size:11.5px;margin-top:7px"></div>
 <div class="hint" style="margin-top:8px">Programación de pedidos en REGISTRO LIDER. Solo personal autorizado.</div>
 </div>
