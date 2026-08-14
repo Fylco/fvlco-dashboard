@@ -109,7 +109,11 @@ function limpiarErrores(){
                            registrarCalidadWeb / registrarMolino /
                            registrarManualidades / registrarReproceso
 ═══════════════════════════════════════════════════════ */
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbyuOgZDlZEuBss5oxvg7a80hmBW1WMABpwm8B3SNBWnNuNaBvcHgtCCH9iCVxlCuBcZ7g/exec';
+/* Implementación del proyecto "Formulario Mejorado".
+   Actualizada 2026-08-14: la implementación anterior (AKfycbyuOgZDlZ...) quedó
+   pegada a una versión vieja del código y no reconocía las acciones sup*.
+   Verificado en esta URL: ?action=datos responde, supLogin valida la clave. */
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1a7HdxU3ozQVqmy6MC9F8DZfeAE3kByGkDjgsTvL518-iz8Juj2KzOqdeAyyZkIAx5w/exec';
 
 function obtenerDatosDesdeBackend(){
   return fetch(GAS_URL + '?action=datos').then(function(res){
@@ -1055,7 +1059,9 @@ function supRender(){
     if(p.mp)       det.push('MP '+supEsc(p.mp));
     if(p.loteProd) det.push('Lote '+supEsc(p.loteProd));
     if(p.cantCaja) det.push(nf(p.cantCaja)+'/caja');
-    if(p.cajas)    det.push(supEsc(p.cajas)+' cajas');
+    // La col. S llega como float crudo (ej. 51.851851851851855) — se redondea
+    var nCaj = parseFloat(String(p.cajas).replace(',','.'));
+    if(!isNaN(nCaj) && nCaj > 0) det.push((Math.round(nCaj*10)/10)+' cajas');
     html += '<div class="sup-row">'
          +    '<div class="ix">'
          +      '<span class="o">'+supEsc(p.orden)+'<span style="font-weight:600;color:#9aa0a6;font-size:10px"> · fila '+p.fila+'</span></span>'
@@ -1083,7 +1089,9 @@ function supOrdenChange(){
   $('supICol').textContent = o.color    || '—';
   $('supICan').textContent = o.cantidad ? nf(o.cantidad) : '—';
   $('supIMpr').textContent = o.mpReq ? (o.mpReq + (o.kgMp ? ' · '+o.kgMp+' kg' : '')) : '—';
-  $('supIEst').textContent = [o.entrega, o.estado].filter(Boolean).join(' · ') || '—';
+  // La entrega llega como "28/07/2026 00:00:00" — se recorta la hora vacía
+  var ent = String(o.entrega || '').replace(/\s+00:00:00$/, '');
+  $('supIEst').textContent = [ent, o.estado].filter(Boolean).join(' · ') || '—';
 }
 
 /* ── Programar ────────────────────────────────────────── */
