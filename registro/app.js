@@ -492,8 +492,16 @@ function onOrdenChange(){
   if(o){
     $('iPro').textContent = o.productName||'—';
     $('iCli').textContent = o.cliente||'—';
-    $('iCol').textContent = [o.color,o.mp].filter(Boolean).join(' / ')||'—';
-    $('iLot').textContent = [o.loteProd,o.loteMp].filter(Boolean).join(' / ')||'—';
+    $('iCol').textContent = o.color||'—';
+    // Materia prima asignada + la familia requerida entre paréntesis cuando aportan
+    // dato distinto (ej. "LH5420 · HDPE"). Antes este campo mostraba solo la familia.
+    $('iMp').textContent  = o.mp
+      ? (o.mpReq && o.mpReq !== o.mp ? o.mp+' · '+o.mpReq : o.mp)
+      : (o.mpReq||'—');
+    $('iLotM').textContent = o.loteMp||'—';
+    $('iLot').textContent  = o.loteProd||'—';
+    $('iCant').textContent = o.cantidadTotal ? nf(o.cantidadTotal) : '—';
+    $('iEnt').textContent  = String(o.fechaEntrega||'').replace(/\s+00:00:00$/,'')||'—';
     var cantCj = o.cantCaja||1;
     $('iACj').textContent = (o.cajasReportadas||0)+' / '+Math.ceil((o.cantidadTotal||0)/cantCj);
     $('iAUn').textContent  = nf(o.unidadesReportadas||0)+' / '+nf(o.cantidadTotal||0);
