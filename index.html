@@ -1450,6 +1450,37 @@ function saveRecursosState() {
   _syncToSheet(_recursosState);
 }
 
+// Tipo de máquina ('inyectora' | 'tapadora' | 'otro') a partir del valor que
+// trae la columna MÁQUINA del sheet de producción (normalmente el número de
+// planta: 1–4 inyectoras, 5 = TV#1, 6 = TV#2). Fuente de verdad: el maestro de
+// RECURSOS (maqNum→tipo), así que si mañana se activa TV#3 con otro número el
+// tipo sale bien sin tocar código. Fallbacks: nombre con TV/TAPADORA/INY, y la
+// numeración de planta (≥5 = tapadora), igual que el resto de la app.
+function _tipoMaquina(maq) {
+  const s = String(maq ?? '').trim().toUpperCase();
+  if (!s) return 'otro';
+  try {
+    const m = (getRecursosState().maquinas || []).find(x =>
+      (String(x.maqNum||'').trim() && String(x.maqNum).trim() === s) ||
+      String(x.nombre||'').trim().toUpperCase() === s ||
+      String(x.id||'').trim().toUpperCase() === s
+    );
+    if (m && m.tipo) return m.tipo;
+  } catch(e) {}
+  if (/TV|TAPADORA/.test(s)) return 'tapadora';
+  if (/INY/.test(s))         return 'inyectora';
+  const n = parseInt(s.replace(/\D/g,''), 10);
+  if (!isNaN(n) && n > 0) return n <= 4 ? 'inyectora' : 'tapadora';
+  return 'otro';
+}
+
+// Logos (SVG inline, heredan el color del contenedor vía currentColor). Van
+// inline y no como icono de Font Awesome porque el Reporte Compacto se exporta
+// a PNG para WhatsApp: un SVG en el DOM siempre entra en la captura, una
+// webfont puede no haber cargado todavía.
+const SVG_INYECTORA = `<svg viewBox="0 0 32 24" width="30" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M5 3h6l-1.4 3.6H6.4z"/><rect x="3" y="7.2" width="13" height="6" rx="1.2"/><path d="M16 10.2h3.2"/><rect x="19.4" y="4.8" width="4" height="10.6" rx=".8"/><rect x="24.4" y="4.8" width="4" height="10.6" rx=".8"/><path d="M2 17.6h28M5.5 17.6v3M26.5 17.6v3"/></svg>`;
+const SVG_TAPADORA  = `<svg viewBox="0 0 24 24" width="26" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M12 2v2.6"/><rect x="6" y="4.6" width="12" height="3" rx="1"/><path d="M12 7.6v2"/><path d="M6.8 10.4h10.4"/><path d="M7.6 10.9L8.9 20h6.2l1.3-9.1"/><path d="M2 21.6h20"/></svg>`;
+
 // ─── Sincronización con Google Sheets ────────────────────────────────────
 const SYNC_TOKEN = 'fvlco2026';
 let _syncInitDone = false;
@@ -6106,6 +6137,22 @@ function renderReporteCompacto() {
   const dispGlobalDia = calcDisponibilidad(effRows);
   const rendGlobalDia = calcRendimiento(effRows);
   const calGlobalDia  = calcCalidad(effRows);
+  // ── OEE por tipo de máquina: inyectoras aparte, tapadoras aparte ────────
+  // Mismo método que el OEE Global (calcOEEFromDRC sobre las filas del tipo),
+  // NO el promedio de los OEE por máquina: así los tres números son
+  // comparables entre sí y con el Resumen / la pestaña OEE.
+  const inyRowsDia = effRows.filter(r => _tipoMaquina(r._maq) === 'inyectora');
+  const tvRowsDia  = effRows.filter(r => _tipoMaquina(r._maq) === 'tapadora');
+  const grpOee = rws => rws.length ? {
+    oee : calcOEEFromDRC(rws),
+    disp: calcDisponibilidad(rws),
+    rend: calcRendimiento(rws),
+    cal : calcCalidad(rws),
+    maqs: [...new Set(rws.map(r=>String(r._maq||'').trim()).filter(Boolean))]
+            .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+  } : { oee:null, disp:null, rend:null, cal:null, maqs:[] };
+  const gIny = grpOee(inyRowsDia);
+  const gTV  = grpOee(tvRowsDia);
   // Promedios por máquina (vista alternativa)
   const promDisp = withOee.length ? withOee.reduce((s,g)=>s+g.disp,0)/withOee.length : null;
   const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
@@ -6374,11 +6421,25 @@ function renderReporteCompacto() {
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
           <div style="flex:1.2;min-width:220px;background:#EFF6FF;border-radius:10px;padding:14px;text-align:center;border:2px solid #3B82F6">
-            <div style="font-size:.75rem;color:#1D4ED8;text-transform:uppercase;letter-spacing:.06em;font-weight:700">OEE Global del Día</div>
+            <div style="font-size:.75rem;color:#1D4ED8;text-transform:uppercase;letter-spacing:.06em;font-weight:700"><span style="color:#1D4ED8;margin-right:6px"><i class="fa-solid fa-industry"></i></span>OEE Global del Día</div>
             <div style="font-size:.68rem;color:#3B82F6;margin-bottom:4px">D: ${pc(dispGlobalDia)} · R: ${pc(rendGlobalDia)} · C: ${pc(calGlobalDia)}</div>
             <div style="font-size:2.8rem;font-weight:900;color:${oeeGlobalDia==null?'#6B7280':oeeGlobalDia>=70?'#059669':oeeGlobalDia>=50?'#D97706':'#DC2626'}">${pc(oeeGlobalDia)}</div>
-            <div style="font-size:.65rem;color:#6B7280;margin-top:4px">Mismo método que Resumen y OEE</div>
+            <div style="font-size:.65rem;color:#6B7280;margin-top:4px">Todas las máquinas · mismo método que Resumen y OEE</div>
           </div>
+          <div style="flex:1;min-width:200px;background:#ECFEFF;border-radius:10px;padding:14px;text-align:center;border:2px solid #0891B2">
+            <div style="font-size:.75rem;color:#0E7490;text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:flex;align-items:center;justify-content:center;gap:7px"><span style="color:#0891B2;display:inline-flex">${SVG_INYECTORA}</span>OEE Inyectoras</div>
+            <div style="font-size:.68rem;color:#0891B2;margin-bottom:4px">D: ${pc(gIny.disp)} · R: ${pc(gIny.rend)} · C: ${pc(gIny.cal)}</div>
+            <div style="font-size:2.8rem;font-weight:900;color:${gIny.oee==null?'#6B7280':gIny.oee>=70?'#059669':gIny.oee>=50?'#D97706':'#DC2626'}">${pc(gIny.oee)}</div>
+            <div style="font-size:.65rem;color:#6B7280;margin-top:4px">${gIny.maqs.length?'Máq '+gIny.maqs.join(', '):'Sin inyectoras este día'}</div>
+          </div>
+          <div style="flex:1;min-width:200px;background:#F5F3FF;border-radius:10px;padding:14px;text-align:center;border:2px solid #7C3AED">
+            <div style="font-size:.75rem;color:#6D28D9;text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:flex;align-items:center;justify-content:center;gap:7px"><span style="color:#7C3AED;display:inline-flex">${SVG_TAPADORA}</span>OEE Tapadoras</div>
+            <div style="font-size:.68rem;color:#7C3AED;margin-bottom:4px">D: ${pc(gTV.disp)} · R: ${pc(gTV.rend)} · C: ${pc(gTV.cal)}</div>
+            <div style="font-size:2.8rem;font-weight:900;color:${gTV.oee==null?'#6B7280':gTV.oee>=70?'#059669':gTV.oee>=50?'#D97706':'#DC2626'}">${pc(gTV.oee)}</div>
+            <div style="font-size:.65rem;color:#6B7280;margin-top:4px">${gTV.maqs.length?'Máq '+gTV.maqs.join(', '):'Sin tapadoras este día'}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
           <div style="flex:1;min-width:180px;background:#F9FAFB;border-radius:10px;padding:14px;text-align:center;border:1px solid #E5E7EB">
             <div style="font-size:.75rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Prom. por Máquina</div>
             <div style="font-size:.65rem;color:#9CA3AF;margin-bottom:4px">D: ${pc(promDisp)} · R: ${pc(promRend)} · C: ${pc(promCal)}</div>
