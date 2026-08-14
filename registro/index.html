@@ -118,6 +118,32 @@ textarea{resize:none;min-height:42px;height:42px}
 .opb-volver{background:#475569!important}
 @media(max-width:759px){.opb{padding:11px 14px;font-size:14px}.opbar{gap:6px}}
 
+/* ── SUPERVISOR ───────────────────────────────────────── */
+.opbar-sep{width:1px;align-self:stretch;background:rgba(255,255,255,.22);margin:0 2px;flex-shrink:0}
+.opb-sup{background:#334155;border:1.5px solid #64748b!important}
+.hd-sup{background:#334155}
+.btn-sup{background:#334155}
+.sup-panel{display:none;flex:1;min-height:0;gap:7px}
+.sup-panel.show{display:grid;grid-template-columns:1fr}
+@media(min-width:900px){.sup-panel.show{grid-template-columns:1fr 1.15fr}}
+.sup-lista{display:flex;flex-direction:column;gap:5px;overflow:auto;flex:1;min-height:60px}
+.sup-row{border:1px solid #e2e8f0;border-radius:7px;padding:6px 8px;display:flex;align-items:center;gap:9px;background:#fbfcfd}
+.sup-row .ix{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.sup-row .o{font-weight:900;font-size:13px;color:#0b3a8c;line-height:1.15}
+.sup-row .p{font-size:11px;color:#3c4043;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-row .m{font-size:10px;color:#5f6368}
+.sup-row .m b{color:#0e7490;font-weight:800}
+.sup-fin{background:var(--ok);color:#fff;border:none;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0;line-height:1.15;text-align:center}
+.sup-fin:hover{opacity:.88}.sup-fin:disabled{opacity:.5;cursor:not-allowed}
+.sup-warn{background:#fef3c7;border:1.4px solid #f59e0b;color:#92400e;border-radius:6px;padding:6px 8px;font-size:11.5px;font-weight:700}
+@media(max-width:759px){
+  .opbar-sep{display:none}
+  .opb-sup{width:100%;margin-top:2px}
+  .sup-row{padding:9px 10px}
+  .sup-row .o{font-size:14px}.sup-row .p{font-size:12.5px}.sup-row .m{font-size:11px}
+  .sup-fin{padding:11px 12px;font-size:12px}
+}
+
 /* ═══════════════════════════════════════════
    RESPONSIVE — TABLET Y MÓVIL
    ═══════════════════════════════════════════ */
@@ -198,6 +224,8 @@ textarea{resize:none;min-height:42px;height:42px}
 <button class="opb" data-op="MOLINO"       style="background:#ea580c" onclick="selOp('MOLINO')">⚙️ MOLINO</button>
 <button class="opb" data-op="MANUALIDADES" style="background:#7c3aed" onclick="selOp('MANUALIDADES')">✋ MANUALIDADES</button>
 <button class="opb" data-op="REPROCESOS"   style="background:#0b4ec0" onclick="selOp('REPROCESOS')">🔄 REPROCESOS</button>
+<span class="opbar-sep"></span>
+<button class="opb opb-sup" id="btnSup" onclick="abrirSupervisor()">🔐 SUPERVISOR</button>
 <button class="opb opb-volver" id="btnVolver" style="display:none" onclick="selOp(null)">← Volver</button>
 </div>
 
@@ -277,6 +305,56 @@ textarea{resize:none;min-height:42px;height:42px}
 <!-- PANEL OPERACIONES (generado por JS) -->
 <div class="op-panel" id="opPanel"></div>
 
+<!-- PANEL SUPERVISOR — programación de pedidos en REGISTRO LIDER -->
+<div class="sup-panel" id="supPanel">
+
+  <div class="card">
+    <div class="hd hd-sup">🗓️ PROGRAMAR ORDEN NUEVA</div>
+    <div class="bd">
+      <div class="fld"><label>Orden a programar <span class="req">*</span> <span style="text-transform:none;color:#9aa0a6">→ col. A</span></label>
+      <select id="supOrden"><option value="">— Seleccione orden —</option></select></div>
+
+      <div class="oi" id="supInfo" style="display:none">
+        <div class="ln"><span>Producto</span><b id="supIPro">—</b></div>
+        <div class="ln"><span>Cliente</span><b id="supICli">—</b></div>
+        <div class="ln"><span>Color</span><b id="supICol">—</b></div>
+        <div class="ln"><span>Cantidad</span><b id="supICan">—</b></div>
+        <div class="ln"><span>MP requerida</span><b id="supIMpr">—</b></div>
+        <div class="ln"><span>Entrega / Estado</span><b id="supIEst">—</b></div>
+      </div>
+
+      <div class="fld"><label>Materia prima <span class="req">*</span> <span style="text-transform:none;color:#9aa0a6">→ col. M</span></label>
+      <input id="supMp" type="text" list="supMpList" autocomplete="off" placeholder="ej. 9018 MARLEX">
+      <datalist id="supMpList"></datalist></div>
+
+      <div class="r2">
+        <div class="fld"><label>Lote materia prima <span style="text-transform:none;color:#9aa0a6">→ col. N</span></label>
+        <input id="supLoteMp" type="text" autocomplete="off" placeholder="ej. DTB920720"></div>
+        <div class="fld"><label>Lote producción <span style="text-transform:none;color:#9aa0a6">→ col. O</span></label>
+        <input id="supLoteProd" type="text" autocomplete="off" placeholder="ej. 821-0"></div>
+      </div>
+
+      <div class="r2">
+        <div class="fld"><label>Máquina <span class="req">*</span> <span style="text-transform:none;color:#9aa0a6">→ col. P</span></label>
+        <select id="supMaq"><option value="">— Máquina —</option></select></div>
+        <div class="fld"><label>Cantidad por caja <span class="req">*</span> <span style="text-transform:none;color:#9aa0a6">→ col. Q</span></label>
+        <input id="supCantCaja" type="number" min="1" step="1" placeholder="ej. 8000"></div>
+      </div>
+
+      <button class="btn btn-sup" id="supBtnProg">▶ PROGRAMAR ORDEN</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hd" style="background:#0e7490">📋 ÓRDENES PROGRAMADAS <span id="supCount" style="margin-left:auto;font-weight:700"></span></div>
+    <div class="bd" style="gap:5px">
+      <div class="hint" style="margin:0">Al marcar fin de producción se <b>elimina</b> la fila de REGISTRO LIDER. Queda registrada en la hoja LOG PROGRAMACION.</div>
+      <div id="supLista" class="sup-lista"></div>
+    </div>
+  </div>
+
+</div>
+
 </div><!-- /wrap -->
 <div id="toast"></div>
 
@@ -288,6 +366,21 @@ textarea{resize:none;min-height:42px;height:42px}
 <div class="mft">
 <button class="btn bgr" style="flex:1;margin:0" onclick="cConf()">CANCELAR</button>
 <button class="btn bvd" style="flex:2;margin:0" id="btnCfOk">✅ CONFIRMAR Y ENVIAR</button>
+</div></div></div>
+
+<!-- MODAL CLAVE SUPERVISOR -->
+<div class="modal" id="mSup">
+<div class="mbox" style="max-width:350px">
+<div class="mhd hd-sup">🔐 Acceso supervisor <button onclick="cerrarSupModal()">×</button></div>
+<div class="mbd">
+<div class="fld"><label>Clave</label>
+<input id="supPw" type="password" autocomplete="off" inputmode="text" placeholder="Clave de supervisor"></div>
+<div id="supPwErr" style="display:none;color:var(--er);font-weight:800;font-size:11.5px;margin-top:7px"></div>
+<div class="hint" style="margin-top:8px">Programación de pedidos en REGISTRO LIDER. Solo personal autorizado.</div>
+</div>
+<div class="mft">
+<button class="btn bgr" style="flex:1;margin:0" onclick="cerrarSupModal()">CANCELAR</button>
+<button class="btn btn-sup" style="flex:2;margin:0" id="supBtnEntrar">ENTRAR</button>
 </div></div></div>
 
 <!-- ÉXITO -->

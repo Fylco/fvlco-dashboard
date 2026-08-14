@@ -375,6 +375,8 @@ function construirOperarios(sel){
    BOTONES DE OPERACIONES ESPECIALES
 ═══════════════════════════════════════════════════════ */
 function selOp(name){
+  // Si estábamos en el panel de supervisor, salir de él primero
+  if(SUP.activo) supCerrarPanel();
   var maqSel=$('maquina');
   if(!name){
     // Volver: seleccionar primera máquina real disponible
@@ -904,6 +906,266 @@ if('serviceWorker' in navigator){
 }
 
 /* ═══════════════════════════════════════════════════════
+   SUPERVISOR — programación de pedidos en REGISTRO LIDER
+   ─────────────────────────────────────────────────────
+   Escribe la orden en la col. A y M/N/O/P/Q; el fin de
+   producción (col. U) ELIMINA la fila. Todo pasa por el
+   backend (Supervisor.gs), que valida la clave contra la
+   Propiedad del Script FVLCO_SUPERVISOR_PW. La clave vive
+   solo en memoria durante la sesión — nunca en disco ni en
+   este archivo.
+═══════════════════════════════════════════════════════ */
+var SUP = { pw:null, activo:false, datos:null };
+
+function supEsc(s){
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* La programación es estado compartido: no entra a la cola offline. */
+function supPost(accion, datos){
+  if(!SUP.pw) return Promise.reject(new Error('Sesión de supervisor cerrada. Vuelve a entrar.'));
+  if(!navigator.onLine) return Promise.reject(new Error('Sin conexión — la programación necesita internet.'));
+  return fetch(GAS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify({ accion:accion, datos:merge(datos||{}, { pw:SUP.pw }) })
+  }).then(function(res){
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    return res.json();
+  }).then(function(r){
+    if(!r || r.status==='error'){
+      var m = (r && r.message) || 'Error desconocido';
+      if(m === 'CLAVE_INCORRECTA'){ SUP.pw = null; throw new Error('Clave incorrecta'); }
+      throw new Error(m);
+    }
+    return r;
+  });
+}
+
+/* ── Acceso ───────────────────────────────────────────── */
+function abrirSupervisor(){
+  if(SUP.pw){ supAbrirPanel(); supCargar(); return; }
+  $('supPw').value='';
+  show('supPwErr', false);
+  cls('mSup','show',true);
+  setTimeout(function(){ var e=$('supPw'); if(e) e.focus(); }, 120);
+}
+
+function cerrarSupModal(){
+  cls('mSup','show',false);
+  $('supPw').value='';
+}
+
+function supEntrar(){
+  var pw = $('supPw').value;
+  if(!pw){ show('supPwErr', true); $('supPwErr').textContent='Escribe la clave.'; return; }
+
+  var b=$('supBtnEntrar'), txt=b.textContent;
+  b.disabled=true; b.textContent='VALIDANDO...';
+  show('supPwErr', false);
+  SUP.pw = pw;
+
+  supPost('supLogin', {}).then(function(){
+    cerrarSupModal();
+    supAbrirPanel();
+    return supCargar();
+  }).catch(function(err){
+    SUP.pw = null;
+    show('supPwErr', true);
+    $('supPwErr').textContent = err.message;
+  }).then(function(){
+    b.disabled=false; b.textContent=txt;
+  });
+}
+
+function supAbrirPanel(){
+  SUP.activo = true;
+  show('colsN', false);
+  $('opPanel').className='op-panel';
+  cls('supPanel','show',true);
+  document.querySelectorAll('.opb[data-op]').forEach(function(b){ b.classList.remove('act'); });
+  $('btnSup').classList.add('act');
+  show('btnVolver', true);
+  var lbl=$('eoLabel');
+  if(lbl){ lbl.textContent='SUPERVISOR'; cls('eoLabel','on',true); cls('eoLabel','off',false); }
+}
+
+/* Solo cierra la vista; la sesión (SUP.pw) sigue viva hasta recargar. */
+function supCerrarPanel(){
+  SUP.activo = false;
+  cls('supPanel','show',false);
+  $('btnSup').classList.remove('act');
+}
+
+/* ── Datos ────────────────────────────────────────────── */
+function supCargar(){
+  $('supLista').innerHTML='<div class="hint" style="padding:8px">Cargando órdenes...</div>';
+  return supPost('supDatos', {}).then(function(r){
+    SUP.datos = r;
+    supRender();
+  }).catch(function(err){
+    $('supLista').innerHTML='<div class="sup-warn">'+supEsc(err.message)+'</div>';
+    toast('❌ '+err.message,'err');
+  });
+}
+
+function supRender(){
+  var d = SUP.datos || {};
+  var disp = d.disponibles || [], prog = d.programadas || [];
+
+  // Dropdown de órdenes disponibles
+  var sel=$('supOrden');
+  sel.innerHTML = disp.length
+    ? '<option value="">— Seleccione orden ('+disp.length+' disponibles) —</option>'
+    : '<option value="">— No hay órdenes nuevas por programar —</option>';
+  disp.forEach(function(o){
+    var op=document.createElement('option');
+    op.value=o.orden;
+    op.textContent=o.orden+(o.producto ? ' · '+o.producto : '')+(o.cliente ? ' · '+o.cliente : '');
+    sel.appendChild(op);
+  });
+  supOrdenChange();
+
+  // Máquinas
+  var ms=$('supMaq'), prev=ms.value;
+  ms.innerHTML='<option value="">— Máquina —</option>';
+  (d.maquinas||[]).forEach(function(m){
+    var op=document.createElement('option'); op.value=m; op.textContent=m; ms.appendChild(op);
+  });
+  if(prev) ms.value=prev;
+
+  // Sugerencias de materia prima ya usadas
+  var dl=$('supMpList'); dl.innerHTML='';
+  (d.mpUsadas||[]).forEach(function(m){
+    var op=document.createElement('option'); op.value=m; dl.appendChild(op);
+  });
+
+  // Lista de programadas
+  $('supCount').textContent = prog.length ? prog.length+' en producción' : '';
+  if(!prog.length){
+    $('supLista').innerHTML='<div class="hint" style="padding:8px">No hay órdenes en REGISTRO LIDER.</div>';
+    return;
+  }
+  var html='';
+  prog.forEach(function(p){
+    var det=[];
+    if(p.maquina)  det.push('Máq <b>'+supEsc(p.maquina)+'</b>');
+    if(p.mp)       det.push('MP '+supEsc(p.mp));
+    if(p.loteProd) det.push('Lote '+supEsc(p.loteProd));
+    if(p.cantCaja) det.push(nf(p.cantCaja)+'/caja');
+    if(p.cajas)    det.push(supEsc(p.cajas)+' cajas');
+    html += '<div class="sup-row">'
+         +    '<div class="ix">'
+         +      '<span class="o">'+supEsc(p.orden)+'<span style="font-weight:600;color:#9aa0a6;font-size:10px"> · fila '+p.fila+'</span></span>'
+         +      '<span class="p">'+supEsc(p.producto || '(sin producto en ORDENES)')+'</span>'
+         +      '<span class="m">'+det.join(' · ')+'</span>'
+         +    '</div>'
+         +    '<button class="sup-fin" onclick="supFin('+p.fila+',\''+supEsc(p.orden).replace(/'/g,'')+'\')">✔ FIN<br>PRODUCCIÓN</button>'
+         +  '</div>';
+  });
+  $('supLista').innerHTML=html;
+}
+
+function supOrdenDisp(id){
+  var out=null;
+  ((SUP.datos||{}).disponibles||[]).forEach(function(x){ if(x.orden===id) out=x; });
+  return out;
+}
+
+function supOrdenChange(){
+  var o = supOrdenDisp(val('supOrden'));
+  show('supInfo', !!o);
+  if(!o) return;
+  $('supIPro').textContent = o.producto || '—';
+  $('supICli').textContent = o.cliente  || '—';
+  $('supICol').textContent = o.color    || '—';
+  $('supICan').textContent = o.cantidad ? nf(o.cantidad) : '—';
+  $('supIMpr').textContent = o.mpReq ? (o.mpReq + (o.kgMp ? ' · '+o.kgMp+' kg' : '')) : '—';
+  $('supIEst').textContent = [o.entrega, o.estado].filter(Boolean).join(' · ') || '—';
+}
+
+/* ── Programar ────────────────────────────────────────── */
+function supProgramar(){
+  if(!reqs(['supOrden','supMp','supMaq','supCantCaja'])){
+    toast('Completa los campos obligatorios','err'); return;
+  }
+  var d = {
+    orden:    val('supOrden'),
+    mp:       val('supMp'),
+    loteMp:   val('supLoteMp'),
+    loteProd: val('supLoteProd'),
+    maquina:  val('supMaq'),
+    cantCaja: numV('supCantCaja')
+  };
+  var o = supOrdenDisp(d.orden);
+
+  mostrarConfirm([
+    ['Orden (col. A)',            d.orden],
+    ['Producto',                  (o && o.producto) || '—'],
+    ['Cliente',                   (o && o.cliente)  || '—'],
+    ['Materia prima (col. M)',    d.mp],
+    ['Lote MP (col. N)',          d.loteMp  || '—'],
+    ['Lote producción (col. O)',  d.loteProd || '—'],
+    ['Máquina (col. P)',          d.maquina],
+    ['Cant. por caja (col. Q)',   nf(d.cantCaja)]
+  ], function(){
+    var b=$('supBtnProg'), txt=b.textContent;
+    b.disabled=true; b.textContent='GUARDANDO...';
+    supPost('supProgramar', d).then(function(r){
+      mostrarExito(r.message);
+      ['supMp','supLoteMp','supLoteProd','supCantCaja'].forEach(function(id){ $(id).value=''; });
+      $('supMaq').selectedIndex=0;
+      limpiarErrores();
+      return supCargar();
+    }).catch(function(err){
+      toast('❌ '+err.message,'err');
+    }).then(function(){
+      b.disabled=false; b.textContent=txt;
+    });
+  });
+}
+
+/* ── Fin de producción (col. U) → elimina la fila ──────── */
+function supFin(fila, orden){
+  var p=null;
+  ((SUP.datos||{}).programadas||[]).forEach(function(x){ if(x.fila===fila) p=x; });
+
+  mostrarConfirm([
+    ['Orden',        orden],
+    ['Producto',     (p && p.producto) || '—'],
+    ['Máquina',      (p && p.maquina)  || '—'],
+    ['Lote prod.',   (p && p.loteProd) || '—'],
+    ['Fila',         String(fila)],
+    ['⚠️ ATENCIÓN',  'Se ELIMINA la fila de REGISTRO LIDER. Es IRREVERSIBLE.']
+  ], function(){
+    toast('Marcando fin de producción...','warn');
+    supPost('supFinProduccion', { fila:fila, orden:orden }).then(function(r){
+      mostrarExito(r.message);
+      return supCargar();
+    }).catch(function(err){
+      toast('❌ '+err.message,'err');
+      supCargar();
+    });
+  });
+}
+
+/* ── Enganches ────────────────────────────────────────── */
+function supInit(){
+  var e;
+  e=$('supBtnEntrar'); if(e) e.addEventListener('click', supEntrar);
+  e=$('supBtnProg');   if(e) e.addEventListener('click', supProgramar);
+  e=$('supOrden');     if(e) e.addEventListener('change', supOrdenChange);
+  e=$('supPw');        if(e) e.addEventListener('keydown', function(ev){
+    if(ev.key==='Enter'){ ev.preventDefault(); supEntrar(); }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
    ARRANQUE
 ═══════════════════════════════════════════════════════ */
-window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('DOMContentLoaded', function(){
+  init();
+  supInit();
+});
