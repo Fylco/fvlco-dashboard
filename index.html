@@ -472,6 +472,11 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <div id="rd-progress-bar"></div>
         </div>
       </div>
+      <!-- OEE separado por tipo de máquina (mismo método que el global) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;align-items:start">
+        <div class="chart-card" id="rd-oee-iny"></div>
+        <div class="chart-card" id="rd-oee-tap"></div>
+      </div>
       <div class="chart-card" style="overflow-x:auto;margin-top:18px">
         <div class="section-title">Resumen por Referencia</div>
         <table class="tbl" id="rd-ref-tbl"></table>
@@ -1472,6 +1477,26 @@ function _tipoMaquina(maq) {
   const n = parseInt(s.replace(/\D/g,''), 10);
   if (!isNaN(n) && n > 0) return n <= 4 ? 'inyectora' : 'tapadora';
   return 'otro';
+}
+
+// OEE agregado de un tipo de máquina ('inyectora' | 'tapadora') sobre un
+// conjunto de filas ya filtrado por la pestaña que llama. Usa calcOEEFromDRC
+// sobre las filas del tipo — el MISMO método del OEE Global, no el promedio de
+// los OEE por máquina — para que los números sean comparables entre tarjetas y
+// entre pestañas. Compartido por Reporte Compacto y Reporte Diario.
+function oeePorTipo(rows, tipo) {
+  const rws = (rows||[]).filter(r => _tipoMaquina(r._maq) === tipo);
+  if (!rws.length) return { n:0, oee:null, disp:null, rend:null, cal:null, maqs:[], und:0 };
+  return {
+    n   : rws.length,
+    oee : calcOEEFromDRC(rws),
+    disp: calcDisponibilidad(rws),
+    rend: calcRendimiento(rws),
+    cal : calcCalidad(rws),
+    maqs: [...new Set(rws.map(r=>String(r._maq||'').trim()).filter(Boolean))]
+            .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})),
+    und : rws.reduce((s,r)=>s+(r._cant||0),0)
+  };
 }
 
 // Logos (SVG inline, heredan el color del contenedor vía currentColor). Van
@@ -5138,29 +5163,34 @@ function renderCostos() {
 
 // =======================================================
 // REPORTE DIARIO
+// Valores en fracción (0–1). null = NO CALCULABLE (mes sin registro de paros o
+// de NC, período sin máquinas del tipo): se muestra '—' en gris, no 0.0%. Un 0%
+// se lee como "rindió cero", que es una afirmación distinta y falsa — y chocaba
+// a la vista con una Disponibilidad del 97% al lado (ver marzo 2026).
 function _oeeCard(titulo, oee, disp, rend, cal, info) {
-  const pct = v => (isNaN(v)?0:Math.min(v,1)*100).toFixed(1)+'%';
-  const col = v => v>=0.90?'#10B981':v>=0.70?'#F59E0B':'#EF4444';
+  const nv  = v => (v==null || isNaN(v)) ? null : Math.min(v,1);
+  const pct = v => nv(v)==null ? '—' : (nv(v)*100).toFixed(1)+'%';
+  const col = v => nv(v)==null ? '#6B7280' : v>=0.90?'#10B981':v>=0.70?'#F59E0B':'#EF4444';
   const bar = (v,c) => {
-    const w = (Math.min(isNaN(v)?0:v,1)*100).toFixed(1);
+    const w = nv(v)==null ? 0 : (nv(v)*100).toFixed(1);
     return `<div style="flex:1;background:#374151;border-radius:99px;height:8px;overflow:hidden">
       <div style="width:${w}%;height:100%;background:${c};border-radius:99px"></div></div>`;
   };
   const compRow = (label, v) => {
-    const c = col(isNaN(v)?0:v);
+    const c = col(v);
     return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <div style="width:115px;font-size:.73rem;color:#9CA3AF;flex-shrink:0">${label}</div>
       ${bar(v,c)}
       <div style="width:54px;text-align:right;font-size:.85rem;font-weight:700;color:${c};flex-shrink:0">${pct(v)}</div>
     </div>`;
   };
-  const ov = isNaN(oee)?0:Math.min(oee,1);
-  const oc = col(ov);
-  const ow = (ov*100).toFixed(1);
+  const ov = nv(oee);
+  const oc = col(oee);
+  const ow = ov==null ? 0 : (ov*100).toFixed(1);
   return `
     <div style="font-size:.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">${titulo}</div>
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-      <div style="font-size:2.8rem;font-weight:900;color:${oc};line-height:1;text-shadow:0 0 24px ${oc}55;flex-shrink:0">${(ov*100).toFixed(1)}%</div>
+      <div style="font-size:2.8rem;font-weight:900;color:${oc};line-height:1;text-shadow:0 0 24px ${oc}55;flex-shrink:0">${pct(oee)}</div>
       <div style="flex:1">
         <div style="background:#374151;border-radius:99px;height:12px;overflow:hidden">
           <div style="width:${ow}%;height:100%;background:linear-gradient(90deg,${oc}88,${oc});border-radius:99px"></div>
@@ -5444,13 +5474,16 @@ function renderReporteDiario() {
   const _rGlob = calcRendimiento(effRowsRd);
   const _cGlob = calcCalidad(effRowsRd);
   const _oGlob = calcOEEFromDRC(effRowsRd);
-  const toF = v => (v!=null ? v/100 : 0);
+  // null se preserva hasta la tarjeta: allí se pinta '—' en vez de un 0.0% falso
+  const toF = v => (v!=null ? v/100 : null);
 
-  // Vista alternativa: promedio simple de OEE por máquina
-  const _oeePromMaq = (_woRd.length ? _woRd.reduce((s,g)=>s+g.oee,0)/_woRd.length : 0)/100;
-  const _dispProm   = (_woRd.length ? _woRd.reduce((s,g)=>s+g.disp,0)/_woRd.length : 0)/100;
-  const _rendProm   = (_woRd.length ? _woRd.reduce((s,g)=>s+g.rend,0)/_woRd.length : 0)/100;
-  const _calProm    = (_woRd.length ? _woRd.reduce((s,g)=>s+g.cal,0)/_woRd.length : 0)/100;
+  // Vista alternativa: promedio simple de OEE por máquina. Sin máquinas con OEE
+  // calculable el promedio no existe (null → '—'), no es un cero.
+  const _prom = f => _woRd.length ? _woRd.reduce((s,g)=>s+f(g),0)/_woRd.length/100 : null;
+  const _oeePromMaq = _prom(g=>g.oee);
+  const _dispProm   = _prom(g=>g.disp);
+  const _rendProm   = _prom(g=>g.rend);
+  const _calProm    = _prom(g=>g.cal);
 
   const infoGlob = `Prod: ${totCantO.toLocaleString()} · NC: ${_totNC2.toLocaleString()} · T.Real: ${_totTReal.toFixed(0)} min`;
   const infoProm = `T.Perdido: ${_totParo.toFixed(0)} min · Planeadas: ${Math.round(totUndTeo).toLocaleString()} · ${_woRd.length} máq.`;
@@ -5458,6 +5491,29 @@ function renderReporteDiario() {
   const elU = document.getElementById('rd-oee-unid');
   if (elT) elT.innerHTML = coverageNote(rows) + _oeeCard('OEE Global del Período', toF(_oGlob), toF(_dGlob), toF(_rGlob), toF(_cGlob), infoGlob);
   if (elU) elU.innerHTML = _oeeCard('Prom. OEE por Máquina', _oeePromMaq, _dispProm, _rendProm, _calProm, infoProm);
+
+  // ── OEE de inyectoras y de tapadoras, cada uno con su logo ──────────────
+  // Mismo helper compartido con el Reporte Compacto: calcOEEFromDRC sobre las
+  // filas del tipo, para que los tres números (global / iny / tap) sean
+  // comparables entre sí y con el Resumen.
+  const _gInyRd = oeePorTipo(effRowsRd, 'inyectora');
+  const _gTapRd = oeePorTipo(effRowsRd, 'tapadora');
+  const _ncDeTipo = g => g.maqs.reduce((s,m)=>s+((oeeByMaq[m]?._nc)||0), 0);
+  const _cardTipo = (g, titulo, color, svg, vacio) => {
+    const tit = `<span style="color:${color};margin-right:7px;display:inline-block;vertical-align:-3px">${svg}</span>${titulo}`;
+    // Sin filas del tipo (p. ej. filtro de máquinas dejó solo inyectoras): se
+    // dice explícitamente, en vez de dibujar una tarjeta en 0.0% que se leería
+    // como "las tapadoras rindieron cero".
+    if (!g.n) return `
+      <div style="font-size:.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">${tit}</div>
+      <div style="color:#6B7280;font-size:.8rem;padding:18px 0;text-align:center">${vacio}</div>`;
+    const info = `Máq ${g.maqs.join(', ')} · Prod: ${Math.round(g.und).toLocaleString('es-CO')} · NC: ${Math.round(_ncDeTipo(g)).toLocaleString('es-CO')}`;
+    return _oeeCard(tit, toF(g.oee), toF(g.disp), toF(g.rend), toF(g.cal), info);
+  };
+  const elI = document.getElementById('rd-oee-iny');
+  const elP = document.getElementById('rd-oee-tap');
+  if (elI) elI.innerHTML = _cardTipo(_gInyRd, 'OEE Inyectoras', '#22D3EE', SVG_INYECTORA, 'Sin inyectoras en el período filtrado');
+  if (elP) elP.innerHTML = _cardTipo(_gTapRd, 'OEE Tapadoras',  '#A78BFA', SVG_TAPADORA,  'Sin tapadoras en el período filtrado');
 
   let totalProg = 0, totalProd = 0;
   const sortedKeys = Object.keys(groups).sort((a,b) => {
@@ -6154,21 +6210,10 @@ function renderReporteCompacto() {
   const rendGlobalDia = calcRendimiento(effRows);
   const calGlobalDia  = calcCalidad(effRows);
   // ── OEE por tipo de máquina: inyectoras aparte, tapadoras aparte ────────
-  // Mismo método que el OEE Global (calcOEEFromDRC sobre las filas del tipo),
-  // NO el promedio de los OEE por máquina: así los tres números son
-  // comparables entre sí y con el Resumen / la pestaña OEE.
-  const inyRowsDia = effRows.filter(r => _tipoMaquina(r._maq) === 'inyectora');
-  const tvRowsDia  = effRows.filter(r => _tipoMaquina(r._maq) === 'tapadora');
-  const grpOee = rws => rws.length ? {
-    oee : calcOEEFromDRC(rws),
-    disp: calcDisponibilidad(rws),
-    rend: calcRendimiento(rws),
-    cal : calcCalidad(rws),
-    maqs: [...new Set(rws.map(r=>String(r._maq||'').trim()).filter(Boolean))]
-            .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
-  } : { oee:null, disp:null, rend:null, cal:null, maqs:[] };
-  const gIny = grpOee(inyRowsDia);
-  const gTV  = grpOee(tvRowsDia);
+  // Helper compartido con el Reporte Diario (ver oeePorTipo): mismo método que
+  // el OEE Global, NO el promedio de los OEE por máquina.
+  const gIny = oeePorTipo(effRows, 'inyectora');
+  const gTV  = oeePorTipo(effRows, 'tapadora');
   // Promedios por máquina (vista alternativa)
   const promDisp = withOee.length ? withOee.reduce((s,g)=>s+g.disp,0)/withOee.length : null;
   const promRend = withOee.length ? withOee.reduce((s,g)=>s+g.rend,0)/withOee.length : null;
