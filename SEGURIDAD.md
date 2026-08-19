@@ -55,22 +55,49 @@ En **cada** uno de estos libros: **Compartir** → cambiar "Cualquiera con el
 enlace" a **Restringido**, y si estaba "Publicado en la web" (Archivo →
 Compartir → Publicar en la Web) → **Dejar de publicar**.
 
-| Libro | ID |
-|---|---|
-| Producción / No Conformes / Ventas | `1o7bDsz…VAE8` |
-| BD Productos / Pedidos (forecast) | `1vZTs6…0dy98` |
-| Restricciones / Inventario MP | `1FJO1…ceI8` |
-| Capacidad / PLANEACION | `1P9-3…bMHH6A` |
-| Histórico de capacidad | `1sdoH…r6eOg` |
+Son los mismos 7 IDs de `ALLOWED_IDS` en [`Proxy.gs`](Proxy.gs) — el proxy solo
+sirve esos, así no se convierte en un relay abierto a toda la cuenta.
+
+| Libro | ID | Estado 2026-08-19 |
+|---|---|---|
+| Producción / No Conformes / Ventas / Maquilas | `1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8` | público |
+| BD Productos / Pedidos | `1vZTs6xImawkKwiWEPmFaY4y6LrVRKrMaAHKuCz0dy98` | ya privado |
+| Restricciones / Inventario MP | `1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8` | ya privado |
+| RECURSOS (máquinas / personal) | `1P9-3iiJMyXQRqV22dL5TJ8n6L1lcgNM5WejOPMbHH6A` | — |
+| PROGRAMACION 2026 | `1dYm44LKn6TQm2fWLY5ZG9_kI_GMGwWcTm7Wq_wDrKs8` | público |
+| PROGRAMACION 2027 | `1hFfhndWwoEoTdEjYoafYRveXFHpRgb_BB04SZGaX6Zk` | — |
+| PROGRAMACION 2028 | `1_mupUu7TEqC5HNEdhfO5bVSCCyXPyW_FJKnGdRZaNbQ` | — |
 
 > La cuenta que ejecuta el proxy (`produccion@fylcosas.com`) debe **seguir
-> teniendo acceso** a los cinco. Como es la dueña, ya lo tiene.
+> teniendo acceso** a todos. Como es la dueña, ya lo tiene.
+
+> **Al crear PROGRAMACION 2029 y siguientes:** agregar el ID en `PROG_FILES`
+> (index.html) **y** en `ALLOWED_IDS` (Proxy.gs), o el proxy lo rechazará.
 
 ### 4. Probar
 Abre `https://fvlco-app.vercel.app/` → debe pedir la clave. Con la clave
 correcta, carga todo. Con clave incorrecta, no entra y no baja ningún dato.
 Bonus: **Inventario MP y Restricciones ahora sí cargarán** (antes fallaban
 porque ese libro ya era privado).
+
+---
+
+## Detalles que no son obvios
+
+**`action:'gids'`.** Los meses de PROGRAMACION 20XX son pestañas y su `gid`
+cambia cada año, así que el dashboard tiene que descubrirlos. En modo directo
+los lee de `/spreadsheets/d/<ID>/htmlview`; **ese truco no funciona a través
+del proxy**, porque `/htmlview` no es el CSV de una hoja y `fetchSheetCsv()`
+devolvería la primera pestaña → mapa vacío → Capacidad y el KPI "Turnos Req."
+del Tablero Plan se quedan sin datos. Por eso `Proxy.gs` expone `listGids(id)`
+y `progGids()` la usa cuando hay proxy configurado. Si algún día se toca una
+de las dos, hay que tocar la otra.
+
+**Velocidad.** El proxy lee con `getDataRange().getDisplayValues()`. La hoja de
+producción son ~3,1 MB de CSV, así que la primera carga con proxy es
+notablemente más lenta que el `export?format=csv` directo. Si molesta, el
+siguiente paso es cachear en el backend (`CacheService`, troceando en claves de
+100 KB) o limitar el rango leído a las columnas que el dashboard usa.
 
 ---
 

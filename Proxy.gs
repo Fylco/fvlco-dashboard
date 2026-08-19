@@ -54,6 +54,7 @@ function doPost(e) {
 
     if (req.action === 'login') return _out(JSON.stringify({ ok: true }));
     if (req.action === 'fetch') return _out(fetchSheetCsv(String(req.url || '')));
+    if (req.action === 'gids')  return _out(listGids(String(req.id || '')));
     return _out('__FVLCO_ERR__ accion desconocida');
   } catch (err) {
     return _out('__FVLCO_ERR__ ' + err.message);
@@ -103,6 +104,20 @@ function fetchSheetCsv(url) {
   // getDisplayValues conserva el formato visible (ej. "3.476.000", "85%",
   // fechas) igual que export?format=csv, para no romper los parseadores.
   return toCsv(sheet.getDataRange().getDisplayValues());
+}
+
+// Nombre de pestaña -> gid, para un libro de la whitelist. El dashboard lo
+// necesita en PROGRAMACION 20XX (los meses son pestañas y su gid cambia cada
+// año). Sin proxy eso sale de /htmlview, que este backend no puede servir
+// porque no es una hoja: de ahí que exista esta acción aparte.
+function listGids(id) {
+  if (!id || ALLOWED_IDS.indexOf(id) < 0) return '__FVLCO_ERR__ sheet no autorizado';
+  var sheets = SpreadsheetApp.openById(id).getSheets();
+  var map = {};
+  for (var i = 0; i < sheets.length; i++) {
+    map[sheets[i].getName().trim().toUpperCase()] = String(sheets[i].getSheetId());
+  }
+  return JSON.stringify(map);
 }
 
 function toCsv(rows) {

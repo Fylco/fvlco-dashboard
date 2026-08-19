@@ -1325,15 +1325,12 @@ const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + en
 const API_URL_DEFAULT = ''; // ej: 'https://script.google.com/macros/s/AKfy.../exec'
 function apiUrl(){ return (localStorage.getItem('fvlco_api_url') || API_URL_DEFAULT || '').trim(); }
 
-// Trae un CSV a través del proxy autenticado. Devuelve un objeto
-// {ok, text()} compatible con los llamados existentes (res.ok / res.text()).
-async function pfetch(url){
-  const api = apiUrl();
-  if(!api){ return fetch(proxy(url), { cache:'no-store' }); } // modo dev sin backend
-  const pw = sessionStorage.getItem('fvlco_pw') || '';
+// POST al proxy con la clave de sesión y manejo de auth. Devuelve el body en
+// texto. Único sitio que conoce el formato del backend (Proxy.gs).
+async function apiPost(payload){
   let body;
   try{
-    const r = await fetch(api, { method:'POST', body: JSON.stringify({ action:'fetch', pw, url }) });
+    const r = await fetch(apiUrl(), { method:'POST', body: JSON.stringify({ ...payload, pw: sessionStorage.getItem('fvlco_pw') || '' }) });
     body = await r.text();
   }catch(e){ throw new Error('Sin conexión con el servidor de datos.'); }
   if(body.indexOf('__FVLCO_AUTH_FAIL__') === 0){
@@ -1342,6 +1339,14 @@ async function pfetch(url){
     throw new Error('auth');
   }
   if(body.indexOf('__FVLCO_ERR__') === 0){ throw new Error(body); }
+  return body;
+}
+
+// Trae un CSV a través del proxy autenticado. Devuelve un objeto
+// {ok, text()} compatible con los llamados existentes (res.ok / res.text()).
+async function pfetch(url){
+  if(!apiUrl()){ return fetch(proxy(url), { cache:'no-store' }); } // modo dev sin backend
+  const body = await apiPost({ action:'fetch', url });
   return { ok:true, status:200, text: async ()=> body };
 }
 
@@ -7964,18 +7969,27 @@ const PROG_MES = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
 // export?format=csv IGNORA &sheet=nombre (siempre exporta la 1ª pestaña):
 // el gid real de cada pestaña se resuelve leyendo /htmlview (público, con CORS)
 const PROG_GIDMAP = {};
+// Con proxy NO se puede usar /htmlview: no es el CSV de una hoja, así que
+// Proxy.gs devolvería la primera pestaña y el mapa saldría vacío → PROGRAMACIÓN
+// (Capacidad y "Turnos Req." del Tablero Plan) se quedaría sin datos. Por eso
+// el backend expone action:'gids', que lista nombre->gid abriendo el libro.
 async function progGids(sid) {
   if (PROG_GIDMAP[sid]) return PROG_GIDMAP[sid];
   try {
-    const res = await pfetch(`https://docs.google.com/spreadsheets/d/${sid}/htmlview`);
-    if (!res.ok) return {};
-    const txt = await res.text();
     const map = {};
-    [...txt.matchAll(/\{name: "([^"]+)", pageUrl: "[^"]*", gid: "(\d+)"/g)]
-      .forEach(m => map[m[1].trim().toUpperCase()] = m[2]);
+    if (apiUrl()) {
+      const j = JSON.parse(await apiPost({ action:'gids', id: sid }));
+      Object.keys(j).forEach(k => map[k.trim().toUpperCase()] = String(j[k]));
+    } else {
+      const res = await pfetch(`https://docs.google.com/spreadsheets/d/${sid}/htmlview`);
+      if (!res.ok) return {};
+      const txt = await res.text();
+      [...txt.matchAll(/\{name: "([^"]+)", pageUrl: "[^"]*", gid: "(\d+)"/g)]
+        .forEach(m => map[m[1].trim().toUpperCase()] = m[2]);
+    }
     if (Object.keys(map).length) PROG_GIDMAP[sid] = map;
     return map;
-  } catch(e) { return {}; }
+  } catch(e) { console.warn('progGids:', e.message); return {}; }
 }
 let PROG_BLOCKS = [];
 let PROG_PEDIDOS = []; // pedidos por cliente (bloques CLIENTE/FECHA ENTREGA/CANTIDAD)
