@@ -1394,10 +1394,7 @@ function startApp(){
   if(_appStarted) return; _appStarted = true;
   const ov = document.getElementById('overlay'); if(ov) ov.style.display='';
   loadAll();
-  setTimeout(()=>loadPlanData().then(()=>{
-    const sel=document.getElementById('po-mes-sel');
-    if(sel)sel.value=new Date().getMonth()+1;
-  }).catch(e=>console.warn('Plan preload:',e)),2000);
+  setTimeout(()=>ensurePlanReady().catch(e=>console.warn('Plan preload:',e)),2000);
 }
 
 function bootWithAuth(){
@@ -7991,6 +7988,22 @@ const PLAN_CFG  = {
 };
 let _poQ = 1;
 let _planLoaded = false;
+// Una sola carga compartida entre el preload de startApp() y la apertura de la
+// pestaña. ANTES eran dos llamadas sueltas a loadPlanData(): el preload dejaba
+// _planLoaded=true SIN llamar recalcularPlan(), así que al entrar a Plan
+// Operativo la rama if(!_planLoaded) ya no corría y el plan nunca se calculaba
+// (Tablero Plan quedaba en 0 pedidos, "Turnos Req. —" y "Cargando datos...").
+let _planReady = null;
+function ensurePlanReady() {
+  if (!_planReady) {
+    _planReady = loadPlanData().then(() => {
+      const sel = document.getElementById('po-mes-sel');
+      if (sel) sel.value = new Date().getMonth() + 1;
+      recalcularPlan();
+    });
+  }
+  return _planReady;
+}
 
 // ── nav groups ──────────────────────────────────────────
 function toggleNavGroup(id) {
@@ -9392,7 +9405,7 @@ const _origSS=showSection;
 window.showSection=function(id){
   _origSS(id);
   if(id.startsWith('po-')){
-    if(!_planLoaded){loadPlanData().then(()=>{const mes=new Date().getMonth()+1;const anio=new Date().getFullYear();const sel=document.getElementById('po-mes-sel');if(sel)sel.value=mes;recalcularPlan();});}
+    if(!_planLoaded)ensurePlanReady().catch(e=>console.warn('Plan:',e));
     // Capacidad carga su propia fuente (PROGRAMACIÓN) de forma independiente —
     // se llama siempre, no solo cuando _planLoaded ya era true, para que no se
     // quede "Cargando…" si esta es la primera pestaña de Plan Operativo que se abre.
