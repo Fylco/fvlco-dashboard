@@ -1325,16 +1325,26 @@ const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + en
 const API_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwa5e8OCThvVtNYXnhEoeTDv3tg7wBgRj1gr2wUo1ue8mND26EMpaWhvPBNaYeptgZ4/exec';
 function apiUrl(){ return (localStorage.getItem('fvlco_api_url') || API_URL_DEFAULT || '').trim(); }
 
-// POST al proxy con la clave de sesión y manejo de auth. Devuelve el body en
+// La clave vive en localStorage, no en sessionStorage: así se escribe UNA vez
+// por equipo (el PC de planta, el del supervisor) en vez de cada vez que se
+// cierra el navegador. Si la clave cambia en el backend, el primer
+// __FVLCO_AUTH_FAIL__ la borra sola y vuelve a pedirla — ver apiPost().
+function getPw(){ try{ return localStorage.getItem('fvlco_pw') || ''; }catch(e){ return ''; } }
+function savePw(pw){ try{ localStorage.setItem('fvlco_pw', pw); }catch(e){} }
+function forgetPw(){ try{ localStorage.removeItem('fvlco_pw'); sessionStorage.removeItem('fvlco_pw'); }catch(e){} }
+// Para revocar el acceso en un equipo prestado: consola -> cerrarSesionFvlco()
+window.cerrarSesionFvlco = function(){ forgetPw(); location.reload(); };
+
+// POST al proxy con la clave guardada y manejo de auth. Devuelve el body en
 // texto. Único sitio que conoce el formato del backend (Proxy.gs).
 async function apiPost(payload){
   let body;
   try{
-    const r = await fetch(apiUrl(), { method:'POST', body: JSON.stringify({ ...payload, pw: sessionStorage.getItem('fvlco_pw') || '' }) });
+    const r = await fetch(apiUrl(), { method:'POST', body: JSON.stringify({ ...payload, pw: getPw() }) });
     body = await r.text();
   }catch(e){ throw new Error('Sin conexión con el servidor de datos.'); }
   if(body.indexOf('__FVLCO_AUTH_FAIL__') === 0){
-    sessionStorage.removeItem('fvlco_pw');
+    forgetPw();
     showLogin('La sesión expiró o la clave es incorrecta. Ingresa de nuevo.');
     throw new Error('auth');
   }
@@ -1386,7 +1396,7 @@ function showLogin(msg){
     const pw = inp.value; if(!pw) return;
     btn.disabled=true; btn.textContent='Verificando…'; err.textContent='';
     const ok = await apiLogin(pw);
-    if(ok){ sessionStorage.setItem('fvlco_pw', pw); o.remove(); startApp(); }
+    if(ok){ savePw(pw); o.remove(); startApp(); }
     else { btn.disabled=false; btn.textContent='Ingresar'; inp.value=''; err.textContent='Clave incorrecta.'; inp.focus(); }
   };
   inp.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
@@ -1404,7 +1414,7 @@ function startApp(){
 
 function bootWithAuth(){
   if(!apiUrl()){ startApp(); return; }  // sin proxy configurado: acceso directo a sheets públicos
-  if(sessionStorage.getItem('fvlco_pw')){ startApp(); return; }
+  if(getPw()){ startApp(); return; }
   showLogin();
 }
 
