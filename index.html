@@ -1322,7 +1322,7 @@ const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + en
 //   del backend. Aquí solo va la URL pública del Web App (no es secreta).
 //   → Pega abajo la URL /exec que te dio el deploy de Proxy.gs.
 // =======================================================
-const API_URL_DEFAULT = ''; // ej: 'https://script.google.com/macros/s/AKfy.../exec'
+const API_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwa5e8OCThvVtNYXnhEoeTDv3tg7wBgRj1gr2wUo1ue8mND26EMpaWhvPBNaYeptgZ4/exec';
 function apiUrl(){ return (localStorage.getItem('fvlco_api_url') || API_URL_DEFAULT || '').trim(); }
 
 // POST al proxy con la clave de sesión y manejo de auth. Devuelve el body en
