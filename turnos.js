@@ -97,6 +97,21 @@ function unidadesTeoricas(tiempoSeg, cicloEst, cavTeor) {
   return Math.round((tiempoSeg / cicloEst) * cavTeor);
 }
 
+// ¿La razón de paro corresponde a un paro PROGRAMADO?
+// Fuente ÚNICA de la clasificación: antes cada pestaña llevaba su propia copia
+// de /programado/i (13 sitios en index.html) y ese regex también hacía match
+// con "PARO NO PROGRAMADO" — el tablero descontaba esos paros del tiempo
+// disponible como si hubieran sido planeados e inflaba la Disponibilidad
+// (1.629 min en julio y agosto de 2026; ver informe de paros abr-ago 2026).
+// Regla: la razón menciona "programado" y NO viene precedido de "no".
+// Solo el paro NO programado descuenta Disponibilidad; el programado nunca fue
+// tiempo de producción planeado. Ver docs de metodología OEE.
+function esParoProgramado(razon) {
+  const s = String(razon == null ? '' : razon);
+  if (!/programad/i.test(s)) return false;
+  return !/\bno\s*programad/i.test(s);
+}
+
 const _MESES_ES_NUM = {
   enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
   julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
@@ -171,5 +186,5 @@ function resolveFechaTurnoRaw(row) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw };
+  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw, esParoProgramado };
 }

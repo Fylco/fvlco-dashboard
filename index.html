@@ -2879,7 +2879,7 @@ function calcCalidad(rows) {
 // el RUN TIME (turno − TODOS los paros). Agrupa por fecha+maq+turno.
 function calcRendimiento(rows) {
   rows = rows.filter(_covParoRow);  // sin paros registrados el run-time es ficticio
-  const _esProg = rz => /programado/i.test(String(rz||''));
+  const _esProg = esParoProgramado;   // turnos.js — fuente única
   const slots = {};
   rows.forEach(r => {
     const sk = `${r._fechaKey||r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`; // fecha COMPLETA (no solo día): evita colapsar el mismo día de meses distintos en un solo slot
@@ -2942,7 +2942,7 @@ function calcRendimiento(rows) {
 // Tiempo programado por turno: 480 min (T1/2/3, 8h) o 720 min (T4/5, 12h).
 function calcDisponibilidad(rows) {
   rows = rows.filter(_covParoRow);  // meses sin registro de paros no pueden afirmar 100%
-  const _esProgDisp = rz => /programado/i.test(String(rz||''));
+  const _esProgDisp = esParoProgramado;   // turnos.js — fuente única
   const TMIN = {'1':480,'2':480,'3':480,'4':720,'5':720};
   const slots = {};
   rows.forEach(r => {
@@ -3594,7 +3594,7 @@ function renderResumen() {
       maqRows.forEach(r => {
         if (!(r._paro > 0)) return;
         const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim() || 'Sin especificar';
-        if (/programado/i.test(rz)) return;
+        if (esParoProgramado(rz)) return;
         maqParo[rz] = (maqParo[rz]||0) + r._paro;
       });
       const sorted = Object.entries(maqParo).sort((a,b)=>b[1]-a[1]);
@@ -3705,7 +3705,7 @@ function renderResumen() {
       const s = _upSlots[sk];
       s.undProd += r._cant||0;
       const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-      if (/programado/i.test(rz)) s.paroProgSeg += (r._paro||0)*60;
+      if (esParoProgramado(rz)) s.paroProgSeg += (r._paro||0)*60;
       if (!s.cicloEst) s.cicloEst = pNum(r['T. CICLO EST'])||0;
       if (!s.cavTeor)  s.cavTeor  = (typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
       const prod = r._prod||'Sin producto';
@@ -5259,7 +5259,7 @@ function renderReporteDiario() {
   //   • Paro PROGRAMADO → se descuenta del turno disponible (la planta planeó no producir).
   //   • Paro CORRECTIVO / no programado → NO se descuenta; el turno permanece en 8h
   //     y el gap (programado − real) muestra las unidades perdidas por ese paro imprevisto.
-  const esProgramado = razon => /programado/i.test(String(razon || ''));
+  const esProgramado = esParoProgramado;   // turnos.js — fuente única
   const slotCap = {}; // key: FECHA|maq|turno → { undProg, cantTotal, paroProgSeg }
   rows.forEach(r => {
     const dia   = r._fechaKey || r._diaTurno || '?';   // fecha COMPLETA: evita colapsar el mismo día de meses distintos
@@ -5408,7 +5408,7 @@ function renderReporteDiario() {
     g.porTurno[_ptk].paro += pNum(r._paro);
     if (pNum(r._paro) > 0) {
       const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-      if (/programado/i.test(rz)) g.porTurno[_ptk].paroProg += pNum(r._paro);
+      if (esParoProgramado(rz)) g.porTurno[_ptk].paroProg += pNum(r._paro);
       else g.porTurno[_ptk].paroNoProg += pNum(r._paro);
     }
     if (dia && TURNO_INTERVALS[t]) { (g.dtSet[dia]||=new Set()).add(t); }
@@ -5424,7 +5424,7 @@ function renderReporteDiario() {
     const sk = `${r._fechaKey||r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
     if (!_scRd[sk]) _scRd[sk] = {undProg:0,cantTotal:0,paroProgSeg:0};
     _scRd[sk].cantTotal += pNum(r._cant);
-    if (/programado/i.test(String(r['RAZON PARO']||r['RAZÓN PARO']||''))) _scRd[sk].paroProgSeg += pNum(r._paro)*60;
+    if (esParoProgramado(r['RAZON PARO']||r['RAZÓN PARO'])) _scRd[sk].paroProgSeg += pNum(r._paro)*60;
   });
   effRowsRd.forEach(r => {
     const maq=String(r._maq||'?'), turno=String(r._turno||'?');
@@ -6041,7 +6041,7 @@ function renderReporteCompacto() {
 
   // ── Capacidad programada por slot (sobre filas efectivas) ──────────────
   // Segundos por turno: T1/T2/T3 = 8h (28800); T4/T5 = 12h (43200).
-  const esProgramado = razon => /programado/i.test(String(razon || ''));
+  const esProgramado = esParoProgramado;   // turnos.js — fuente única
   const slotCap = {};
   effRows.forEach(r => {
     const sKey = `${r._diaTurno||'?'}|${String(r._maq||'?')}|${String(r._turno||'?')}`;
@@ -6378,7 +6378,7 @@ function renderReporteCompacto() {
     return `<tr>
       <td class="rc-mq" style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
       <td class="rc-det" data-label="Producción por turno" style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
-      <td data-label="Tiempo perdido" style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min</td>
+      <td data-label="Tiempo perdido" style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min${g.paroProg>0?`<div style="font-size:.62rem;font-weight:600;color:#92400E;line-height:1.35;margin-top:3px">${ri(g.paroProg)} programado<br>${ri(g.paroNoProg)} no programado</div>`:''}</td>
       <td data-label="Disponibilidad" style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.8rem;font-weight:800">${pc(g.disp)}</td>
       <td data-label="Rendimiento" style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.8rem;font-weight:800">${pc(g.rend)}</td>
       <td data-label="Calidad" style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.8rem;font-weight:800">${pc(g.cal)}</td>
@@ -6862,7 +6862,7 @@ async function exportPDF(shareMode = false) {
     dProd.forEach(r=>{
       if(!(r._paro>0)) return;
       const rz=String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim()||'Sin especificar';
-      if(/programado/i.test(rz)) return;
+      if(esParoProgramado(rz)) return;
       const maq='Maq '+(r._maq||'?');
       const key=`${rz}|||${maq}`;
       _paroMap2[key]=(_paroMap2[key]||0)+(r._paro||0);
@@ -6895,7 +6895,7 @@ async function exportPDF(shareMode = false) {
       const s=_upSlotsP[sk];
       s.undProd+=r._cant||0;
       const rz=String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-      if(/programado/i.test(rz)) s.paroProgSeg+=(r._paro||0)*60;
+      if(esParoProgramado(rz)) s.paroProgSeg+=(r._paro||0)*60;
       if(!s.cicloEst) s.cicloEst=pNum(r['T. CICLO EST'])||0;
       if(!s.cavTeor) s.cavTeor=(typeof _cavTeorOf==='function'?_cavTeorOf(r):0)||pNum(r['CAV.TEORICAS'])||(CAV_TEOR_MAP[r._prod]||0);
       const prod=r._prod||'Sin producto';

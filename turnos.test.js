@@ -1,5 +1,5 @@
 const assert = require('node:assert');
-const { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw } = require('./turnos.js');
+const { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw, esParoProgramado } = require('./turnos.js');
 const S = (...t) => new Set(t.map(String));
 
 const ts = (h, m = 0) => new Date(2026, 5, 10, h, m, 0).getTime(); // hora local del 2026-06-10
@@ -212,3 +212,31 @@ t('MES numérico (no texto): también resuelve DIA/MES/AÑO', () => {
 });
 
 console.log(`\n${passed} pruebas OK`);
+
+// ── esParoProgramado ──────────────────────────────────────────────────────
+// El paro PROGRAMADO no descuenta Disponibilidad (nunca fue tiempo de
+// producción planeado); el NO programado sí. Clasificar mal una razón mueve
+// la Disponibilidad de todas las pestañas, así que la regla vive aquí sola.
+t('Razones realmente programadas → true', () => {
+  ['PARO PROGRAMADO',
+   'MANTENIMIENTO PREVENTIVO PROGRAMADO',
+   'MONTAJE MOLDE PROGRAMADO',
+   'DESMONTAJE MOLDE PROGRAMADO',
+   'paro programado'].forEach(rz =>
+    assert.strictEqual(esParoProgramado(rz), true, rz));
+});
+// El bug: /programado/i también hace match con "PARO NO PROGRAMADO" y el
+// tablero lo descontaba del tiempo disponible como si hubiera sido planeado,
+// inflando la Disponibilidad (1.629 min en julio y agosto de 2026).
+t('"PARO NO PROGRAMADO" NO es paro programado', () => {
+  ['PARO NO PROGRAMADO',
+   'paro no programado',
+   'PARO  NO  PROGRAMADO',
+   'NO PROGRAMADO',
+   'NOPROGRAMADO'].forEach(rz =>
+    assert.strictEqual(esParoProgramado(rz), false, rz));
+});
+t('Razones sin la palabra y vacías → false', () => {
+  ['DAÑO ELECTRICO MAQUINA', 'AJUSTE TAPADORA', 'AUSENTISMO', '', null, undefined]
+    .forEach(rz => assert.strictEqual(esParoProgramado(rz), false, String(rz)));
+});
