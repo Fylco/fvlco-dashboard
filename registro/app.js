@@ -119,8 +119,14 @@ function limpiarErrores(){
 /* Implementación del proyecto "Formulario Mejorado".
    Actualizada 2026-08-14: la implementación anterior (AKfycbyuOgZDlZ...) quedó
    pegada a una versión vieja del código y no reconocía las acciones sup*.
-   Verificado en esta URL: ?action=datos responde, supLogin valida la clave. */
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1a7HdxU3ozQVqmy6MC9F8DZfeAE3kByGkDjgsTvL518-iz8Juj2KzOqdeAyyZkIAx5w/exec';
+   Actualizada 2026-08-21: la anterior (AKfycbx1a7HdxU3o...) volvió a quedarse
+   atrás — el proyecto tiene varias implementaciones y republicar la que no es
+   deja el editor con el código nuevo y el web app con el viejo. Esta es la que
+   quedó en la versión 49.
+   CÓMO VERIFICAR SIN ESCRIBIR NADA:
+     curl -sL "<esta URL>?action=version"   →   {"version":"molino-color-..."}
+   Si responde HTML en vez de JSON, la implementación está vieja. */
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbwQuK-xVJ1KE8CHIf4sEdYyuePoTQ74VDcusSbBh1dUK6yvE_v0_r6QAcKZJ9YC1yma4w/exec';
 
 function obtenerDatosDesdeBackend(){
   return fetch(GAS_URL + '?action=datos').then(function(res){
