@@ -23,14 +23,22 @@ var OPDEF = {
     fields:[
       {id:'mRef',  label:'Material',  type:'select',   req:true,
        options:['LLDPE','HDPE','PP','REMOLIDO HDPE','50 / 50']},
+      // El color define a qué bolsa de molido entra el material: el molido
+      // natural y el pigmentado no son intercambiables. Sin color no se puede
+      // saber cuánto molido usable hay, así que es obligatorio.
+      // Texto libre por decisión del usuario: el operario escribe el color que
+      // realmente molió, sin lista cerrada que lo obligue a mentir. El backend
+      // normaliza a mayúsculas y sin dobles espacios para que "Natural" y
+      // "NATURAL " caigan en la misma bolsa.
+      {id:'mCol',  label:'Color del molido', type:'text', req:true},
       {id:'mKg',   label:'Kilos molidos',         type:'number',   req:true,  step:'0.01'},
       {id:'mBar',  label:'Kilos barradura',       type:'number',   req:false, step:'0.01'},
       {id:'mHH',   label:'Horas Trabajadas',          type:'number',   req:true,  step:'0.5'},
       {id:'mObs',  label:'Observaciones',         type:'textarea', req:false}
     ],
-    collect:function(){ return { referencia:val('mRef'), kilosMolidos:val('mKg'), kilosBarradura:val('mBar')||0, horasHombre:val('mHH'), observacion:val('mObs') }; },
-    validate:function(){ return reqs(['mRef','mKg','mHH']); },
-    summary:function(){ return [['Referencia',val('mRef')],['Kg molidos',val('mKg')],['Kg barradura',val('mBar')||'0'],['H. Trabajadas',val('mHH')]]; }
+    collect:function(){ return { referencia:val('mRef'), color:val('mCol'), kilosMolidos:val('mKg'), kilosBarradura:val('mBar')||0, horasHombre:val('mHH'), observacion:val('mObs') }; },
+    validate:function(){ return reqs(['mRef','mCol','mKg','mHH']); },
+    summary:function(){ return [['Referencia',val('mRef')],['Color',val('mCol')],['Kg molidos',val('mKg')],['Kg barradura',val('mBar')||'0'],['H. Trabajadas',val('mHH')]]; }
   },
   MANUALIDADES: {
     color:'#7c3aed', icon:'✋', label:'MANUALIDADES',
