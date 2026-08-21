@@ -6280,6 +6280,19 @@ function renderReporteCompacto() {
       if (v != null && (v < -0.01 || v > 100.01))
         alertas.push(`${m}: ${k} = ${v.toFixed(1)}% fuera de rango (0–100%).`);
     });
+    // ── Coherencia entre el INDICADOR y los datos CRUDOS de la fila ────────
+    // Estas tres reglas existen por el caso del 20-ago-2026: máquina 1 con
+    // 120 min de paro registrado y Disponibilidad en 100%. El cálculo no
+    // fallaba — la definición excluía el paro programado — pero nadie lo vio
+    // durante 23 días porque nada en el tablero lo señalaba. Un indicador que
+    // contradice sus propios datos crudos tiene que gritar, sea por un cambio
+    // de fórmula, por una regla mal escrita o por digitación.
+    if (g.disp != null && g.disp > 99.99 && g.paro > 0)
+      alertas.push(`${m}: Disponibilidad en 100% con ${ri(g.paro)} min de paro registrado — el indicador contradice los datos crudos.`);
+    if (g.disp != null && g.disp < 99.99 && g.paro <= 0)
+      alertas.push(`${m}: Disponibilidad en ${g.disp.toFixed(1)}% sin ningún paro registrado — el indicador contradice los datos crudos.`);
+    if (g.tProg > 0 && g.paro > g.tProg + 1)
+      alertas.push(`${m}: ${ri(g.paro)} min de paro sobre ${ri(g.tProg)} min programados — el mismo paro está digitado en varios turnos (se topa al turno para calcular).`);
   });
   const alertaHTML = alertas.length ? `
       <div style="background:#FEF3C7;border-bottom:2px solid #F59E0B;padding:11px 20px;color:#92400E">
