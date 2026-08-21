@@ -2934,22 +2934,24 @@ function calcRendimiento(rows) {
   return Math.min(100, Math.max(0, (totProd/totTeo)*100));
 }
 
-// % Disponibilidad = (Tiempo Programado del turno − Paro NO Programado) / Tiempo Programado.
-// Es una métrica de TIEMPO: no depende de unidades/ciclo (eso es Rendimiento).
-// El paro PROGRAMADO (mantenimiento, desmontaje de molde programado, etc.) NO
-// resta Disponibilidad: es tiempo de producción que nunca estuvo planeado desde
-// el inicio, así que no debe leerse como una pérdida de disponibilidad real.
+// % Disponibilidad = (Tiempo Programado del turno − Paro TOTAL) / Tiempo Programado.
+// Es una métrica de TIEMPO: no depende de unidades/ciclo (eso es Rendimiento) y
+// TODO paro cuenta, programado o no: si la máquina se programó 24 h y estuvo
+// detenida 2 h, trabajó 22 de 24 → 91,67%. Un paro programado igual detiene la
+// máquina ese rato, así que sí reduce la disponibilidad real del turno.
+// (Del 29-jul al 21-ago-2026 el paro programado NO restaba y por eso un día con
+// solo paro programado salía en 100%; revertido a pedido del usuario.)
+// El paro programado sigue siendo la referencia del PLAN (Und. Programadas),
+// que es otra columna — no confundir con este indicador.
 // Tiempo programado por turno: 480 min (T1/2/3, 8h) o 720 min (T4/5, 12h).
 function calcDisponibilidad(rows) {
   rows = rows.filter(_covParoRow);  // meses sin registro de paros no pueden afirmar 100%
-  const _esProgDisp = esParoProgramado;   // turnos.js — fuente única
   const TMIN = {'1':480,'2':480,'3':480,'4':720,'5':720};
   const slots = {};
   rows.forEach(r => {
     const sk = `${r._fechaKey||r._diaTurno||'?'}|${r._maq||'?'}|${r._turno||'?'}`; // fecha COMPLETA (no solo día): evita colapsar el mismo día de meses distintos en un solo slot
     if (!slots[sk]) slots[sk] = { paro:0, turno:String(r._turno||'') };
-    const rz = String(r['RAZON PARO']||r['RAZÓN PARO']||'').trim();
-    if (!_esProgDisp(rz)) slots[sk].paro += r._paro||0;
+    slots[sk].paro += r._paro||0;   // TODO paro resta, programado o no
   });
   let totProg=0, totParo=0;
   Object.values(slots).forEach(s => {
@@ -5460,9 +5462,9 @@ function renderReporteDiario() {
     g.undProg = (cEst>0&&_cavTd>0&&g.horas>0)?Math.round((g.horas*3600/cEst)*_cavTd):g.undProd;
     g.tReal   = (cavR>0&&cReal>0)?(g.undProd/cavR*cReal)/60:0;
     g.tProg   = g.horas*60;
-    // DISPONIBILIDAD: solo el paro NO programado resta (el programado nunca fue
-    // tiempo de producción planeado). Ver misma regla en calcDisponibilidad/Compacto.
-    g.disp    = g.tProg>0?Math.min(100,Math.max(0,(g.tProg-g.paroNoProg)/g.tProg*100)):null;
+    // DISPONIBILIDAD: TODO paro resta, programado o no (22 de 24 h = 91,67%).
+    // Ver misma regla en calcDisponibilidad/Compacto.
+    g.disp    = g.tProg>0?Math.min(100,Math.max(0,(g.tProg-g.paro)/g.tProg*100)):null;
     // RENDIMIENTO (Performance OEE) = producción ÷ ideal durante RUN TIME (turno
     // − TODOS los paros). No usa undProg (meta de plan) para no penalizar dos
     // veces el tiempo perdido (eso ya lo hace Disponibilidad) → evita OEE bajo.
@@ -6185,11 +6187,11 @@ function renderReporteCompacto() {
     // #1 TIEMPO PROGRAMADO (min) = duración nominal de los turnos trabajados
     g.tProg = g.horas*60;
 
-    // #4 DISPONIBILIDAD = (Tiempo Programado − Paro NO Programado) ÷ Tiempo Programado.
-    // El paro programado (mantenimiento, desmontaje de molde programado, etc.)
-    // NO cuenta: nunca fue tiempo de producción planeado, así que no resta
-    // disponibilidad real del turno. Solo el paro NO programado la reduce.
-    g.disp = (_cvParoRc && g.tProg>0) ? Math.min(100, Math.max(0, (g.tProg-g.paroNoProg)/g.tProg*100)) : null;
+    // #4 DISPONIBILIDAD = (Tiempo Programado − Paro TOTAL) ÷ Tiempo Programado.
+    // TODO paro resta, programado o no: mantenimiento o desmontaje de molde
+    // igual detienen la máquina, y el turno se programó completo. 24 h de turno
+    // con 2 h de paro = 22 de 24 → 91,67%.
+    g.disp = (_cvParoRc && g.tProg>0) ? Math.min(100, Math.max(0, (g.tProg-g.paro)/g.tProg*100)) : null;
 
     // #5 RENDIMIENTO (Performance OEE) = producción ÷ producción ideal durante
     //    el RUN TIME (turno − TODOS los paros). Distinto de undProg (plan): el
@@ -6378,7 +6380,7 @@ function renderReporteCompacto() {
     return `<tr>
       <td class="rc-mq" style="font-weight:700;color:#111827;vertical-align:top">Máquina ${g.maq}</td>
       <td class="rc-det" data-label="Producción por turno" style="vertical-align:top"><div style="font-size:.92rem;color:#374151">${fullDet}</div></td>
-      <td data-label="Tiempo perdido" style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min${g.paroProg>0?`<div style="font-size:.62rem;font-weight:600;color:#92400E;line-height:1.35;margin-top:3px">${ri(g.paroProg)} programado<br>${ri(g.paroNoProg)} no programado</div>`:''}</td>
+      <td data-label="Tiempo perdido" style="text-align:right;color:#DC2626;background:#FFFFFF;font-size:1.1rem;font-weight:700;vertical-align:top">${ri(g.paro)} min</td>
       <td data-label="Disponibilidad" style="text-align:right;background:#FBE5C8;color:#7A4B12;font-size:1.8rem;font-weight:800">${pc(g.disp)}</td>
       <td data-label="Rendimiento" style="text-align:right;background:#DCE9F7;color:#1F4E79;font-size:1.8rem;font-weight:800">${pc(g.rend)}</td>
       <td data-label="Calidad" style="text-align:right;background:#D9EAD3;color:#2E5C1E;font-size:1.8rem;font-weight:800">${pc(g.cal)}</td>
