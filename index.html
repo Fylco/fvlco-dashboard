@@ -15,6 +15,7 @@
 <script src="turnos.js"></script>
 <script src="capacidad.js"></script>
 <script src="programacion.js"></script>
+<script src="analisis-paros.js"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -223,6 +224,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
       <div class="nav-item" onclick="showSection('paros')" data-section="paros" data-color="#F97316">
         <span class="nav-icon"><i class="fa-solid fa-clock"></i></span> Tiempos de Paro
+      </div>
+      <div class="nav-item" onclick="showSection('analisis-paros')" data-section="analisis-paros" data-color="#A855F7">
+        <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Análisis de Paros
       </div>
       <div class="nav-item" onclick="showSection('accid')" data-section="accid" data-color="#EC4899">
         <span class="nav-icon"><i class="fa-solid fa-helmet-safety"></i></span> Status Personal
@@ -712,6 +716,91 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="chart-card" style="overflow-x:auto">
         <div class="section-title">Detalle de Paros y Observaciones</div>
         <table class="tbl" id="paro-obs-tbl"></table>
+      </div>
+
+    </div>
+
+    <!-- ======================================= ANALISIS DE PAROS == -->
+    <!-- Pestaña de análisis: los mismos paros de la pestaña anterior, pero
+         comparados entre meses con tasa por 100 h programadas, y con el
+         análisis escrito que se recalcula cada vez que se cambia un filtro.
+         La lógica vive en analisis-paros.js (con pruebas en Node). -->
+    <div class="section" id="sec-analisis-paros">
+
+      <div style="background:#111827;border:1px solid #1F2937;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Mes</span>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="ap-mes-btn" onclick="toggleMesMultiDD('ap-mes-dd', event)" style="min-width:150px;text-align:left">Todos los meses ▾</button>
+            <div class="multi-sel-dropdown" id="ap-mes-dd"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Máquina</span>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="ap-maq-btn" onclick="toggleApMaqDD(event)" style="min-width:150px;text-align:left">Todas las máquinas ▾</button>
+            <div class="multi-sel-dropdown" id="ap-maq-dd"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:220px">
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Molde / Producto</span>
+          <div class="multi-sel-wrap">
+            <button class="multi-sel-btn" id="ap-molde-btn" onclick="toggleApMoldeDD(event)" style="min-width:220px;text-align:left">Todos los moldes ▾</button>
+            <div class="multi-sel-dropdown" id="ap-molde-dd" style="min-width:280px;max-height:320px;overflow-y:auto"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <button class="btn-filter" onclick="renderAnalisisParos()">Analizar</button>
+          <button class="btn-clear" onclick="clearApPanel()">Limpiar</button>
+        </div>
+      </div>
+
+      <!-- EL ANÁLISIS: se reescribe con cada filtro -->
+      <div class="chart-card" style="margin-bottom:18px;border-left:3px solid #A855F7">
+        <div class="section-title" style="display:flex;align-items:center;gap:8px">
+          <i class="fa-solid fa-wand-magic-sparkles" style="color:#A855F7"></i>
+          Análisis automático
+          <span id="ap-alcance" style="font-size:.7rem;color:#6B7280;font-weight:400;margin-left:auto"></span>
+        </div>
+        <div id="ap-narrativa" style="font-size:.86rem;line-height:1.6;color:#D1D5DB"></div>
+      </div>
+
+      <div id="ap-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <div class="chart-card">
+          <div class="section-title">Tendencia mensual — min de paro por 100 h programadas</div>
+          <div style="height:280px"><canvas id="ap-tendencia"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title">Tasa por máquina y mes (min / 100 h)</div>
+          <div style="height:280px"><canvas id="ap-maq-chart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="chart-card" style="margin-bottom:18px">
+        <div class="section-title">Comparación mes a mes</div>
+        <table class="tbl" id="ap-tbl-meses"></table>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <div class="chart-card">
+          <div class="section-title">Por máquina</div>
+          <table class="tbl" id="ap-tbl-maq"></table>
+        </div>
+        <div class="chart-card">
+          <div class="section-title">Por molde</div>
+          <table class="tbl" id="ap-tbl-molde"></table>
+        </div>
+      </div>
+
+      <div class="chart-card" style="margin-bottom:18px">
+        <div class="section-title">Causas — Pareto del período y variación</div>
+        <table class="tbl" id="ap-tbl-razon"></table>
       </div>
 
     </div>
@@ -3129,6 +3218,11 @@ function populateAllFilters() {
   buildMesMultiDd('paro-mes-dd', meses);
   buildParoMaqDd(maqs);
   buildParoDiaDd(dias);
+  // Análisis de Paros: filtros propios (mes, máquina, molde)
+  registrarFiltroMes('ap-mes-dd', 'ap-mes-btn', SEL_MESES_AP, renderAnalisisParos);
+  buildMesMultiDd('ap-mes-dd', meses);
+  _buildMaqDd('ap-maq-dd', maqs, 'toggleApMaq');
+  buildApMoldeDd([...new Set(DATA.prod.filter(r => (r._paro||0) > 0).map(r => familiaMolde(r._prod)))].sort());
   // Costos panel — usa meses y días derivados de FECHAS SEGUN TURNO
   const mesesTurno = [...new Set(DATA.prod.map(r=>r._mesTurno).filter(Boolean))];
   const diasTurno  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
@@ -3298,7 +3392,7 @@ function filterVentas() {
 function applyGlobalFilter() {
   const id = document.querySelector('.section.active')?.id?.replace('sec-','');
   const map = { resumen:renderResumen, oee:renderOEE, 'plan-mensual':renderPlanMensual,
-    'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF, paros:renderParos, accid:renderAccid, costos:renderCostos, maquilas:renderMaquilas };
+    'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF, paros:renderParos, 'analisis-paros':renderAnalisisParos, accid:renderAccid, costos:renderCostos, maquilas:renderMaquilas };
   if (id && map[id]) map[id]();
 }
 
@@ -4817,6 +4911,213 @@ function getAccDias() {
   }
   return null;
 }
+// ── ANÁLISIS DE PAROS ────────────────────────────────────────────────────
+// Los mismos paros de la pestaña anterior, pero comparados ENTRE MESES y con el
+// análisis escrito. Todo el cálculo vive en analisis-paros.js (probado en Node);
+// aquí solo se filtra, se pinta y se formatea.
+//
+// Por qué la métrica es una tasa y no minutos: los meses no son comparables en
+// tamaño (un mes en curso lleva menos días, y una máquina que no se programó no
+// puede "mejorar"). La tasa es minutos de paro por cada 100 horas programadas.
+let SEL_MESES_AP = new Set(), SEL_MAQ_AP = new Set(), SEL_MOLDE_AP = new Set();
+
+function toggleApMaqDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('ap-maq-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
+}
+function toggleApMaq(m) {
+  if (SEL_MAQ_AP.has(m)) SEL_MAQ_AP.delete(m); else SEL_MAQ_AP.add(m);
+  _updateMaqBtn('ap-maq-btn', SEL_MAQ_AP);
+  renderAnalisisParos();
+}
+function toggleApMoldeDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('ap-molde-dd');
+  dd.classList.toggle('show');
+  if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
+}
+function toggleApMolde(m) {
+  if (SEL_MOLDE_AP.has(m)) SEL_MOLDE_AP.delete(m); else SEL_MOLDE_AP.add(m);
+  const btn = document.getElementById('ap-molde-btn');
+  if (btn) {
+    btn.textContent = SEL_MOLDE_AP.size === 0 ? 'Todos los moldes ▾' : `${SEL_MOLDE_AP.size} molde(s) ▾`;
+    btn.classList.toggle('active', SEL_MOLDE_AP.size > 0);
+  }
+  renderAnalisisParos();
+}
+function buildApMoldeDd(moldes) {
+  const dd = document.getElementById('ap-molde-dd'); if (!dd) return;
+  dd.innerHTML = moldes.map(m =>
+    `<label class="ms-item"><input type="checkbox" onchange="toggleApMolde(${JSON.stringify(m).replace(/"/g, '&quot;')})"> ${m}</label>`
+  ).join('');
+}
+function clearApPanel() {
+  SEL_MESES_AP.clear(); SEL_MAQ_AP.clear(); SEL_MOLDE_AP.clear();
+  document.querySelectorAll('#ap-mes-dd input, #ap-maq-dd input, #ap-molde-dd input')
+          .forEach(c => c.checked = false);
+  _updateMaqBtn('ap-maq-btn', SEL_MAQ_AP);
+  const bm = document.getElementById('ap-mes-btn'); if (bm) { bm.textContent = 'Todos los meses ▾'; bm.classList.remove('active'); }
+  const bo = document.getElementById('ap-molde-btn'); if (bo) { bo.textContent = 'Todos los moldes ▾'; bo.classList.remove('active'); }
+  renderAnalisisParos();
+}
+
+// Filtro propio: mes, máquina y molde. No hereda el filtro global de mes porque
+// esta pestaña compara meses entre sí — heredar "un mes" la dejaría sin objeto.
+function filterAnalisisParos() {
+  return DATA.prod.filter(r =>
+    mesMatch(SEL_MESES_AP, r._mesTurno || r._mes) &&
+    (!SEL_MAQ_AP.size   || SEL_MAQ_AP.has(String(r._maq))) &&
+    (!SEL_MOLDE_AP.size || SEL_MOLDE_AP.has(familiaMolde(r._prod)))
+  );
+}
+
+function _apPct(n) {
+  if (n == null || !isFinite(n)) return '<span style="color:#6B7280">—</span>';
+  const c = n > 2 ? '#EF4444' : (n < -2 ? '#10B981' : '#9CA3AF');
+  return `<span style="color:${c};font-weight:600">${n >= 0 ? '+' : ''}${n.toFixed(1)}%</span>`;
+}
+function _apNum(n, d = 0) { return n == null || isNaN(n) ? '—' : fmt(n, d); }
+
+function renderAnalisisParos() {
+  const rows = filterAnalisisParos();
+  const res  = analizarParos(rows, calcShiftHours, { iteraciones: 1500 });
+  const M    = res.meses;
+
+  // Alcance del análisis: qué se está mirando exactamente
+  const alcance = [
+    SEL_MESES_AP.size ? `${SEL_MESES_AP.size} mes(es)` : 'todos los meses',
+    SEL_MAQ_AP.size   ? `máquinas ${[...SEL_MAQ_AP].join(', ')}` : 'todas las máquinas',
+    SEL_MOLDE_AP.size ? `${SEL_MOLDE_AP.size} molde(s)` : 'todos los moldes',
+  ].join(' · ');
+  const elAl = document.getElementById('ap-alcance');
+  if (elAl) elAl.textContent = alcance;
+
+  // ── El análisis escrito
+  const nar = document.getElementById('ap-narrativa');
+  if (nar) {
+    nar.innerHTML = res.narrativa.map(t =>
+      `<div style="padding-left:16px;position:relative;margin-bottom:8px">
+         <span style="position:absolute;left:0;color:#A855F7">▸</span>${t}</div>`
+    ).join('');
+  }
+
+  // ── KPIs del último mes del filtro
+  const ult = M[M.length - 1], ant = M.length > 1 ? M[M.length - 2] : null;
+  const kp = document.getElementById('ap-kpis');
+  if (kp) {
+    if (!ult) { kp.innerHTML = ''; }
+    else {
+      const varTasa = ant && ant.tasaFalla ? (ult.tasaFalla - ant.tasaFalla) / ant.tasaFalla * 100 : null;
+      const varPri  = M.length > 2 && M[0].tasaFalla ? (ult.tasaFalla - M[0].tasaFalla) / M[0].tasaFalla * 100 : null;
+      const rr = res.pruebas && res.pruebas.vsAnterior && res.pruebas.vsAnterior.rr;
+      kp.innerHTML =
+        kpiCard('Paro total · ' + ult.nombre, fmt(ult.min) + ' min', '#F97316',
+                `${fmt(ult.horas)} h programadas · ${ult.dias} días`, 'fa-solid fa-clock') +
+        kpiCard('Tasa de fallas', fmt(ult.tasaFalla) , '#EF4444',
+                'min por 100 h programadas', 'fa-solid fa-gauge-high') +
+        kpiCard('vs. mes anterior', varTasa == null ? '—' : (varTasa >= 0 ? '+' : '') + varTasa.toFixed(1) + '%',
+                varTasa == null ? '#6B7280' : (varTasa < 0 ? '#10B981' : '#EF4444'),
+                rr ? `RR ${rr.rr.toFixed(2)} · IC95 ${rr.lo.toFixed(2)}–${rr.hi.toFixed(2)}${rr.significativo ? '' : ' (no concluyente)'}` : 'sin mes previo en el filtro',
+                'fa-solid fa-arrow-trend-down') +
+        kpiCard('vs. primer mes', varPri == null ? '—' : (varPri >= 0 ? '+' : '') + varPri.toFixed(1) + '%',
+                varPri == null ? '#6B7280' : (varPri < 0 ? '#10B981' : '#EF4444'),
+                M.length > 2 ? `contra ${M[0].nombre}` : 'se necesitan 3+ meses', 'fa-solid fa-calendar-days') +
+        kpiCard('Eventos de falla', fmt(ult.eventosFalla), '#F59E0B',
+                ult.minEvento ? `${fmt(ult.minEvento, 0)} min por evento` : '—', 'fa-solid fa-list-ol') +
+        kpiCard('Paro planeado', fmt(ult.planeado) + ' min', '#3B82F6',
+                ult.min ? `${(ult.planeado / ult.min * 100).toFixed(0)}% del paro del mes` : '—', 'fa-solid fa-calendar-check');
+    }
+  }
+
+  // ── Tendencia mensual: las tres clases de paro, en tasa
+  makeChart('ap-tendencia', 'line', M.map(m => cap(m.nombre)), [
+    { label: 'Fallas y ajustes', data: M.map(m => m.tasaFalla), borderColor: '#F97316', backgroundColor: '#F9731633', tension: .3, borderWidth: 2 },
+    { label: 'Planeado',         data: M.map(m => m.tasaPlaneado), borderColor: '#3B82F6', backgroundColor: '#3B82F633', tension: .3, borderWidth: 2 },
+    { label: 'Orden de gerencia', data: M.map(m => m.decision / (m.horas || 1) * 100), borderColor: '#84CC16', backgroundColor: '#84CC1633', tension: .3, borderWidth: 2 },
+  ], { legend: true });
+
+  // ── Tasa por máquina y mes
+  const PAL_MES = ['#F97316', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#EC4899', '#F59E0B'];
+  makeChart('ap-maq-chart', 'bar', res.porMaquina.map(m => 'Máq ' + m.maq),
+    M.map((m, i) => ({
+      label: cap(m.nombre),
+      data: res.porMaquina.map(x => x.porMes[m.ym]),
+      backgroundColor: PAL_MES[i % PAL_MES.length], borderWidth: 0,
+    })), { legend: true });
+
+  // ── Tabla mes a mes
+  const t1 = document.getElementById('ap-tbl-meses');
+  if (t1) {
+    t1.innerHTML = M.length ? `
+      <thead><tr>
+        <th>Mes</th><th>Paro total</th><th>Fallas</th><th>Planeado</th><th>Orden ger.</th>
+        <th>Horas prog.</th><th>Tasa fallas</th><th>% del tiempo</th><th>Eventos</th>
+        <th>Min/evento</th><th>Días</th><th>Var. tasa</th>
+      </tr></thead>
+      <tbody>${M.map((m, i) => {
+        const v = i === 0 ? null : (M[i - 1].tasaFalla ? (m.tasaFalla - M[i - 1].tasaFalla) / M[i - 1].tasaFalla * 100 : null);
+        return `<tr>
+          <td style="font-weight:600;color:#EEE">${cap(m.nombre)}</td>
+          <td>${_apNum(m.min)}</td><td>${_apNum(m.falla)}</td><td>${_apNum(m.planeado)}</td><td>${_apNum(m.decision)}</td>
+          <td>${_apNum(m.horas)}</td><td style="font-weight:600">${_apNum(m.tasaFalla)}</td>
+          <td>${m.horas ? (m.falla / (m.horas * 60) * 100).toFixed(1) + '%' : '—'}</td>
+          <td>${_apNum(m.eventosFalla)}</td><td>${_apNum(m.minEvento)}</td><td>${m.dias}</td>
+          <td>${i === 0 ? '<span style="color:#6B7280">base</span>' : _apPct(v)}</td>
+        </tr>`;
+      }).join('')}</tbody>` : '<tbody><tr><td style="color:#6B7280">Sin datos con estos filtros.</td></tr></tbody>';
+  }
+
+  // ── Tabla por máquina (tasa por mes + variaciones)
+  const t2 = document.getElementById('ap-tbl-maq');
+  if (t2) {
+    t2.innerHTML = res.porMaquina.length ? `
+      <thead><tr><th>Máq</th>${M.map(m => `<th>${cap(m.nombre).slice(0, 3)}</th>`).join('')}
+        <th>Total min</th><th>vs ant.</th><th>1º→últ.</th></tr></thead>
+      <tbody>${res.porMaquina.map(x => `<tr>
+        <td style="font-weight:600;color:#EEE">${x.maq}</td>
+        ${M.map(m => `<td>${x.horasPorMes[m.ym] ? _apNum(x.porMes[m.ym]) : '<span style="color:#6B7280">s/p</span>'}</td>`).join('')}
+        <td>${_apNum(x.total)}</td><td>${_apPct(x.varMesAnterior)}</td><td>${_apPct(x.varPrimeroUltimo)}</td>
+      </tr>`).join('')}</tbody>` : '<tbody><tr><td style="color:#6B7280">Sin datos.</td></tr></tbody>';
+  }
+
+  // ── Tabla por molde
+  const t3 = document.getElementById('ap-tbl-molde');
+  if (t3) {
+    const tot = res.porMolde.reduce((s, x) => s + x.total, 0);
+    t3.innerHTML = res.porMolde.length ? `
+      <thead><tr><th>Molde</th>${M.map(m => `<th>${cap(m.nombre).slice(0, 3)}</th>`).join('')}
+        <th>Total</th><th>% </th><th>vs ant.</th></tr></thead>
+      <tbody>${res.porMolde.slice(0, 12).map(x => `<tr>
+        <td style="font-weight:600;color:#EEE">${x.clave.slice(0, 26)}</td>
+        ${M.map(m => `<td>${_apNum(x.porMes[m.ym] || 0)}</td>`).join('')}
+        <td>${_apNum(x.total)}</td><td>${tot ? (x.total / tot * 100).toFixed(0) + '%' : '—'}</td>
+        <td>${_apPct(x.varMesAnterior)}</td>
+      </tr>`).join('')}</tbody>` : '<tbody><tr><td style="color:#6B7280">Sin datos.</td></tr></tbody>';
+  }
+
+  // ── Tabla de causas con Pareto acumulado
+  const t4 = document.getElementById('ap-tbl-razon');
+  if (t4) {
+    const tot = res.porRazon.reduce((s, x) => s + x.total, 0);
+    let acc = 0;
+    t4.innerHTML = res.porRazon.length ? `
+      <thead><tr><th>Razón</th>${M.map(m => `<th>${cap(m.nombre).slice(0, 3)}</th>`).join('')}
+        <th>Total</th><th>%</th><th>% acum.</th><th>Eventos</th><th>vs ant.</th></tr></thead>
+      <tbody>${res.porRazon.slice(0, 15).map(x => {
+        acc += x.total;
+        return `<tr>
+          <td style="font-weight:600;color:#EEE">${x.clave.slice(0, 32)}</td>
+          ${M.map(m => `<td>${_apNum(x.porMes[m.ym] || 0)}</td>`).join('')}
+          <td>${_apNum(x.total)}</td><td>${tot ? (x.total / tot * 100).toFixed(0) + '%' : '—'}</td>
+          <td style="color:#9CA3AF">${tot ? (acc / tot * 100).toFixed(0) + '%' : '—'}</td>
+          <td>${x.eventos}</td><td>${_apPct(x.varMesAnterior)}</td>
+        </tr>`;
+      }).join('')}</tbody>` : '<tbody><tr><td style="color:#6B7280">Sin datos.</td></tr></tbody>';
+  }
+}
+
 function renderAccid() {
   let totalPersonal=null, incap=null, fuerzaLaboral=null;
   let diasIncidentes=null, diasAccidentes=null, vacaciones=null;
@@ -6579,6 +6880,7 @@ const TITLES = {
   'reporte-compacto':'Reporte Diario Compacto',
   'plan-mensual':'Plan vs Real Mensual', 'plan-ref':'Plan vs Real Referencias',
   noconf:'No Conformes', otif:'OTIF — Entregas', paros:'Tiempos de Paro',
+  'analisis-paros':'Análisis de Paros',
   accid:'Status Personal', costos:'Costos de Producción', forecast:'Forecast', maquilas:'Maquilas', descripcion:'Descripción de Indicadores',
   'po-tablero':'Tablero Plan Operativo','po-plan':'Plan Maestro',
   'po-capacidad':'Capacidad Mensual','po-maquila':'Maquila Plan',
@@ -6591,7 +6893,7 @@ const SECTION_RENDERS = {
   'reporte-compacto':renderReporteCompacto,
   'plan-mensual':renderPlanMensual,
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
-  paros:renderParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, maquilas:renderMaquilas, descripcion:renderDescripcion
+  paros:renderParos, 'analisis-paros':renderAnalisisParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, maquilas:renderMaquilas, descripcion:renderDescripcion
 };
 // Secciones protegidas con clave
 // Toda la app queda tras el login del servidor (ver showLogin/bootWithAuth),
