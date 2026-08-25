@@ -6,11 +6,21 @@
 var GD = {
   ordenes:[], operarios:[], maquinasIny:[], maquinasTap:[],
   motivosParoIny:[], motivosParoTap:[], causasIny:[], causasTap:[],
-  turnos:[], tapadoras:['5','6'], turnoSugerido:1, turnosValidos:[1]
+  // Descripción de cada motivo de paro, en el MISMO orden que el motivo.
+  descParoIny:[], descParoTap:[],
+  turnos:[], tapadoras:['5','6'], turnoSugerido:1, turnosValidos:[1],
+  materialActivo:false
 };
+
+/* Bolsas de materia prima con su saldo. Se refresca al elegir orden y
+   despues de cada registro. Sin conexion conserva la ultima lista. */
+var MAT = { virgen:[], molido:[], cargado:false, error:'', ultimoError:'' };
 var GS = {
   maq:null, orden:null, turno:1, esTap:false,
-  horaInicio:null, prodCount:0, paroCount:0, confirmarCb:null
+  horaInicio:null, prodCount:0, paroCount:0, confirmarCb:null,
+  matUltId:null, matUltTxt:'', matRegistrado:false,
+  // motivo de paro -> descripción, del tipo de máquina seleccionado
+  paroDescMapa:{}
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -21,8 +31,15 @@ var OPDEF = {
     color:'#ea580c', icon:'⚙️', label:'MOLINO',
     backend:'registrarMolino',
     fields:[
+      // El texto completo se guarda TAL CUAL en MOLINO!REFERENCIA — decisión
+      // del usuario (2026-08-25). Para que eso NO parta en dos las bolsas de
+      // molido del inventario, el backend normaliza la referencia a su familia
+      // con _familiaMolido_() antes de armar el código de bolsa.
+      // "REMOLIDO ALTA HDPE" es material ya reprocesado: familia propia, bolsa
+      // aparte del HDPE molido de primera.
       {id:'mRef',  label:'Material',  type:'select',   req:true,
-       options:['LLDPE','HDPE','PP','REMOLIDO HDPE','50 / 50']},
+       options:['LLDPE (POLIETILENO BAJA)','HDPE (POLIETILENO ALTA)','PP (POLIPROPILENO)',
+                'REMOLIDO ALTA HDPE','50 / 50 (Conjunto alta + baja)']},
       // El color define a qué bolsa de molido entra el material: el molido
       // natural y el pigmentado no son intercambiables. Sin color no se puede
       // saber cuánto molido usable hay, así que es obligatorio.
@@ -271,12 +288,25 @@ function init(){
     ['ordenNL',  'change', onOrdenNL],
     ['btnProd',  'click',  registrarProd],
     ['btnParo',  'click',  registrarParo],
-    ['btnCal',   'click',  registrarCalidad]
+    ['motParo',  'change', mostrarDescParo],
+    ['btnCal',   'click',  registrarCalidad],
+    ['btnMat',    'click',  registrarMaterial],
+    ['btnMatUndo','click',  matDeshacer],
+    ['matBolsaV', 'change', function(){ matPintarSaldo('V'); }],
+    ['matBolsaM', 'change', function(){ matPintarSaldo('M'); }]
   ];
   evts.forEach(function(ev){
     var el=$(ev[0]);
     if(el) el.addEventListener(ev[1], ev[2]);
     else alert('Elemento no encontrado: '+ev[0]);
+  });
+
+  // Los +25 / +50 son varios botones iguales: se enganchan en bloque
+  Array.prototype.forEach.call(document.querySelectorAll('.mat-add'), function(b){
+    b.addEventListener('click', function(){
+      var id=b.getAttribute('data-kg'), e=$(id);
+      if(e) e.value = String(numV(id) + Number(b.getAttribute('data-n')));
+    });
   });
 
   obtenerDatosDesdeBackend()
@@ -304,10 +334,13 @@ function onData(data){
   GD.maquinasTap    = data.maquinasTap    || [];
   GD.motivosParoIny = data.motivosParoIny || [];
   GD.motivosParoTap = data.motivosParoTap || [];
+  GD.descParoIny    = data.descParoIny    || [];
+  GD.descParoTap    = data.descParoTap    || [];
   GD.causasIny      = data.causasIny      || [];
   GD.causasTap      = data.causasTap      || [];
   GD.turnos         = (data.config && data.config.turnos)    || [];
   GD.tapadoras      = (data.config && data.config.tapadoras) || ['5','6'];
+  GD.materialActivo = !!(data.config && data.config.materialActivo);
   GD.turnoSugerido  = data.turnoServidor  || 1;
   GD.turnosValidos  = data.turnosValidos  || [1];
 
@@ -433,9 +466,11 @@ function onMaqChange(maqOverride){
   }
 
   show('bxOp2', GS.esTap && !esOp);
+  matMostrar(!esOp);
 
   llenarSelect('motParo', GS.esTap ? GD.motivosParoTap : GD.motivosParoIny);
   llenarSelect('calCausa', GS.esTap ? GD.causasTap : GD.causasIny);
+  construirMapaDescParo();
 
   // Limpiar campos al cambiar máquina
   $('orden').value='';
@@ -445,6 +480,7 @@ function onMaqChange(maqOverride){
   ['operario','operario2'].forEach(function(id){
     var e=$(id); if(e) e.selectedIndex=0;
   });
+  mostrarDescParo();
 
   llenarOrdenes(maq, esOp);
   onOrdenChange();
@@ -455,6 +491,44 @@ function onMaqChange(maqOverride){
 
   // Sincronizar resaltado de botones
   sincBotonesOp(maq);
+}
+
+/* ════════════════════════════════════════════════
+   DESCRIPCIÓN DEL MOTIVO DE PARO
+   ────────────────────────────────────────
+   El motivo y su descripción llegan como dos arreglos alineados por
+   posición (LISTAS: motivo en una columna, descripción en la de al lado).
+   Se pasan a mapa por NOMBRE del motivo porque el <select> devuelve el
+   texto, no el índice.
+
+   Ojo con los motivos repetidos: LISTAS trae "DAÑO SISTEMA DE LUBRICACION
+   MAQUINA" y "ENSAYOS MATERIA PRIMA" dos veces. Gana la PRIMERA aparición
+   con descripción no vacía — así un duplicado sin descripción no borra la
+   que sí existía.
+════════════════════════════════════════════════ */
+function construirMapaDescParo(){
+  var motivos = GS.esTap ? GD.motivosParoTap : GD.motivosParoIny;
+  var descs   = GS.esTap ? GD.descParoTap    : GD.descParoIny;
+  var mapa = {};
+  (motivos||[]).forEach(function(m, i){
+    var k = String(m||'').trim();
+    if(!k) return;
+    var d = String((descs && descs[i]) || '').trim();
+    if(!mapa[k] && d) mapa[k] = d;
+  });
+  GS.paroDescMapa = mapa;
+}
+
+/* Muestra la descripción del motivo elegido. Si el motivo no tiene
+   descripción en LISTAS, el bloque se OCULTA — mejor nada que un recuadro
+   parpadeando en vacío. */
+function mostrarDescParo(){
+  var caja=$('paroDesc'); if(!caja) return;
+  var motivo = val('motParo');
+  var d = motivo ? (GS.paroDescMapa[String(motivo).trim()] || '') : '';
+  $('paroDescT').textContent = 'DESCRIPCIÓN PARO ' + (GS.esTap ? 'TAPADORA' : 'INYECTORA');
+  $('paroDescX').textContent = d;
+  cls('paroDesc','show', !!d);
 }
 
 function llenarSelect(id, arr){
@@ -496,6 +570,8 @@ function onOrdenChange(){
   var ordId = useManual ? val('ordenM') : val('orden');
   var o = GD.ordenes.filter(function(x){ return x.id===ordId; })[0]||null;
   GS.orden=o;
+
+  try { matAlCambiarOrden(); } catch(e){}
 
   show('ordI', !!o);
   show('pImgB', !!o);
@@ -663,7 +739,7 @@ function datosBase(){
   return {
     maquina:GS.maq, turno:turnoActivo('segT'),
     orden:ordId, producto:o.productName||'',
-    color:o.color||'', mP:o.mp||'',
+    color:o.color||'', mP:o.mp||'', familia:o.mpReq||'',
     loteProd:o.loteProd||'', loteMp:o.loteMp||'',
     cliente:o.cliente||'', cav:numV('cavEstd'), cicloEst:numV('cicloEst'),
     codOperario:val('operario'), operario:opNom, operario2:op2Nom,
@@ -703,6 +779,7 @@ function registrarProd(){
       if(r && r.status==='error'){ toast('❌ '+r.message,'err'); return; }
       try{
         GS.prodCount++;
+        try{ matChequearRecordatorio(); }catch(ex2){}
         if(GS.orden){ GS.orden.cajasReportadas=datos.numCaja; $('numCaja').value=datos.numCaja+1; }
         ['pesoC','observ'].forEach(function(id){ $(id).value=''; });
       }catch(ex){}
@@ -735,6 +812,7 @@ function registrarParo(){
       try{
         GS.paroCount++;
         ['tParo','obsParo','motParo'].forEach(function(id){ $(id).value=''; });
+        mostrarDescParo();   // el motivo quedó vacío: el bloque se apaga
       }catch(ex){}
       mostrarExito(r && r.offline
         ? '📴 Sin conexión — Paro guardado localmente. Se enviará al volver el internet.'
@@ -882,17 +960,140 @@ function supEsc(s){
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+/* ════════════════════════════════════════════════
+   DIAGNÓSTICO DE CONEXIÓN
+   ────────────────────────────────────────
+   El reclamo de planta: al entrar a la pestaña de supervisor no se sabe si
+   hay conexión. El botón se quedaba en "VALIDANDO..." sin límite de tiempo
+   y sin decir nada, porque:
+
+     1. `fetch` no tiene timeout propio: una conexión mala cuelga la promesa
+        para siempre y el botón queda congelado.
+     2. `navigator.onLine` solo mira el cable/wifi. Con el router conectado
+        pero sin salida a internet devuelve true, así que el chequeo previo
+        pasaba y el error llegaba disfrazado de "Failed to fetch".
+     3. Un Apps Script en frío tarda varios segundos: lento y caído se ven
+        exactamente igual desde la interfaz.
+
+   Ahora: corte por tiempo, prueba REAL contra el backend con la latencia
+   medida, y un mensaje que dice qué hacer en vez de un código de error.
+════════════════════════════════════════════════ */
+var SUP_TIMEOUT_MS_   = 25000;   // acción del supervisor (Apps Script en frío)
+var SUP_TIMEOUT_PING_ = 12000;   // prueba de conexión
+var SUP_LENTO_MS_     = 3000;    // a partir de aquí se avisa "lenta"
+
+/* fetch con corte por tiempo. AbortController existe en todo navegador que
+   soporte esta PWA; el camino alterno es solo por si acaso — ahi la petición
+   sigue viva en segundo plano, pero al menos la interfaz se destraba. */
+function fetchTimeout(url, opts, ms){
+  opts = opts || {};
+  if(typeof AbortController === 'undefined'){
+    return new Promise(function(res, rej){
+      var listo=false;
+      var t=setTimeout(function(){
+        if(listo) return;
+        var e=new Error('timeout'); e.name='AbortError'; rej(e);
+      }, ms);
+      fetch(url, opts).then(function(r){ listo=true; clearTimeout(t); res(r); },
+                            function(e){ listo=true; clearTimeout(t); rej(e); });
+    });
+  }
+  var ac=new AbortController();
+  var t=setTimeout(function(){ ac.abort(); }, ms);
+  opts.signal = ac.signal;
+  return fetch(url, opts).then(function(r){ clearTimeout(t); return r; },
+                              function(e){ clearTimeout(t); throw e; });
+}
+
+function supMs(ms){ return ms < 1000 ? (ms+' ms') : ((ms/1000).toFixed(1)+' s'); }
+
+/* Pinta el mismo estado en el chip del modal y en el del panel. */
+function supPintarConx(r){
+  ['supConx','supConx2'].forEach(function(id){
+    var e=$(id); if(!e) return;
+    e.className = 'conx ' + (r.estado||'') + (id==='supConx' ? ' conx-modal' : ' conx-panel');
+    var t=e.querySelector('.cx-t'); if(t) t.textContent = r.txt||'';
+  });
+}
+
+function supTxtFalla(err, ms){
+  if(err && err.name==='AbortError')
+    return 'El servidor no respondió en ' + Math.round(SUP_TIMEOUT_PING_/1000) + ' s';
+  if(!navigator.onLine) return 'Se cayó la red durante la prueba';
+  return 'No se llega al servidor (' + supMs(ms) + ') — revisa el internet';
+}
+
+/* Prueba REAL: pide ?action=version, que no escribe nada ni necesita clave.
+   Devuelve siempre un objeto (nunca rechaza) para que quien la llame decida. */
+function supProbarConexion(){
+  supPintarConx({ estado:'probando', txt:'Probando conexión…' });
+  if(!navigator.onLine){
+    var r0={ ok:false, estado:'mal', txt:'Sin red — este equipo no está conectado' };
+    supPintarConx(r0); return Promise.resolve(r0);
+  }
+  var t0=Date.now();
+  return fetchTimeout(GAS_URL+'?action=version&_='+t0, { cache:'no-store' }, SUP_TIMEOUT_PING_)
+    .then(function(res){
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return res.json();
+    })
+    .then(function(j){
+      var ms=Date.now()-t0, lento = ms >= SUP_LENTO_MS_;
+      var r={ ok:true, ms:ms, version:(j&&j.version)||'?', estado: lento?'lento':'ok',
+              txt: (lento ? 'Conexión LENTA · ' : 'Conectado · ') + supMs(ms) };
+      supPintarConx(r); return r;
+    })
+    .catch(function(err){
+      var ms=Date.now()-t0;
+      var r={ ok:false, ms:ms, estado:'mal', txt: supTxtFalla(err, ms) };
+      supPintarConx(r); return r;
+    });
+}
+
+/* Contador visible mientras se espera. Un botón congelado en "VALIDANDO..."
+   no dice si sigue vivo; el número subiendo sí. Devuelve la función que
+   restaura el botón. */
+function supEsperando(btn, texto){
+  if(!btn) return function(){};
+  var t0=Date.now(), orig=btn.textContent;
+  btn.disabled=true;
+  btn.textContent=texto+' 0s';
+  var iv=setInterval(function(){
+    btn.textContent = texto+' '+Math.round((Date.now()-t0)/1000)+'s';
+  }, 500);
+  return function(){ clearInterval(iv); btn.disabled=false; btn.textContent=orig; };
+}
+
 /* La programación es estado compartido: no entra a la cola offline. */
 function supPost(accion, datos){
   if(!SUP.pw) return Promise.reject(new Error('Sesión de supervisor cerrada. Vuelve a entrar.'));
-  if(!navigator.onLine) return Promise.reject(new Error('Sin conexión — la programación necesita internet.'));
-  return fetch(GAS_URL, {
+  if(!navigator.onLine){
+    supPintarConx({ estado:'mal', txt:'Sin red — este equipo no está conectado' });
+    return Promise.reject(new Error('Sin red — la programación necesita internet. Revisa el wifi o el cable y vuelve a intentar.'));
+  }
+  var t0=Date.now();
+  return fetchTimeout(GAS_URL, {
     method:'POST',
     headers:{ 'Content-Type':'text/plain;charset=utf-8' },
     body: JSON.stringify({ accion:accion, datos:merge(datos||{}, { pw:SUP.pw }) })
-  }).then(function(res){
-    if(!res.ok) throw new Error('HTTP '+res.status);
+  }, SUP_TIMEOUT_MS_).then(function(res){
+    if(!res.ok) throw new Error('El servidor respondió HTTP '+res.status+'. Reintenta en un minuto.');
     return res.json();
+  }, function(err){
+    // Falla de RED, no del negocio: aquí es donde antes quedaba colgado.
+    // Se traduce a algo accionable y se repinta el chip para que se vea.
+    supPintarConx({ estado:'mal', txt: supTxtFalla(err, Date.now()-t0) });
+    if(err && err.name==='AbortError'){
+      throw new Error('El servidor de Google no respondió en '+Math.round(SUP_TIMEOUT_MS_/1000)+
+                      ' s. Casi siempre es el internet de la planta — toca "probar" y reintenta.');
+    }
+    throw new Error('No se pudo conectar con el servidor. Revisa el internet y toca "probar".');
+  }).then(function(r){
+    // Llegamos y volvimos: la conexión sirve, aunque el backend diga que no.
+    var ms=Date.now()-t0, lento = ms >= SUP_LENTO_MS_;
+    supPintarConx({ estado: lento?'lento':'ok',
+                    txt: (lento ? 'Conexión LENTA · ' : 'Conectado · ')+supMs(ms) });
+    return r;
   }).then(function(r){
     if(!r || r.status==='error'){
       var m = (r && r.message) || 'Error desconocido';
@@ -915,6 +1116,9 @@ function abrirSupervisor(){
   $('supPw').value='';
   show('supPwErr', false);
   cls('mSup','show',true);
+  // Probar ANTES de que escriba la clave: si no hay conexión, que lo sepa ya
+  // y no lo descubra por un "clave incorrecta" que no era la clave.
+  supProbarConexion();
   setTimeout(function(){ var e=$('supPw'); if(e) e.focus(); }, 120);
 }
 
@@ -941,8 +1145,7 @@ function supEntrar(){
   var pw = $('supPw').value.trim();
   if(!pw){ show('supPwErr', true); $('supPwErr').textContent='Escribe la clave.'; return; }
 
-  var b=$('supBtnEntrar'), txt=b.textContent;
-  b.disabled=true; b.textContent='VALIDANDO...';
+  var restaurar = supEsperando($('supBtnEntrar'), 'VALIDANDO');
   show('supPwErr', false);
   SUP.pw = pw;
 
@@ -954,9 +1157,7 @@ function supEntrar(){
     SUP.pw = null;
     show('supPwErr', true);
     $('supPwErr').textContent = err.message;
-  }).then(function(){
-    b.disabled=false; b.textContent=txt;
-  });
+  }).then(restaurar);
 }
 
 function supAbrirPanel(){
@@ -985,7 +1186,10 @@ function supCargar(){
     SUP.datos = r;
     supRender();
   }).catch(function(err){
-    $('supLista').innerHTML='<div class="sup-warn">'+supEsc(err.message)+'</div>';
+    $('supLista').innerHTML='<div class="sup-warn">'+supEsc(err.message)
+      + ' <button type="button" onclick="supCargar()" style="display:block;margin-top:6px;'
+      + 'background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:6px 10px;'
+      + 'font-weight:800;font-size:11px;cursor:pointer">↻ REINTENTAR</button></div>';
     toast('❌ '+err.message,'err');
   });
 }
@@ -1094,8 +1298,7 @@ function supProgramar(){
     ['Máquina (col. P)',          d.maquina],
     ['Cant. por caja (col. Q)',   nf(d.cantCaja)]
   ], function(){
-    var b=$('supBtnProg'), txt=b.textContent;
-    b.disabled=true; b.textContent='GUARDANDO...';
+    var restaurar = supEsperando($('supBtnProg'), 'GUARDANDO');
     supPost('supProgramar', d).then(function(r){
       mostrarExito(r.message);
       ['supMp','supLoteMp','supLoteProd','supCantCaja'].forEach(function(id){ $(id).value=''; });
@@ -1104,9 +1307,7 @@ function supProgramar(){
       return supCargar();
     }).catch(function(err){
       toast('❌ '+err.message,'err');
-    }).then(function(){
-      b.disabled=false; b.textContent=txt;
-    });
+    }).then(restaurar);
   });
 }
 
@@ -1134,10 +1335,242 @@ function supFin(fila, orden){
   });
 }
 
+
+/* ═══════════════════════════════════════════════════════
+   MATERIAL A LA CANECA
+   Diseño: docs/superpowers/specs/2026-08-21-inventario-mp-bolsa-enmienda.md §6
+
+   Reglas que NO hay que romper:
+   - El sistema NO le dice al operario cuánto tomar. El saldo se muestra
+     como información, nunca como instrucción.
+   - Todo en kilos. Los +25/+50 son atajos para bultos enteros, pero lo
+     que viaja son kg.
+   - El operario es la verdad: si tomó una referencia distinta a la de la
+     orden, se avisa y se registra igual. Nunca se bloquea.
+   - El id lo genera el cliente para que un reenvío de la cola offline no
+     duplique: el backend descarta un id repetido.
+   - La tarjeta solo aparece si el backend dice que el módulo está
+     encendido (propiedad FVLCO_MATERIAL_ACTIVO del script).
+═══════════════════════════════════════════════════════ */
+
+function matMostrar(visible){
+  var v = visible && GD.materialActivo;
+  show('cardMat', v);
+  var cols=$('colsN');
+  if(cols) cols.classList[v?'add':'remove']('con-mat');
+  /* NO se piden saldos aqui: al elegir maquina la carga inicial puede
+     seguir corriendo (~9 s leyendo BD REPORTES PRODUCCION) y Apps Script
+     serializa las ejecuciones del mismo usuario, asi que la peticion
+     quedaria en cola. Se piden al elegir la orden — ver matAlCambiarOrden. */
+  if(v) matLlenarBolsas();
+}
+
+/* Se llama al elegir orden. Elegir orden solo es posible cuando la carga
+   inicial ya respondio, asi que aqui la cola de Apps Script esta libre. */
+function matAlCambiarOrden(){
+  if(!GD.materialActivo) return;
+  if(MAT.cargado) matLlenarBolsas();   // ya hay saldos: solo repintar
+  else matCargarSaldos();
+}
+
+/* Trae el saldo de cada bolsa. Sin conexión conserva la última lista y
+   lo dice, en vez de mostrar ceros que no son. */
+function matCargarSaldos(){
+  if(!GD.materialActivo) return;
+  fetch(GAS_URL + '?action=saldosMP')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d || d.status!=='success') throw new Error((d&&d.message)||'sin datos');
+      MAT.virgen=d.virgen||[]; MAT.molido=d.molido||[];
+      MAT.cargado=true; MAT.error='';
+      matLlenarBolsas();
+    })
+    .catch(function(e){
+      /* No tragarse la causa: sin esto es imposible saber si fallo la red
+         o el pintado, y se depura a ciegas. */
+      MAT.ultimoError = String((e && e.message) || e);
+      try { console.warn('saldosMP fallo:', MAT.ultimoError); } catch(x){}
+      MAT.error='saldo no disponible sin conexión';
+      matLlenarBolsas();
+    });
+}
+
+/* Llena los dos desplegables. Preselecciona la bolsa que coincide con la
+   referencia de la orden, pero deja cambiarla: si se acabó el LH5420 y
+   agarró otra cosa, tiene que poder decirlo. */
+function matLlenarBolsas(){
+  var o = GS.orden||{};
+  var refOrden = String(o.mp||'').trim().toUpperCase();
+  var famOrden = String(o.mpReq||'').trim().toUpperCase();
+
+  var pinta = function(id, lista, coincide){
+    var sel=$(id); if(!sel) return;
+    sel.innerHTML='';
+    if(!lista.length){
+      var vac=document.createElement('option');
+      vac.value=''; vac.textContent = MAT.cargado ? '— sin bolsas con saldo —' : '— sin cargar —';
+      sel.appendChild(vac); return;
+    }
+    var nin=document.createElement('option');
+    nin.value=''; nin.textContent='— ninguna —';
+    sel.appendChild(nin);
+    lista.forEach(function(b){
+      var op=document.createElement('option');
+      op.value=b.codigo;
+      op.textContent=b.etiqueta+'  ('+nf(b.saldoKg)+' kg)';
+      sel.appendChild(op);
+    });
+    for(var i=0;i<lista.length;i++){
+      if(coincide(lista[i])){ sel.value=lista[i].codigo; break; }
+    }
+  };
+
+  pinta('matBolsaV', MAT.virgen, function(b){
+    return String(b.referencia||'').toUpperCase()===refOrden;
+  });
+  pinta('matBolsaM', MAT.molido, function(b){
+    return String(b.familia||'').toUpperCase()===famOrden;
+  });
+
+  var pide=$('matPide');
+  if(pide) pide.textContent = (o.mp||'—') + (o.mpReq ? ' ('+o.mpReq+')' : '');
+
+  matPintarSaldo('V'); matPintarSaldo('M');
+}
+
+function matBolsa(tipo){
+  var sel=$(tipo==='V'?'matBolsaV':'matBolsaM');
+  if(!sel||!sel.value) return null;
+  var lista = tipo==='V'?MAT.virgen:MAT.molido;
+  for(var i=0;i<lista.length;i++) if(lista[i].codigo===sel.value) return lista[i];
+  return null;
+}
+
+function matPintarSaldo(tipo){
+  var div=$(tipo==='V'?'matSaldoV':'matSaldoM'); if(!div) return;
+  if(MAT.error){ div.textContent=MAT.error; div.className='mat-saldo vacio'; return; }
+  var b=matBolsa(tipo);
+  if(!b){ div.textContent='—'; div.className='mat-saldo vacio'; return; }
+  div.textContent='saldo '+nf(b.saldoKg)+' kg';
+  div.className='mat-saldo';
+}
+
+function registrarMaterial(){
+  limpiarErrores();
+  var o=GS.orden||{};
+  var useManual=$('ordenNL')&&$('ordenNL').checked;
+  var ordId=useManual?val('ordenM'):val('orden');
+  if(!ordId){ toast('Selecciona la orden antes de registrar material','warn'); return; }
+  if(!reqs(['operario'])){ toast('Selecciona el operario','warn'); return; }
+
+  var kgV=numV('matKgV'), kgM=numV('matKgM');
+  if(kgV<=0 && kgM<=0){ toast('Escribe los kilos de virgen o de molido','warn'); return; }
+
+  var bV=matBolsa('V'), bM=matBolsa('M');
+  if(kgV>0 && !bV){ toast('Elige de qué bolsa de virgen tomaste','warn'); return; }
+  if(kgM>0 && !bM){ toast('Elige de qué bolsa de molido tomaste','warn'); return; }
+
+  /* Avisos suaves: informan y piden confirmación, nunca bloquean. */
+  var avisos=[];
+  if(bV && o.mp && String(bV.referencia||'').toUpperCase()!==String(o.mp).toUpperCase())
+    avisos.push('La orden pide '+o.mp+' y estás echando '+bV.referencia+'.');
+  if(bM && o.mpReq && String(bM.familia||'').toUpperCase()!==String(o.mpReq).toUpperCase())
+    avisos.push('La orden es '+o.mpReq+' y el molido es '+bM.familia+'.');
+  if(kgV+kgM>300)
+    avisos.push('Son '+nf(kgV+kgM)+' kg de un solo golpe. La caneca es de ~150 kg.');
+  if(bV && kgV>0 && bV.saldoKg>0 && kgV>bV.saldoKg)
+    avisos.push('Estás sacando '+nf(kgV)+' kg y la bolsa tiene '+nf(bV.saldoKg)+' kg.');
+
+  var base=datosBase();
+  var datos=merge(base,{
+    idRegistro:'m'+Date.now()+'-'+Math.floor(Math.random()*100000),
+    caneca:base.maquina,
+    orden:ordId,
+    virgenReferencia: bV?bV.referencia:'',
+    virgenFabricante: bV?bV.fabricante:'',
+    virgenKg:kgV,
+    molidoFamilia: bM?bM.familia:'',
+    molidoColor:   bM?bM.color:'',
+    molidoKg:kgM,
+    observacion:val('matObs')
+  });
+
+  var enviar=function(){
+    $('btnMat').disabled=true;
+    llamarBackend('consumoMP', datos).then(function(r){
+      $('btnMat').disabled=false;
+      if(r && r.status==='error'){ toast('❌ '+r.message,'err'); return; }
+      try{
+        var partes=[];
+        if(kgV>0) partes.push(nf(kgV)+' kg virgen');
+        if(kgM>0) partes.push(nf(kgM)+' kg molido');
+        GS.matUltId=datos.idRegistro;
+        GS.matUltTxt=partes.join(' + ');
+        GS.matRegistrado=true;
+        matPintarUltimo();
+        ['matKgV','matKgM','matObs'].forEach(function(id){ var e=$(id); if(e) e.value=''; });
+        cls('cardMat','mat-alerta',false);
+        if(!(r&&r.offline)) matCargarSaldos();
+      }catch(ex){}
+      mostrarExito(r && r.offline
+        ? '📴 Sin conexión — material guardado localmente. Se enviará al volver el internet.'
+        : ((r&&r.message)||'Material registrado. ✅'));
+    });
+  };
+
+  if(avisos.length){
+    var res=avisos.map(function(a,i){ return ['Ojo '+(i+1), a]; });
+    res.push(['Máquina',base.maquina]); res.push(['Orden',ordId]);
+    res.push(['Virgen', kgV>0?nf(kgV)+' kg':'—']);
+    res.push(['Molido', kgM>0?nf(kgM)+' kg':'—']);
+    mostrarConfirm(res, enviar);
+  } else {
+    enviar();   // sin avisos no se pide confirmación: se registra varias veces por turno
+  }
+}
+
+function matPintarUltimo(){
+  var box=$('matUlt'), txt=$('matUltTxt');
+  if(!box||!txt) return;
+  if(!GS.matUltId){ box.className='mat-ult'; return; }
+  var h=new Date();
+  txt.textContent='Último: '+fmt2(h.getHours())+':'+fmt2(h.getMinutes())+' · '+GS.matUltTxt;
+  box.className='mat-ult show';
+}
+
+/* Deshacer no borra: el backend escribe la contrapartida en negativo. */
+function matDeshacer(){
+  if(!GS.matUltId){ toast('No hay nada que deshacer','warn'); return; }
+  var id=GS.matUltId;
+  mostrarConfirm([['Deshacer', GS.matUltTxt],
+                  ['Cómo','No se borra: se registra la devolución en negativo']], function(){
+    var b=$('btnMatUndo'); if(b) b.disabled=true;
+    llamarBackend('anularConsumoMP', { idRegistro:id }).then(function(r){
+      if(b) b.disabled=false;
+      if(r && r.status==='error'){ toast('❌ '+r.message,'err'); return; }
+      GS.matUltId=null; GS.matUltTxt='';
+      matPintarUltimo();
+      matCargarSaldos();
+      toast('Registro deshecho','ok');
+    });
+  });
+}
+
+/* Recordatorio. Esta PWA no lleva el avance del turno (el backend lo
+   calcula pero el cliente no lo usa), asi que el disparador es lo que sí
+   hay: varios reportes de producción sin haber registrado material.
+   Resalta la tarjeta. No bloquea nada. */
+function matChequearRecordatorio(){
+  if(!GD.materialActivo || GS.matRegistrado) return;
+  cls('cardMat','mat-alerta', GS.prodCount >= 3);
+}
+
 /* ── Enganches ────────────────────────────────────────── */
 function supInit(){
   var e;
   e=$('supBtnEntrar'); if(e) e.addEventListener('click', supEntrar);
+  e=$('supBtnProbar');  if(e) e.addEventListener('click', supProbarConexion);
+  e=$('supBtnProbar2'); if(e) e.addEventListener('click', supProbarConexion);
   e=$('supBtnProg');   if(e) e.addEventListener('click', supProgramar);
   e=$('supOrden');     if(e) e.addEventListener('change', supOrdenChange);
   e=$('supPw');        if(e) e.addEventListener('keydown', function(ev){
