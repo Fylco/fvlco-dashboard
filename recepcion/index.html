@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FYL · Recepción de Materia Prima</title>
+<meta name="theme-color" content="#1a73e8">
+<style>
+/* Mismos tokens que la PWA de registro: esto es parte del mismo sistema. */
+:root{--az:#1a73e8;--ao:#0b4ec0;--ok:#188038;--wn:#b06000;--wn-bg:#fef7e0;
+  --er:#d93025;--er-bg:#fce8e6;--ok-bg:#e6f4ea;--bo:#d4d7dc;--bo-soft:#e7ebf0;
+  --ground:#eef1f5;--ink:#1f2733;--ink-2:#5f6368;--ink-3:#8b9199;
+  --sh:0 1px 4px rgba(60,64,67,.16);
+  --sans:'Segoe UI',Roboto,system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,Consolas,'Courier New',monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:18px 16px 60px;display:flex;flex-direction:column;gap:16px}
+
+.topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  background:linear-gradient(135deg,var(--az),var(--ao));color:#fff;
+  border-radius:10px;padding:11px 16px;box-shadow:var(--sh)}
+.brand{background:#fff;border-radius:8px;padding:5px 12px;flex:none}
+.brand b{font-weight:900;font-size:21px;color:#0b3a8c;letter-spacing:-.6px}
+.topbar h1{font-size:15px;margin:0;font-weight:700}
+.topbar .sub{font-size:11px;opacity:.92}
+.topbar .quien{margin-left:auto;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);
+  border-radius:20px;padding:4px 12px;font-size:10.5px;font-weight:700}
+
+.card{background:#fff;border-radius:10px;box-shadow:var(--sh);overflow:hidden}
+.card-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:11px 16px;
+  border-bottom:1px solid var(--bo-soft);background:#fbfcfd}
+.card-hd h2{margin:0;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#334155}
+.card-hd .hint{font-size:11.5px;color:var(--ink-3)}
+.card-bd{padding:16px}
+
+label{display:block;font-size:10.5px;font-weight:700;color:var(--ink-2);
+  text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px}
+.req{color:var(--er)}
+input,select{width:100%;font-family:var(--sans);font-size:14.5px;color:var(--ink);
+  background:#fff;border:1.4px solid var(--bo);border-radius:7px;padding:8px 10px;height:40px}
+input[type=number]{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-weight:500}
+input:focus-visible,select:focus-visible{outline:none;border-color:var(--az);
+  box-shadow:0 0 0 3px rgba(26,115,232,.22)}
+input.err{border-color:var(--er);background:var(--er-bg)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.ancho2{grid-column:span 2}
+
+.lineas{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:1000px}
+thead th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--ink-2);padding:0 6px 7px;white-space:nowrap;border-bottom:1.4px solid var(--bo)}
+thead th.num{text-align:right}
+tbody td{padding:5px 6px;vertical-align:middle;border-bottom:1px solid #f1f3f5}
+tbody tr:last-child td{border-bottom:none}
+td.idx{font-family:var(--mono);font-size:12px;color:var(--ink-3);text-align:center;width:26px;padding:0}
+.dif{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-weight:700;
+  font-size:13.5px;white-space:nowrap;padding-right:8px}
+.d-ok{color:var(--ok)}.d-falta{color:var(--er)}.d-sobra{color:var(--wn)}.d-none{color:var(--ink-3);font-weight:400}
+.btn-x{background:none;border:none;color:var(--ink-3);cursor:pointer;font-size:17px;
+  line-height:1;padding:5px 7px;border-radius:6px}
+.btn-x:hover{color:var(--er);background:var(--er-bg)}
+.w-num{width:96px}.w-lote{width:120px}.w-sel{min-width:130px}
+
+.btn{font-family:var(--sans);font-weight:700;font-size:14px;border:none;border-radius:8px;
+  padding:11px 20px;cursor:pointer;color:#fff;background:var(--az)}
+.btn:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-lg{font-size:15.5px;padding:14px 26px}
+.btn-gh{background:#fff;color:var(--az);border:1.4px solid var(--bo)}
+.btn-gh:hover{background:#f3f7fe;border-color:var(--az)}
+.btn-ok{background:var(--ok)}
+.acciones{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:16px;
+  border-top:1px solid var(--bo-soft);background:#fbfcfd}
+.acciones .sp{flex:1}
+
+.totales{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--bo-soft);border-top:1px solid var(--bo-soft)}
+.tot{background:#fff;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
+.tot .k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-2)}
+.tot .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:700;color:var(--ink)}
+.tot .u{font-size:11px;color:var(--ink-3);font-family:var(--sans);font-weight:400}
+.tot.mal{background:var(--er-bg)}.tot.mal .v{color:var(--er)}
+.tot.bien{background:var(--ok-bg)}.tot.bien .v{color:var(--ok)}
+.tot.idle .v{color:var(--ink-3)}
+
+#siigo{display:none}#siigo.on{display:block}
+.siigo-hd{background:var(--ok-bg);border-bottom:1px solid #bfe0c8}
+.siigo-hd h2{color:#0e5c2a}
+pre.copy{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--ink);
+  background:#f7f9fb;border:1px solid var(--bo-soft);border-radius:8px;padding:14px 16px;
+  white-space:pre;overflow-x:auto;user-select:all}
+
+/* Login */
+#login{position:fixed;inset:0;background:var(--ground);display:flex;align-items:center;
+  justify-content:center;padding:16px;z-index:50}
+#login.oculto{display:none}
+.login-box{background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(60,64,67,.18);
+  padding:26px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px}
+.login-box .marca{text-align:center;margin-bottom:4px}
+.login-box .marca b{font-weight:900;font-size:30px;color:#0b3a8c;letter-spacing:-1px}
+.login-box .marca div{font-size:12px;color:var(--ink-2);margin-top:2px}
+#loginErr{display:none;background:var(--er-bg);border:1px solid #f5c6c2;color:#a50e0e;
+  border-radius:7px;padding:8px 10px;font-size:12.5px}
+#loginErr.on{display:block}
+
+#toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);min-width:250px;max-width:92%;
+  padding:12px 18px;border-radius:9px;color:#fff;font-weight:700;font-size:13.5px;
+  box-shadow:0 4px 16px rgba(0,0,0,.3);display:none;z-index:99;text-align:center}
+#toast.ok{background:var(--ok)}#toast.err{background:var(--er)}#toast.warn{background:#f9ab00;color:#000}
+
+@media(max-width:760px){
+  .grid{grid-template-columns:1fr}.ancho2{grid-column:span 1}
+  .wrap{padding:12px 10px 48px}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login">
+  <div class="login-box">
+    <div class="marca"><b>Fylco</b><div>Recepción de Materia Prima</div></div>
+    <div id="loginErr"></div>
+    <div>
+      <label for="pw">Clave</label>
+      <input id="pw" type="password" autocomplete="current-password" placeholder="Clave de recepción">
+    </div>
+    <button class="btn btn-lg" id="btnEntrar">Entrar</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+<div class="topbar">
+  <div class="brand"><b>Fylco</b></div>
+  <div><h1>Recepción de Materia Prima</h1><div class="sub">Lo que entra a la planta</div></div>
+  <span class="quien" id="ultimoDoc"></span>
+</div>
+
+<!-- ═══ CABECERA DE LA FACTURA ═══ -->
+<div class="card">
+  <div class="card-hd">
+    <h2>Datos del documento</h2>
+    <span class="hint">Se llena una vez por factura, aunque traiga varios materiales</span>
+  </div>
+  <div class="card-bd">
+    <div class="grid">
+      <div><label for="f-fecha">Fecha de recepción <span class="req">*</span></label>
+        <input type="date" id="f-fecha"></div>
+      <div><label for="f-prov">Proveedor <span class="req">*</span></label>
+        <input id="f-prov" list="l-prov" autocomplete="off" placeholder="Ej. PLASSOL">
+        <datalist id="l-prov"></datalist></div>
+      <div><label for="f-tipo">Tipo de documento</label>
+        <select id="f-tipo"><option>FACTURA</option><option>REMISION</option></select></div>
+      <div><label for="f-doc">N° del documento <span class="req">*</span></label>
+        <input id="f-doc" autocomplete="off" placeholder="Ej. FV-10482"></div>
+      <div><label for="f-recibe">Recibido por</label>
+        <input id="f-recibe" autocomplete="off" placeholder="Quién digita"></div>
+      <div><label for="f-verifica">Verificado por</label>
+        <input id="f-verifica" autocomplete="off" placeholder="Quién contó el material"></div>
+      <div class="ancho2"><label for="f-obs">Observación general</label>
+        <input id="f-obs" autocomplete="off" placeholder="Opcional — ej. llegó un bulto roto"></div>
+      <div><label for="f-valor">Valor total del documento</label>
+        <input type="number" id="f-valor" min="0" step="1" placeholder="0"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ LÍNEAS ═══ -->
+<div class="card">
+  <div class="card-hd">
+    <h2>Materiales recibidos</h2>
+    <span class="hint">Una línea por referencia. La diferencia se calcula sola.</span>
+  </div>
+  <div class="card-bd">
+    <div class="lineas">
+      <table>
+        <thead><tr>
+          <th></th>
+          <th>Familia</th>
+          <th>Referencia <span class="req">*</span></th>
+          <th>Fabricante</th>
+          <th>Lote del proveedor</th>
+          <th class="num">Bultos</th>
+          <th class="num">Kg según factura</th>
+          <th class="num">Kg verificados <span class="req">*</span></th>
+          <th class="num">Diferencia</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="lineas"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px">
+      <button class="btn btn-gh" id="btnAgregar" type="button">+ Agregar material</button>
+      <span class="hint" style="margin-left:10px">Si dejas el lote vacío, el sistema genera uno</span>
+    </div>
+  </div>
+
+  <div class="totales">
+    <div class="tot idle"><span class="k">Líneas</span><span class="v" id="t-lineas">0</span></div>
+    <div class="tot"><span class="k">Total bultos</span><span class="v" id="t-bultos">0</span></div>
+    <div class="tot"><span class="k">Kg según factura</span><span class="v" id="t-fact">0 <span class="u">kg</span></span></div>
+    <div class="tot"><span class="k">Kg verificados</span><span class="v" id="t-ver">0 <span class="u">kg</span></span></div>
+    <div class="tot idle" id="t-dif-box"><span class="k">Diferencia</span><span class="v" id="t-dif">—</span></div>
+  </div>
+
+  <div class="acciones">
+    <button class="btn btn-lg" id="btnGuardar" type="button">Registrar entrada</button>
+    <button class="btn btn-gh" id="btnLimpiar" type="button">Limpiar</button>
+    <div class="sp"></div>
+    <span class="hint">Los kilos verificados son los que cuentan para el inventario</span>
+  </div>
+</div>
+
+<!-- ═══ RESUMEN PARA SIIGO ═══ -->
+<div class="card" id="siigo">
+  <div class="card-hd siigo-hd">
+    <h2>Resumen para pasar a Siigo</h2>
+    <span class="hint">Esto reemplaza el papel: se copia de aquí, no se transcribe a mano</span>
+  </div>
+  <div class="card-bd">
+    <pre class="copy" id="siigo-txt"></pre>
+    <div style="margin-top:12px">
+      <button class="btn btn-ok" id="btnCopiar" type="button">Copiar</button>
+    </div>
+  </div>
+</div>
+
+</div>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
