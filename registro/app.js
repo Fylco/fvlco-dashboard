@@ -8,6 +8,9 @@ var GD = {
   motivosParoIny:[], motivosParoTap:[], causasIny:[], causasTap:[],
   // Descripción de cada motivo de paro, en el MISMO orden que el motivo.
   descParoIny:[], descParoTap:[],
+  // Materiales del molino: los mantiene el usuario en LISTAS col A. Las
+  // opciones de OPDEF.MOLINO quedan solo como respaldo.
+  materialesMolino:[],
   turnos:[], tapadoras:['5','6'], turnoSugerido:1, turnosValidos:[1],
   materialActivo:false
 };
@@ -31,6 +34,10 @@ var OPDEF = {
     color:'#ea580c', icon:'⚙️', label:'MOLINO',
     backend:'registrarMolino',
     fields:[
+      // Estas opciones son solo el RESPALDO. La lista viva la mantiene el
+      // usuario en LISTAS col A y llega en data.materialesMolino; onData() la
+      // reemplaza aquí mismo. Solo se usan si la hoja no trajo nada.
+      //
       // El texto completo se guarda TAL CUAL en MOLINO!REFERENCIA — decisión
       // del usuario (2026-08-25). Para que eso NO parta en dos las bolsas de
       // molido del inventario, el backend normaliza la referencia a su familia
@@ -336,6 +343,7 @@ function onData(data){
   GD.motivosParoTap = data.motivosParoTap || [];
   GD.descParoIny    = data.descParoIny    || [];
   GD.descParoTap    = data.descParoTap    || [];
+  GD.materialesMolino = data.materialesMolino || [];
   GD.causasIny      = data.causasIny      || [];
   GD.causasTap      = data.causasTap      || [];
   GD.turnos         = (data.config && data.config.turnos)    || [];
@@ -383,6 +391,11 @@ function onData(data){
       rpSel.appendChild(o);
     });
   }
+
+  // Materiales del molino desde LISTAS col A. buildOpPanel() ya dibujó el
+  // select con la lista de respaldo, así que aquí se reemplaza. Si la hoja no
+  // trajo nada, se deja el respaldo en vez de dejar el molino sin opciones.
+  if(GD.materialesMolino.length) llenarSelect('mRef', GD.materialesMolino);
 
   // Seleccionar primera opcion valida en la lista de maquinas
   var maqSel = $('maquina');
