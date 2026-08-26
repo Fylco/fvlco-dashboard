@@ -496,7 +496,7 @@ function onMaqChange(maqOverride){
   mostrarDescParo();
 
   llenarOrdenes(maq, esOp);
-  onOrdenChange();
+  onOrdenChange();   // repinta el aviso y rehabilita los botones si aplica
 
   // Badge de estado
   cls('eoLabel','on',false); cls('eoLabel','off',true);
@@ -621,6 +621,69 @@ function onOrdenChange(){
     cls('eoLabel','on',false); cls('eoLabel','off',true);
     $('eoLabel').textContent='SIN ORDEN';
   }
+
+  pintarAvisoOrden(o);
+}
+
+/* ════════════════════════════════════════════════
+   ORDEN CON DATOS INCOMPLETOS
+   ────────────────────────────────────────
+   En REGISTRO LIDER las columnas B-L son fórmulas que buscan la orden en la
+   pestaña ORDENES. Cuando la orden sale de la lista de activos, la fórmula
+   no la encuentra y esas columnas quedan EN BLANCO — pero la orden sigue en
+   producción con su máquina y lote puestos a mano.
+
+   Antes el formulario no decía nada y guardaba la caja sin cliente, sin
+   producto y sin color. Ahora:
+     ámbar → el backend lo recuperó del histórico; se puede seguir, pero
+             queda a la vista de dónde salieron esos datos.
+     rojo  → no hay de dónde recuperarlo: se BLOQUEA el registro. Frenar al
+             operario cuesta menos que una fila que nadie puede identificar.
+════════════════════════════════════════════════ */
+var ORD_AV_ETIQUETAS = {
+  producto:'producto', cliente:'cliente', color:'color',
+  mp:'materia prima', loteMp:'lote de materia prima'
+};
+
+function pintarAvisoOrden(o){
+  var av=$('ordAviso');
+  if(!av) return;
+  var rescatado = (o && o.rescatado) || [];
+  var bloquea   = !!(o && o.incompleta);
+
+  if(bloquea){
+    av.className='ord-av bloqueo show';
+    av.innerHTML='⛔ <b>Esta orden no tiene producto.</b> Salió de la lista de pedidos '
+      + 'activos y no hay reportes anteriores de donde tomarlo. No se puede registrar: '
+      + 'avísale al supervisor para que la reactive.';
+  } else if(rescatado.length){
+    av.className='ord-av rescate show';
+    var nombres = rescatado.map(function(c){ return ORD_AV_ETIQUETAS[c]||c; });
+    av.innerHTML='⚠️ Esta orden ya no está en la lista de pedidos activos. '
+      + '<b>'+nombres.join(', ')+'</b> se tom'+(nombres.length>1?'aron':'ó')
+      + ' del último reporte de esta misma orden. Verifica que esté'
+      + (nombres.length>1?'n':'') + ' bien antes de registrar.';
+  } else {
+    av.className='ord-av';
+    av.innerHTML='';
+  }
+
+  // Bloquear TODOS los registros que van contra la orden. El paro y la
+  // calidad también escriben la orden, así que tampoco deben pasar.
+  ['btnProd','btnParo','btnCal','btnMat'].forEach(function(id){
+    var b=$(id); if(b) b.disabled = bloquea;
+  });
+}
+
+/* Segunda barrera. Deshabilitar el botón no basta: cada envío lo vuelve a
+   habilitar al terminar, y la cola offline puede reintentar. Esto se
+   pregunta en el momento de registrar. */
+function ordenUtilizable(){
+  if(GS.orden && GS.orden.incompleta){
+    toast('⛔ Esta orden no tiene producto — no se puede registrar','err');
+    return false;
+  }
+  return true;
 }
 
 function onOrdenNL(){
@@ -765,6 +828,7 @@ function datosBase(){
 ═══════════════════════════════════════════════════════ */
 function registrarProd(){
   limpiarErrores();
+  if(!ordenUtilizable()) return;
   var camposOrd = $('ordenNL')&&$('ordenNL').checked ? ['ordenM'] : ['orden'];
   if(!reqs(camposOrd.concat(['operario','numCaja','cantR','cavidades','cicloR']))){
     toast('Complete los campos obligatorios (*)','warn'); return;
@@ -808,6 +872,7 @@ function registrarProd(){
 ═══════════════════════════════════════════════════════ */
 function registrarParo(){
   limpiarErrores();
+  if(!ordenUtilizable()) return;
   if(!reqs(['motParo','tParo'])){ toast('Seleccione motivo y tiempo de paro','warn'); return; }
   var base=datosBase();
   var datos=merge(base,{ paro:val('motParo'), tiempoParo:numV('tParo'), obsParo:val('obsParo') });
@@ -839,6 +904,7 @@ function registrarParo(){
 ═══════════════════════════════════════════════════════ */
 function registrarCalidad(){
   limpiarErrores();
+  if(!ordenUtilizable()) return;
   if(!reqs(['calCausa','calPeso'])){ toast('Complete causa y peso','warn'); return; }
   var base=datosBase();
   var datos=merge(base,{ registros:[{causa:val('calCausa'), peso:numV('calPeso')}] });
