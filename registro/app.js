@@ -161,7 +161,7 @@ function limpiarErrores(){
    CÓMO VERIFICAR SIN ESCRIBIR NADA:
      curl -sL "<esta URL>?action=version"   →   {"version":"molino-color-..."}
    Si responde HTML en vez de JSON, la implementación está vieja. */
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbzZP__GbWkWZIts_H2nh6vBRr_p1AIuBQ64sgq2K98jq2nMBkxFV96yUNOioc7WA5D5/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbxsw5EKTceLnra7xJJ7paPxkrE6Hi_1nX_XsJ_YDk5A4YX_32aCD_FaRr0e03bZuiqWMQ/exec';
 
 function obtenerDatosDesdeBackend(){
   return fetch(GAS_URL + '?action=datos').then(function(res){
