@@ -68,7 +68,18 @@ var OPDEF = {
     color:'#7c3aed', icon:'✋', label:'MANUALIDADES',
     backend:'registrarManualidades',
     fields:[
-      {id:'mndOrden', label:'Orden de producción',  type:'text',     req:true},
+      // Las órdenes de manualidad viven en REGISTRO LIDER con MANUALIDAD en la
+      // columna P (la de máquina), así que el selector de orden del formulario
+      // principal — que filtra por máquina — nunca las mostraba. El operario
+      // tenía que escribir el número de memoria, y un dígito mal dejaba el
+      // registro huérfano.
+      //
+      // Es datalist y no <select> a propósito: sugiere las órdenes conocidas
+      // pero deja escribir. Con una lista cerrada, una orden que aún no está
+      // en la hoja dejaría al operario sin poder registrar su turno.
+      {id:'mndOrden', label:'Orden de producción',  type:'datalist', req:true,
+       placeholder:'ej. 1282',
+       hint:'Órdenes con MANUALIDAD en REGISTRO LIDER — o escribe el número.'},
       {id:'mndDesc',  label:'Descripción actividad', type:'text',     req:true},
       {id:'mndHH',    label:'Horas trabajadas',      type:'number',   req:true, step:'0.5'},
       {id:'mndObs',   label:'Observaciones',         type:'textarea', req:false}
@@ -270,9 +281,14 @@ function buildOpPanel(){
         html += '<select id="'+f.id+'"><option value="">— Seleccione —</option>';
         (f.options||[]).forEach(function(opt){ html += '<option value="'+opt+'">'+opt+'</option>'; });
         html += '</select>';
+      } else if(f.type==='datalist'){
+        html += '<input id="'+f.id+'" type="text" list="'+f.id+'List" autocomplete="off"'
+             +  (f.placeholder?' placeholder="'+f.placeholder+'"':'')+'>';
+        html += '<datalist id="'+f.id+'List"></datalist>';
       } else {
         html += '<input id="'+f.id+'" type="'+f.type+'"'+(f.step?' step="'+f.step+'"':'')+' min="0">';
       }
+      if(f.hint) html += '<div class="hint" id="'+f.id+'Hint">'+f.hint+'</div>';
       html += '</div>';
     });
     html += '<button class="btn" style="background:'+op.color+';margin-top:auto" onclick="regOp(\''+name+'\')">▶ REGISTRAR '+name+'</button>';
@@ -296,6 +312,7 @@ function init(){
     ['btnProd',  'click',  registrarProd],
     ['btnParo',  'click',  registrarParo],
     ['motParo',  'change', mostrarDescParo],
+    ['mndOrden', 'input',  mndVerificarOrden],
     ['btnCal',   'click',  registrarCalidad],
     ['btnMat',    'click',  registrarMaterial],
     ['btnMatUndo','click',  matDeshacer],
@@ -396,6 +413,10 @@ function onData(data){
   // select con la lista de respaldo, así que aquí se reemplaza. Si la hoja no
   // trajo nada, se deja el respaldo en vez de dejar el molino sin opciones.
   if(GD.materialesMolino.length) llenarSelect('mRef', GD.materialesMolino);
+
+  // Ordenes de MANUALIDAD: invisibles en el selector principal, que filtra
+  // por maquina. Aqui se ofrecen en su propio campo.
+  mndLlenarOrdenes();
 
   // Seleccionar primera opcion valida en la lista de maquinas
   var maqSel = $('maquina');
@@ -504,6 +525,55 @@ function onMaqChange(maqOverride){
 
   // Sincronizar resaltado de botones
   sincBotonesOp(maq);
+}
+
+/* ════════════════════════════════════════════════
+   ÓRDENES DE MANUALIDADES
+   ────────────────────────────────────────
+   MANUALIDAD no es una máquina, es una operación, pero en REGISTRO LIDER va
+   escrita en la columna de MÁQUINA (P). El selector de orden del formulario
+   filtra por máquina, así que esas órdenes eran invisibles.
+════════════════════════════════════════════════ */
+var MND_HINT_ = 'Órdenes con MANUALIDAD en REGISTRO LIDER — o escribe el número.';
+
+/* Cubre "MANUALIDAD" y "MANUALIDADES", con o sin espacios. */
+function ordenesManualidad(){
+  return (GD.ordenes||[]).filter(function(o){
+    return String(o.maquina||'').trim().toUpperCase().indexOf('MANUALIDAD')===0;
+  });
+}
+
+function mndLlenarOrdenes(){
+  var dl=$('mndOrdenList'); if(!dl) return;
+  dl.innerHTML='';
+  ordenesManualidad().forEach(function(o){
+    var op=document.createElement('option');
+    op.value=o.id;
+    // El navegador muestra el value y, al lado, este texto: así el operario
+    // reconoce la orden por el producto y no solo por el número.
+    op.label=[o.productName, o.cliente].filter(Boolean).join(' · ');
+    dl.appendChild(op);
+  });
+  mndVerificarOrden();
+}
+
+/* Resuelve lo que hay escrito contra las órdenes conocidas. No bloquea: una
+   orden que aún no esté en la hoja tiene que poder registrarse igual. Solo
+   avisa, para que un dígito mal no pase inadvertido. */
+function mndVerificarOrden(){
+  var h=$('mndOrdenHint'); if(!h) return;
+  var v=String(val('mndOrden')||'').trim();
+  if(!v){ h.textContent=MND_HINT_; h.style.color=''; return; }
+  var o=(GD.ordenes||[]).filter(function(x){ return x.id===v; })[0];
+  if(o){
+    h.textContent='✅ '+(o.productName||'(sin producto)')
+      + (o.cliente?' · '+o.cliente:'')
+      + (String(o.maquina||'').trim().toUpperCase().indexOf('MANUALIDAD')===0 ? '' : ' — ojo: esta orden es de la máquina '+o.maquina);
+    h.style.color='#188038';
+  } else {
+    h.textContent='⚠️ La orden '+v+' no está en REGISTRO LIDER. Verifica el número.';
+    h.style.color='#b06000';
+  }
 }
 
 /* ════════════════════════════════════════════════
