@@ -141,7 +141,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
   /* Tablas legibles: scroll horizontal propio en vez de recortarse */
   .tbl { font-size: .8rem; }
   .tbl th, .tbl td { padding: 8px 10px; }
-  .filter-panel { position: static; max-height: none; }
+  .filter-panel { position: static; max-height: none; overflow: visible; }
   .filter-bar { gap: 8px; }
   .filter-bar select { flex: 1 1 40%; min-width: 120px; }
 }
@@ -2117,6 +2117,7 @@ function toggleDiaDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('g-dia-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleDia(dia) {
@@ -2142,6 +2143,7 @@ function toggleGProcDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('g-proc-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleGProc(p) {
@@ -2203,6 +2205,7 @@ function toggleParoDiaDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('paro-dia-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleParoDia(dia) {
@@ -2246,6 +2249,7 @@ function toggleCostosDiaDD(e) {
   const dd = document.getElementById('costos-dia-dd');
   if (!dd) return;
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
 }
 function toggleCostosDia(dia) {
@@ -2271,6 +2275,7 @@ function toggleParoRazonDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('paro-razon-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleRazon(r) {
@@ -2321,6 +2326,7 @@ function toggleParoProcDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('paro-proc-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleProceso(p) {
@@ -2363,12 +2369,14 @@ function toggleNcDiaDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('nc-dia-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleNcCausaDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('nc-causas-list');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleNcDia(dia) {
@@ -2416,6 +2424,7 @@ function toggleOeeMaqDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('oee-maq-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleOeeMaq(m) {
@@ -2434,6 +2443,7 @@ function toggleRdMaqDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('rd-maq-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleRdMaq(m) {
@@ -2449,6 +2459,7 @@ function toggleRdDiaDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('rd-dia-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleRdDia(dia) {
@@ -2484,6 +2495,7 @@ function toggleNcMaqDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('nc-maq-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleNcMaq(m) {
@@ -2497,6 +2509,7 @@ function toggleParoMaqDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('paro-maq-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleParoMaq(m) {
@@ -2510,6 +2523,7 @@ function toggleCostosMaqDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('costos-maq-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
 }
 function toggleCostosMaq(m) {
@@ -2519,9 +2533,72 @@ function toggleCostosMaq(m) {
 }
 function buildCostosMaqDd(maqs) { _buildMaqDd('costos-maq-dd', maqs, 'toggleCostosMaq'); }
 
+// ── Dropdowns anclados en pantallas chicas ──────────────────────────────
+// En el celular la barra de filtros global y el panel lateral tienen scroll
+// propio (overflow), y eso recortaba los dropdowns al alto de la barra: se
+// abrian pero no se veian ni se podian tocar. En movil los sacamos del flujo
+// con position:fixed, anclados al boton y limitados al espacio disponible,
+// asi el panel siempre queda completo en pantalla.
+const DD_MOVIL_MAX = 768;
+const DD_ANCLADOS = new Set();
+
+function anclarDropdown(dd) {
+  if (!dd) return;
+  if (!dd.classList.contains('show') || window.innerWidth > DD_MOVIL_MAX) { desanclarDropdown(dd); return; }
+  DD_ANCLADOS.add(dd);
+  posicionarDropdown(dd);
+}
+
+function desanclarDropdown(dd) {
+  if (!dd) return;
+  DD_ANCLADOS.delete(dd);
+  if (dd.dataset.ddMaxh === undefined) return;   // nunca se anclo: nada que restaurar
+  dd.style.position = ''; dd.style.top = ''; dd.style.left = ''; dd.style.maxWidth = '';
+  dd.style.maxHeight = dd.dataset.ddMaxh;
+}
+
+function posicionarDropdown(dd) {
+  const prev = dd.previousElementSibling;
+  const ancla = (prev && prev.tagName === 'BUTTON') ? prev
+              : (dd.parentElement && dd.parentElement.querySelector('.multi-sel-btn, button'));
+  if (!ancla) return;
+  if (dd.dataset.ddMaxh === undefined) dd.dataset.ddMaxh = dd.style.maxHeight || '';
+  const r = ancla.getBoundingClientRect();
+  // El boton se fue de pantalla al hacer scroll: cerrar en vez de dejarlo flotando
+  if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) { dd.classList.remove('show'); desanclarDropdown(dd); return; }
+  const M = 8;                                   // margen minimo contra los bordes
+  dd.style.position = 'fixed';
+  dd.style.maxWidth = (window.innerWidth - 2 * M) + 'px';
+  dd.style.maxHeight = dd.dataset.ddMaxh;        // medir con el tope de diseno
+  dd.style.left = M + 'px';
+  dd.style.top = '-9999px';                      // fuera de vista mientras se mide
+  const alto = dd.offsetHeight, ancho = dd.offsetWidth;
+  const espAbajo = window.innerHeight - r.bottom - M;
+  const espArriba = r.top - M;
+  // Se abre hacia abajo salvo que arriba haya mas aire
+  const haciaAbajo = espAbajo >= Math.min(alto, 180) || espAbajo >= espArriba;
+  const disponible = Math.max(140, haciaAbajo ? espAbajo : espArriba);
+  // Solo lo achicamos si no cabe: el tope de diseno manda cuando alcanza
+  if (alto > disponible) dd.style.maxHeight = disponible + 'px';
+  const altoFinal = Math.min(alto, disponible);
+  const top = haciaAbajo ? r.bottom + 4 : r.top - 4 - altoFinal;
+  dd.style.top = Math.max(M, Math.min(top, window.innerHeight - altoFinal - M)) + 'px';
+  dd.style.left = Math.max(M, Math.min(r.left, window.innerWidth - ancho - M)) + 'px';
+}
+
+// El boton se mueve con el scroll (de la pagina o de la propia barra de filtros).
+// El scroll de adentro del panel se ignora: reposicionar ahi cortaria el
+// desplazamiento por inercia del celular.
+window.addEventListener('scroll', e => DD_ANCLADOS.forEach(dd => {
+  const t = e.target;
+  if (t === dd || (t && t.nodeType === 1 && dd.contains(t))) return;
+  posicionarDropdown(dd);
+}), true);
+window.addEventListener('resize', () => DD_ANCLADOS.forEach(dd => anclarDropdown(dd)));
+
 // ── Cerrar dropdowns al hacer clic fuera
 document.addEventListener('click', ()=>{
-  document.querySelectorAll('.multi-sel-dropdown.show').forEach(d=>d.classList.remove('show'));
+  document.querySelectorAll('.multi-sel-dropdown.show').forEach(d=>{ d.classList.remove('show'); desanclarDropdown(d); });
 });
 
 // =======================================================
@@ -3314,6 +3391,7 @@ function toggleMesMultiDD(ddId, e) {
   e.stopPropagation();
   const dd = document.getElementById(ddId);
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
 }
 
@@ -4929,6 +5007,7 @@ function toggleApMaqDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('ap-maq-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
 }
 function toggleApMaq(m) {
@@ -4940,6 +5019,7 @@ function toggleApMoldeDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('ap-molde-dd');
   dd.classList.toggle('show');
+  anclarDropdown(dd);
   if (dd.classList.contains('show')) dd.onclick = ev => ev.stopPropagation();
 }
 function toggleApMolde(m) {
