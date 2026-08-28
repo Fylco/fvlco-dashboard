@@ -1,5 +1,5 @@
 const assert = require('node:assert');
-const { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw, esParoProgramado } = require('./turnos.js');
+const { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw, esParoProgramado, fechaColDiaKey } = require('./turnos.js');
 const S = (...t) => new Set(t.map(String));
 
 const ts = (h, m = 0) => new Date(2026, 5, 10, h, m, 0).getTime(); // hora local del 2026-06-10
@@ -211,7 +211,6 @@ t('MES numérico (no texto): también resuelve DIA/MES/AÑO', () => {
   assert.strictEqual(resolveFechaTurnoRaw(row), '9/8/2026');
 });
 
-console.log(`\n${passed} pruebas OK`);
 
 // ── esParoProgramado ──────────────────────────────────────────────────────
 // El paro PROGRAMADO no descuenta Disponibilidad (nunca fue tiempo de
@@ -240,3 +239,30 @@ t('Razones sin la palabra y vacías → false', () => {
   ['DAÑO ELECTRICO MAQUINA', 'AJUSTE TAPADORA', 'AUSENTISMO', '', null, undefined]
     .forEach(rz => assert.strictEqual(esParoProgramado(rz), false, String(rz)));
 });
+
+// ── fechaColDiaKey: el día TAL COMO LO DIGITÓ el operario (DIA/MES/AÑO) ──
+// Existe para CONCILIAR el reporte con una suma manual hecha en el sheet.
+// El tablero asigna cada caja al día de TRABAJO (6am-6am), que para T3/T5 no
+// es el de estas columnas; sin poder comparar los dos, la diferencia parecía
+// "el tablero suma mal". Ver Reporte Compacto → panel de conciliación.
+t('fechaColDiaKey: mes en texto → YYYY-MM-DD', () => {
+  assert.strictEqual(fechaColDiaKey({ DIA: 27, MES: 'agosto', 'AÑO': 2026 }), '2026-08-27');
+});
+t('fechaColDiaKey: todo como string y mes numérico', () => {
+  assert.strictEqual(fechaColDiaKey({ DIA: '27', MES: '8', 'AÑO': '2026' }), '2026-08-27');
+});
+t('fechaColDiaKey: rellena a dos dígitos (ordenable)', () => {
+  assert.strictEqual(fechaColDiaKey({ DIA: 5, MES: 8, 'AÑO': 2026 }), '2026-08-05');
+});
+t('fechaColDiaKey: año de 2 dígitos → 20XX', () => {
+  assert.strictEqual(fechaColDiaKey({ DIA: 5, MES: 8, 'AÑO': 26 }), '2026-08-05');
+});
+t('fechaColDiaKey: columnas inservibles → null', () => {
+  [{ DIA: '', MES: 'agosto', 'AÑO': 2026 },
+   { DIA: 32, MES: 'agosto', 'AÑO': 2026 },
+   { DIA: 27, MES: '#REF!', 'AÑO': 2026 },
+   { DIA: 27, MES: 'agosto', 'AÑO': '' },
+   {}].forEach(r => assert.strictEqual(fechaColDiaKey(r), null, JSON.stringify(r)));
+});
+
+console.log(`\n${passed} pruebas OK`);

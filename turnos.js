@@ -129,6 +129,23 @@ function _diaMesAnoToFecha(row) {
   return '';
 }
 
+// Día TAL COMO LO DIGITÓ el operario, desde DIA/MES/AÑO, en clave ordenable
+// 'YYYY-MM-DD' (o null si esas columnas no sirven). NO es el día de trabajo:
+// para T3/T5 el tablero usa "FECHAS SEGUN TURNO DE TRABAJO" (ver
+// resolveFechaTurnoRaw), así que las dos claves pueden diferir en un día.
+// Existe para CONCILIAR el reporte contra una suma manual hecha en el sheet:
+// quien filtra por la columna DIA obtiene otro conjunto de filas y la
+// diferencia parecía "el tablero suma mal". Ver el panel de conciliación del
+// Reporte Compacto.
+function fechaColDiaKey(row) {
+  const dmy = _diaMesAnoToFecha(row || {});
+  if (!dmy) return null;
+  const p = dmy.split('/');
+  let y = parseInt(p[2], 10);
+  if (y < 100) y += 2000;
+  return `${y}-${String(+p[1]).padStart(2, '0')}-${String(+p[0]).padStart(2, '0')}`;
+}
+
 // Columna cruda de fecha de turno para una fila del sheet de producción/NC.
 // El día de planta va de 6:00am a 6:00am del día siguiente (ej. "3 de agosto"
 // arranca 6am del 3 y cierra 6am del 4).
@@ -186,5 +203,5 @@ function resolveFechaTurnoRaw(row) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw, esParoProgramado };
+  module.exports = { canonicalizeTurnos, windowForRow, calcShiftHours, turnoSeconds, unidadesTeoricas, resolveFechaTurnoRaw, esParoProgramado, fechaColDiaKey };
 }
