@@ -1286,57 +1286,102 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <!-- ======================================================= PO: INVENTARIO MP == -->
     <div class="section" id="sec-po-inventario">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
-        <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Inventario de Materias Primas</div>
-        <div style="display:flex;gap:8px">
-          <button onclick="sincronizarSheetInv()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif;display:flex;align-items:center;gap:6px">
-            <i class="fa-solid fa-rotate"></i> Sincronizar Sheets
-          </button>
-          <button onclick="toggleFormInv()" style="background:#34D399;border:none;color:#111;border-radius:8px;padding:7px 16px;cursor:pointer;font-size:.75rem;font-weight:700;font-family:Tahoma,Arial,sans-serif;display:flex;align-items:center;gap:6px">
-            <i class="fa-solid fa-plus"></i> Registrar Movimiento
-          </button>
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:#F3F4F6">Inventario de Materias Primas</div>
+          <div style="font-size:.66rem;color:#6B7280;margin-top:2px" id="inv-sello">—</div>
         </div>
+        <button onclick="cargarInventarioMP(true)" id="inv-btn-recargar"
+          style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif;display:flex;align-items:center;gap:6px">
+          <i class="fa-solid fa-rotate"></i> Actualizar
+        </button>
       </div>
-      <!-- Formulario -->
-      <div id="form-inv" style="display:none;background:#1F2937;border:1px solid #374151;border-radius:12px;padding:20px;margin-bottom:20px">
-        <div style="font-size:.72rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px">Nuevo movimiento de MP</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:14px">
-          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Material *</div>
-            <input id="inv-material" placeholder="Ej: PEAD NATURAL" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
-          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Tipo *</div>
-            <select id="inv-tipo" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif">
-              <option value="ENTRADA">ENTRADA</option><option value="SALIDA">SALIDA</option><option value="AJUSTE">AJUSTE</option>
-            </select></div>
-          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Cantidad (kg) *</div>
-            <input id="inv-cantidad" type="number" placeholder="0" min="0" step="0.1" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
-          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Fecha</div>
-            <input id="inv-fecha" type="date" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
-          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Proveedor</div>
-            <input id="inv-proveedor" placeholder="Opcional" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
-          <div><div style="font-size:.62rem;color:#6B7280;margin-bottom:4px;text-transform:uppercase">Observación</div>
-            <input id="inv-obs" placeholder="Opcional" style="width:100%;background:#111827;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#EEEEEE;font-size:.75rem;outline:none;font-family:Tahoma,Arial,sans-serif"></div>
+
+      <!-- Qué le falta a los datos para ser reales -->
+      <div id="inv-falta" style="display:none;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:14px 16px;margin-bottom:20px">
+        <div style="font-size:.7rem;font-weight:700;color:#F59E0B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">
+          <i class="fa-solid fa-triangle-exclamation"></i> Datos incompletos — estos números todavía no son del todo reales
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button onclick="guardarMovimientoInv()" style="background:#34D399;border:none;color:#111;border-radius:8px;padding:7px 20px;cursor:pointer;font-size:.78rem;font-weight:700;font-family:Tahoma,Arial,sans-serif">Guardar</button>
-          <button onclick="toggleFormInv()" style="background:#1F2937;border:1px solid #374151;color:#9CA3AF;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.75rem;font-family:Tahoma,Arial,sans-serif">Cancelar</button>
-          <span id="inv-msg" style="font-size:.72rem;color:#10B981;display:none"></span>
-        </div>
+        <div id="inv-falta-lista" style="display:flex;flex-direction:column;gap:7px"></div>
       </div>
-      <!-- KPIs -->
-      <div id="po-inv-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:22px"></div>
-      <!-- Resumen por material -->
-      <div class="section-title">Resumen por Material</div>
-      <div style="overflow-x:auto;margin-bottom:24px">
+
+      <div id="inv-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px"></div>
+
+      <!-- Lo que hay que comprar -->
+      <div class="section-title">Hay que comprar</div>
+      <div id="inv-comprar" style="margin-bottom:26px"></div>
+
+      <!-- Saldo por bolsa -->
+      <div class="section-title">Saldo por bolsa</div>
+      <div style="font-size:.66rem;color:#6B7280;margin:-8px 0 10px">
+        Una bolsa de virgen es referencia + fabricante: cada fabricante obliga a reajustar la máquina.
+        Una de molido es familia + color.
+      </div>
+      <div style="overflow-x:auto;margin-bottom:26px">
         <table class="tbl">
-          <thead><tr><th>Material</th><th style="text-align:right">Entradas (kg)</th><th style="text-align:right">Salidas (kg)</th><th style="text-align:right">Stock Actual (kg)</th><th style="text-align:right">Stock Mín.</th><th>Estado</th></tr></thead>
-          <tbody id="po-inv-summary-tbody"></tbody>
+          <thead><tr>
+            <th>Bolsa</th><th>Familia</th>
+            <th style="text-align:right">Entradas</th>
+            <th style="text-align:right">Consumo</th>
+            <th style="text-align:right">Saldo</th>
+            <th style="text-align:right">Consumo/día</th>
+            <th style="text-align:right">Cobertura</th>
+            <th>Estado</th>
+          </tr></thead>
+          <tbody id="inv-bolsas"></tbody>
         </table>
       </div>
-      <!-- Movimientos -->
-      <div class="section-title">Movimientos Registrados</div>
+
+      <!-- Entradas -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:22px;margin-bottom:26px">
+        <div>
+          <div class="section-title">Entró hoy</div>
+          <div style="overflow-x:auto">
+            <table class="tbl">
+              <thead><tr><th>Hora</th><th>Proveedor</th><th>Material</th>
+                <th style="text-align:right">Kg</th><th style="text-align:right">Dif.</th></tr></thead>
+              <tbody id="inv-hoy"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div class="section-title">Últimos 7 días</div>
+          <div id="inv-semana" style="display:flex;align-items:flex-end;gap:8px;height:150px;padding:10px 4px 0"></div>
+        </div>
+      </div>
+
+      <!-- Faltantes -->
+      <div class="section-title">Faltantes por proveedor</div>
+      <div style="font-size:.66rem;color:#6B7280;margin:-8px 0 10px">
+        Diferencia entre los kilos que dice la factura y los que realmente se verificaron al recibir.
+      </div>
+      <div style="overflow-x:auto;margin-bottom:26px">
+        <table class="tbl">
+          <thead><tr><th>Proveedor</th>
+            <th style="text-align:right">Docs</th>
+            <th style="text-align:right">Facturado</th>
+            <th style="text-align:right">Verificado</th>
+            <th style="text-align:right">Diferencia</th>
+            <th style="text-align:right">%</th></tr></thead>
+          <tbody id="inv-faltantes"></tbody>
+        </table>
+      </div>
+
+      <!-- Merma -->
+      <div class="section-title">Merma — lo que entró a la caneca contra lo que salió como producto</div>
+      <div id="inv-merma" style="margin-bottom:26px"></div>
+
+      <!-- Consumo por orden -->
+      <div class="section-title">Consumo por orden</div>
       <div style="overflow-x:auto">
         <table class="tbl">
-          <thead><tr><th>Fecha</th><th>Material</th><th>Tipo</th><th style="text-align:right">Cantidad (kg)</th><th>Proveedor</th><th>Observación</th><th>Fuente</th><th></th></tr></thead>
-          <tbody id="po-inv-tbody"></tbody>
+          <thead><tr><th>Orden</th><th>Producto</th>
+            <th style="text-align:right">Virgen</th>
+            <th style="text-align:right">Molido</th>
+            <th style="text-align:right">Total</th>
+            <th style="text-align:right">% molido</th>
+            <th style="text-align:right">Teórico</th>
+            <th style="text-align:right">Merma</th></tr></thead>
+          <tbody id="inv-ordenes"></tbody>
         </table>
       </div>
     </div>
@@ -1393,6 +1438,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 // =======================================================
 // export?format=csv lee el estado actual del sheet sin caché de servidor
 const _SID = '1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8';
+/* El inventario NO va por CSV: los gids de las hojas nuevas no estan
+   fijados y, si el libro pasa a privado, los CSV dejan de servir. Este
+   endpoint agrega todo en el servidor y sigue funcionando igual. */
+const GAS_INVENTARIO_URL = 'https://script.google.com/macros/s/AKfycbxsw5EKTceLnra7xJJ7paPxkrE6Hi_1nX_XsJ_YDk5A4YX_32aCD_FaRr0e03bZuiqWMQ/exec';
 const _exp = gid => `https://docs.google.com/spreadsheets/d/${_SID}/export?format=csv&gid=${gid}`;
 const SHEETS = {
   produccion:   _exp('503325164'),
@@ -8723,7 +8772,6 @@ function renderDescripcion() {
 const PLAN_SHEETS = {
   pedidos:      'https://docs.google.com/spreadsheets/d/1vZTs6xImawkKwiWEPmFaY4y6LrVRKrMaAHKuCz0dy98/gviz/tq?tqx=out:csv&gid=999968463',
   restricciones:'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=880116194',
-  inventarioMP: 'https://docs.google.com/spreadsheets/d/1FJO1LSIdNIfZhvAg4NVBJKG2Q90lenEB49xXMrWceI8/gviz/tq?tqx=out:csv&gid=1815112932',
 };
 // PROGRAMACION anual — Plan vs Real
 // Cada año: crear "PROGRAMACION 20XX", compartir como lector público,
@@ -8762,7 +8810,7 @@ async function progGids(sid) {
 }
 let PROG_BLOCKS = [];
 let PROG_PEDIDOS = []; // pedidos por cliente (bloques CLIENTE/FECHA ENTREGA/CANTIDAD)
-const PLAN_DATA = { pedidos:[], restricciones:[], inventarioMP:[], plan:[], maquila:[] };
+const PLAN_DATA = { pedidos:[], restricciones:[], plan:[], maquila:[] };
 const PLAN_CFG  = {
   MAQUILA_FIJA:     ['TTE15_V2','TAPON'],
   MAQUILA_OVERFLOW: ['VLA38','STA38'],
@@ -8811,35 +8859,14 @@ async function loadPlanData() {
   await Promise.all([
     load('pedidos', true),
     load('restricciones', false),
-    load('inventarioMP', true),
   ]);
   // cargar programacion anual
   const _mesNow = parseInt(document.getElementById('po-mes-sel')?.value) || (new Date().getMonth()+1);
   const _anioNow = parseInt(document.getElementById('po-anio-sel')?.value) || new Date().getFullYear();
   await loadProgData(_mesNow, _anioNow);
-  // merge local inventory movements
-  const local = getLocalMovs();
-  PLAN_DATA.inventarioMP = [...PLAN_DATA.inventarioMP.map((r,i)=>({...r,_id:'s'+i,_src:'sheets'})),
-                            ...local.map(r=>({...r,_src:'local'}))];
   _planLoaded = true;
 }
 
-async function sincronizarSheetInv() {
-  const btn = event.currentTarget;
-  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-rotate fa-spin"></i> Sincronizando...';
-  try {
-    const url = PLAN_SHEETS.inventarioMP + '&_t=' + Date.now();
-    const res = await pfetch(url);
-    if (res.ok) {
-      const d = Papa.parse(await res.text(), { header:true, skipEmptyLines:true }).data;
-      const local = getLocalMovs();
-      PLAN_DATA.inventarioMP = [...d.map((r,i)=>({...r,_id:'s'+i,_src:'sheets'})),
-                                ...local.map(r=>({...r,_src:'local'}))];
-      renderInventarioMP();
-    }
-  } catch(e) { console.warn(e); }
-  btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Sincronizar Sheets';
-}
 
 // fecha de entrega del pedido — fuente única del nombre de columna. La hoja
 // "pedidos" usa hoy "FECHA DE ENTREGA"; se mantienen los alias viejos por si
@@ -8911,7 +8938,7 @@ function recalcularPlan() {
   loadProgData(mes, anio).then(()=>{ renderProgreso(); renderTableroPlanCapacidad(); });
   renderTablieroPlan(); renderPlanMaestro();
   renderMaquilaPlan(); renderPersonalPlan(); renderHorasCostosPO();
-  renderLoteMinimoPO(); renderInventarioMP();
+  renderLoteMinimoPO(); cargarInventarioMP();
 }
 
 function parseFechaPO(s) {
@@ -10108,79 +10135,259 @@ function renderLoteMinimoPO() {
 }
 
 // ── Inventario MP ──────────────────────────────────────
-const INV_KEY='fylco_inv_v1';
-function getLocalMovs(){try{return JSON.parse(localStorage.getItem(INV_KEY)||'[]');}catch(e){return[];}}
-function saveLocalMovs(m){localStorage.setItem(INV_KEY,JSON.stringify(m));}
+// Solo lectura. Todo viene de ?action=tableroMP, un endpoint que agrega
+// ENTRADAS MP + MOLINO + CONSUMO MP + CONTEO FISICO MP en el servidor.
+//
+// Antes esta pestaña guardaba movimientos en localStorage: se perdían al
+// limpiar el navegador y solo los veía quien los escribió. Eso se fue.
+//
+// La MERMA sí se calcula aquí y no en el servidor, porque necesita la
+// producción con dedupeProd() aplicado — la corrección de cajas reenviadas
+// que inflaban los totales. Recalcularla allá sería duplicar esa lógica.
+
+let INV = null, _invCargando = false;
+
+const invKg  = v => (v==null) ? '—' : Math.round(v).toLocaleString('es-CO')+' kg';
+const invKg1 = v => (v==null) ? '—' : (Math.round(v*10)/10).toLocaleString('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1})+' kg';
+const invPct = v => (v==null) ? '—' : (Math.round(v*10)/10).toLocaleString('es-CO')+'%';
+
+const INV_ESTADO = {
+  'CRITICO':     { txt:'Se acaba',        color:'#EF4444' },
+  'BAJO MINIMO': { txt:'Bajo mínimo',     color:'#F59E0B' },
+  'ALERTA':      { txt:'Alcanza poco',    color:'#F59E0B' },
+  'SIN CONSUMO': { txt:'Sin consumo aún', color:'#6B7280' },
+  'OK':          { txt:'OK',              color:'#10B981' }
+};
+function invPill(e){
+  const x = INV_ESTADO[e] || { txt:e, color:'#6B7280' };
+  return `<span style="background:${x.color}22;color:${x.color};border-radius:20px;padding:2px 9px;font-size:.65rem;font-weight:700;white-space:nowrap">${x.txt}</span>`;
+}
+
+async function cargarInventarioMP(forzar) {
+  if (_invCargando) return;
+  if (INV && !forzar) { renderInventarioMP(); return; }
+  _invCargando = true;
+
+  const btn = document.getElementById('inv-btn-recargar');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-rotate fa-spin"></i> Cargando...'; }
+
+  try {
+    const res = await fetch(GAS_INVENTARIO_URL + '?action=tableroMP&_t=' + Date.now());
+    const d = await res.json();
+    if (!d || d.status !== 'success') throw new Error((d && d.message) || 'sin datos');
+    INV = d;
+    renderInventarioMP();
+  } catch (e) {
+    const k = document.getElementById('inv-kpis');
+    if (k) k.innerHTML = `<div style="grid-column:1/-1;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:16px;color:#F87171;font-size:.78rem">
+      No se pudo cargar el inventario: ${e.message}<br>
+      <span style="color:#9CA3AF;font-size:.7rem">Si el backend se acaba de publicar, espera unos segundos y vuelve a intentar.</span></div>`;
+  } finally {
+    _invCargando = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Actualizar'; }
+  }
+}
+
+/* Merma = lo declarado a la caneca − lo que salió como producto.
+   El teórico usa DATA.prod, que ya pasó por dedupeProd(). */
+function invCalcularMerma() {
+  if (!INV) return { porOrden:{}, total:null, motivo:'sin datos' };
+
+  const peso = {};
+  (INV.productos||[]).forEach(p => {
+    if (!p.pesoPiezaG) return;
+    peso[String(p.codigo||'').toUpperCase()] = p.pesoPiezaG;
+    if (p.descripcion) peso[String(p.descripcion).trim().toUpperCase()] = p.pesoPiezaG;
+  });
+  if (!Object.keys(peso).length) return { porOrden:{}, total:null, motivo:'falta el peso de pieza en PRODUCTOS MP' };
+
+  const prod = (typeof DATA !== 'undefined' && DATA.prod) ? DATA.prod : [];
+  if (!prod.length) return { porOrden:{}, total:null, motivo:'la producción todavía no ha cargado' };
+
+  // Unidades reportadas por orden, ya deduplicadas
+  const uds = {};
+  prod.forEach(r => {
+    const o = String(r._orden||'').trim();
+    if (!o || !(r._cant > 0)) return;
+    if (!uds[o]) uds[o] = { unidades:0, producto:r._prod||'' };
+    uds[o].unidades += r._cant;
+  });
+
+  const porOrden = {};
+  let decl = 0, teo = 0;
+  (INV.consumo.porOrden||[]).forEach(c => {
+    const u = uds[String(c.orden).trim()];
+    if (!u) return;
+    const g = peso[String(c.producto||'').trim().toUpperCase()] ||
+              peso[String(u.producto||'').trim().toUpperCase()];
+    if (!g) return;
+    const kgTeorico = (u.unidades * g) / 1000;
+    porOrden[c.orden] = { teorico:kgTeorico, merma:c.kgTotal - kgTeorico, unidades:u.unidades };
+    decl += c.kgTotal; teo += kgTeorico;
+  });
+
+  if (!Object.keys(porOrden).length) {
+    return { porOrden:{}, total:null,
+             motivo:'ninguna orden con consumo tiene producción reportada y peso de pieza' };
+  }
+  return { porOrden, total:{ declarado:decl, teorico:teo, merma:decl-teo,
+                             pct: decl>0 ? ((decl-teo)/decl)*100 : null,
+                             ordenes:Object.keys(porOrden).length } };
+}
 
 function renderInventarioMP() {
-  const movs=PLAN_DATA.inventarioMP||[];
-  const matMap={};
-  movs.forEach(m=>{
-    const mat=String(m['MATERIAL']||m['Material']||m['material']||m.material||'').trim();
-    if(!mat)return;
-    if(!matMap[mat])matMap[mat]={e:0,s:0,j:0};
-    const t=String(m['TIPO']||m['Tipo']||m.tipo||'').toUpperCase();
-    const q=parseFloat(String(m['CANTIDAD']||m['Cantidad']||m.cantidad||'0').replace(',','.'))||0;
-    if(t==='ENTRADA')matMap[mat].e+=q;else if(t==='SALIDA')matMap[mat].s+=q;else matMap[mat].j+=q;
-  });
-  const mats=Object.keys(matMap).sort();
-  const SMIN=500;
-  const kpiEl=document.getElementById('po-inv-kpis');
-  if(kpiEl)kpiEl.innerHTML=
-    poKpi('Materiales',mats.length,'registrados','#34D399')+
-    poKpi('Total Entradas',Math.round(mats.reduce((s,k)=>s+matMap[k].e,0))+' kg','período','#3B82F6')+
-    poKpi('Total Salidas',Math.round(mats.reduce((s,k)=>s+matMap[k].s,0))+' kg','período','#F59E0B')+
-    poKpi('Movimientos',movs.length,'registrados','#8B5CF6');
+  if (!INV) { cargarInventarioMP(); return; }
+  const q = id => document.getElementById(id);
+  const vacio = (n,txt) => `<tr><td colspan="${n}" style="text-align:center;color:#4B5563;padding:22px">${txt}</td></tr>`;
 
-  const sumTbody=document.getElementById('po-inv-summary-tbody');
-  if(sumTbody)sumTbody.innerHTML=mats.length?mats.map(mat=>{
-    const d=matMap[mat];const stk=d.e-d.s+d.j;const pedir=stk<SMIN;
-    return`<tr><td style="font-weight:600">${mat}</td><td style="text-align:right;color:#10B981">+${Math.round(d.e).toLocaleString('es-CO')}</td><td style="text-align:right;color:#F59E0B">-${Math.round(d.s).toLocaleString('es-CO')}</td><td style="text-align:right;font-weight:700;color:${pedir?'#EF4444':'#EEEEEE'}">${Math.round(stk).toLocaleString('es-CO')} kg</td><td style="text-align:right;color:#6B7280">${SMIN.toLocaleString()} kg</td><td>${pedir?'<span class="badge-red">PEDIR</span>':'<span class="badge-green">OK</span>'}</td></tr>`;
-  }).join(''):'<tr><td colspan="6" style="text-align:center;color:#4B5563;padding:24px">Sin datos de inventario. Sincroniza o registra movimientos.</td></tr>';
+  const sello = q('inv-sello');
+  if (sello) sello.textContent = 'Actualizado ' +
+    new Date(INV.generado).toLocaleString('es-CO',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'});
 
-  const movTbody=document.getElementById('po-inv-tbody');
-  if(movTbody)movTbody.innerHTML=[...movs].reverse().slice(0,60).map(m=>{
-    const mat=String(m['MATERIAL']||m['Material']||m.material||'').trim();
-    const tipo=String(m['TIPO']||m['Tipo']||m.tipo||'').toUpperCase();
-    const qty=parseFloat(String(m['CANTIDAD']||m['Cantidad']||m.cantidad||'0').replace(',','.'))||0;
-    const fecha=String(m['FECHA']||m['Fecha']||m.fecha||'').trim();
-    const prov=String(m['PROVEEDOR']||m['Proveedor']||m.proveedor||'').trim();
-    const obs=String(m['OBSERVACION']||m['Observación']||m.obs||'').trim();
-    const src=m._src||'sheets';
-    const tColor=tipo==='ENTRADA'?'#10B981':tipo==='SALIDA'?'#EF4444':'#F59E0B';
-    return`<tr><td style="font-size:.7rem;color:#9CA3AF">${fecha||'—'}</td><td style="font-weight:600">${mat}</td><td><span style="background:${tColor}20;color:${tColor};border-radius:4px;padding:2px 7px;font-size:.65rem;font-weight:700">${tipo||'—'}</span></td><td style="text-align:right;font-weight:700">${qty.toLocaleString('es-CO')} kg</td><td style="font-size:.7rem;color:#6B7280">${prov||'—'}</td><td style="font-size:.7rem;color:#6B7280">${obs||'—'}</td><td style="font-size:.68rem;color:${src==='local'?'#10B981':'#4B5563'}">${src==='local'?'Vercel':'Sheets'}</td><td>${src==='local'?`<button onclick="eliminarMovInv('${m._id}')" style="background:none;border:none;color:#4B5563;cursor:pointer" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>`:''}</td></tr>`;
-  }).join('')||'<tr><td colspan="8" style="text-align:center;color:#4B5563;padding:24px">Sin movimientos</td></tr>';
-}
+  // ── Qué le falta a los datos para ser reales ──────────
+  const fBox = q('inv-falta'), fList = q('inv-falta-lista');
+  if (fBox && fList) {
+    const f = INV.faltaPara || [];
+    fBox.style.display = f.length ? 'block' : 'none';
+    fList.innerHTML = f.map(x => `<div style="font-size:.72rem;color:#D1D5DB;line-height:1.45">
+      <b style="color:#FCD34D">${x.que}</b><br>
+      <span style="color:#9CA3AF">→ ${x.comoSeArregla}</span></div>`).join('');
+  }
 
-function toggleFormInv(){
-  const f=document.getElementById('form-inv');if(!f)return;
-  const show=f.style.display==='none';f.style.display=show?'block':'none';
-  if(show){const hoy=new Date();const ei=document.getElementById('inv-fecha');if(ei)ei.value=`${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;}
-}
+  const bolsas   = INV.bolsas || [];
+  const urgentes = bolsas.filter(b => ['CRITICO','ALERTA','BAJO MINIMO'].indexOf(b.estado) >= 0);
+  const totalKg  = bolsas.reduce((a,b) => a + (b.saldoKg||0), 0);
+  const falt     = (INV.faltantes||[]).reduce((a,f) => a + (f.diferenciaKg||0), 0);
+  const merma    = invCalcularMerma();
 
-function guardarMovimientoInv(){
-  const mat=document.getElementById('inv-material')?.value.trim()||'';
-  const tipo=document.getElementById('inv-tipo')?.value||'ENTRADA';
-  const qty=parseFloat(document.getElementById('inv-cantidad')?.value)||0;
-  const emEl=document.getElementById('inv-material');
-  if(!mat){if(emEl)emEl.style.borderColor='#EF4444';return;}
-  if(qty<=0)return;
-  const mov={_id:'l'+Date.now(),_src:'local',material:mat,tipo,cantidad:qty,
-    fecha:document.getElementById('inv-fecha')?.value||new Date().toISOString().slice(0,10),
-    proveedor:document.getElementById('inv-proveedor')?.value.trim()||'',
-    obs:document.getElementById('inv-obs')?.value.trim()||''};
-  const movs=getLocalMovs();movs.push(mov);saveLocalMovs(movs);
-  PLAN_DATA.inventarioMP.push(mov);
-  const msg=document.getElementById('inv-msg');if(msg){msg.style.display='inline';msg.textContent='✓ Guardado';setTimeout(()=>msg.style.display='none',2500);}
-  ['inv-material','inv-cantidad','inv-proveedor','inv-obs'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  if(emEl)emEl.style.borderColor='#374151';
-  renderInventarioMP();
-}
+  // ── KPIs ──────────────────────────────────────────────
+  const k = q('inv-kpis');
+  if (k) k.innerHTML =
+    poKpi('En planta', invKg(totalKg), bolsas.length+' bolsas', '#3B82F6') +
+    poKpi('Por acabarse', urgentes.length, urgentes.length ? 'revisar abajo' : 'nada urgente',
+          urgentes.length ? '#EF4444' : '#10B981') +
+    poKpi('Entró hoy', invKg(INV.entradas.kgHoy), (INV.entradas.docsHoy||0)+' documento(s)', '#10B981') +
+    poKpi('Consumido hoy', invKg(INV.consumo.kgHoy), 'a las canecas', '#F59E0B') +
+    poKpi('Faltante proveedores', falt ? invKg1(falt) : '—',
+          falt ? 'acumulado' : 'sin diferencias', falt < 0 ? '#EF4444' : '#6B7280') +
+    poKpi('Molido del mes', invPct(INV.consumo.pctMolidoMes), 'del material usado', '#8B5CF6');
 
-function eliminarMovInv(id){
-  const movs=getLocalMovs().filter(m=>m._id!==id);saveLocalMovs(movs);
-  PLAN_DATA.inventarioMP=PLAN_DATA.inventarioMP.filter(m=>m._id!==id);
-  renderInventarioMP();
+  // ── Hay que comprar ───────────────────────────────────
+  const c = q('inv-comprar');
+  if (c) {
+    if (urgentes.length) {
+      const filas = urgentes.map(b => {
+        const colorDias = (b.diasCobertura != null && b.diasCobertura < b.leadTimeDias) ? '#EF4444' : '#F59E0B';
+        return `<tr>
+          <td style="font-weight:600">${b.etiqueta}</td>
+          <td style="text-align:right">${invKg1(b.saldoKg)}</td>
+          <td style="text-align:right;color:#9CA3AF">${b.consumoDiaKg ? invKg1(b.consumoDiaKg) : '—'}</td>
+          <td style="text-align:right;font-weight:700;color:${colorDias}">${b.diasCobertura != null ? Math.round(b.diasCobertura)+' días' : '—'}</td>
+          <td>${invPill(b.estado)}</td>
+          <td style="text-align:right;font-weight:800;color:#34D399">${b.sugeridoPedirKg ? invKg(b.sugeridoPedirKg) : '—'}</td>
+        </tr>`;
+      }).join('');
+      c.innerHTML = `<div style="overflow-x:auto"><table class="tbl"><thead><tr>
+        <th>Bolsa</th><th style="text-align:right">Saldo</th>
+        <th style="text-align:right">Consumo/día</th><th style="text-align:right">Alcanza</th>
+        <th>Estado</th><th style="text-align:right">Pedir</th></tr></thead>
+        <tbody>${filas}</tbody></table></div>`;
+    } else {
+      c.innerHTML = `<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:10px;padding:16px;color:#10B981;font-size:.8rem">
+        Ninguna bolsa en riesgo. ${bolsas.length ? '' : 'Todavía no hay saldos cargados.'}</div>`;
+    }
+  }
+
+  // ── Saldo por bolsa ───────────────────────────────────
+  const tb = q('inv-bolsas');
+  if (tb) tb.innerHTML = bolsas.length
+    ? bolsas.map(b => `<tr>
+        <td style="font-weight:600">${b.etiqueta}
+          <span style="color:#4B5563;font-size:.62rem;margin-left:5px">${b.tipo === 'MOLIDO' ? 'molido' : 'virgen'}</span></td>
+        <td style="color:#9CA3AF">${b.familia || '—'}</td>
+        <td style="text-align:right;color:#10B981">+${invKg(b.entradasKg)}</td>
+        <td style="text-align:right;color:#F59E0B">−${invKg(b.consumoKg)}</td>
+        <td style="text-align:right;font-weight:800">${invKg1(b.saldoKg)}</td>
+        <td style="text-align:right;color:#9CA3AF">${b.consumoDiaKg ? invKg1(b.consumoDiaKg) : '—'}</td>
+        <td style="text-align:right">${b.diasCobertura != null ? Math.round(b.diasCobertura)+' días' : '—'}</td>
+        <td>${invPill(b.estado)}</td></tr>`).join('')
+    : vacio(8,'Sin bolsas todavía. Registra una compra en /recepcion/, o muele algo con color.');
+
+  // ── Entró hoy ─────────────────────────────────────────
+  const th = q('inv-hoy');
+  if (th) th.innerHTML = (INV.entradas.hoy||[]).length
+    ? INV.entradas.hoy.map(e => `<tr>
+        <td style="color:#9CA3AF;font-size:.7rem">${e.hora}</td>
+        <td>${e.proveedor}<div style="color:#4B5563;font-size:.62rem">${e.doc}</div></td>
+        <td>${e.referencia}<div style="color:#4B5563;font-size:.62rem">${e.fabricante}</div></td>
+        <td style="text-align:right;font-weight:700">${invKg1(e.kg)}</td>
+        <td style="text-align:right;color:${e.diferenciaKg < 0 ? '#EF4444' : '#6B7280'}">${e.diferenciaKg ? invKg1(e.diferenciaKg) : '—'}</td>
+      </tr>`).join('')
+    : vacio(5,'Hoy no ha entrado material.');
+
+  // ── Últimos 7 días ────────────────────────────────────
+  const sem = q('inv-semana');
+  if (sem) {
+    const dias = INV.entradas.ultimos7 || [];
+    const max  = Math.max(1, ...dias.map(d => d.kg));
+    sem.innerHTML = dias.map(d => {
+      const h = Math.max(2, (d.kg / max) * 100);
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end">
+        <div style="font-size:.6rem;color:#9CA3AF">${d.kg ? Math.round(d.kg) : ''}</div>
+        <div title="${d.fecha}: ${invKg(d.kg)}" style="width:100%;max-width:34px;height:${h}%;background:${d.kg ? '#10B981' : '#374151'};border-radius:4px 4px 0 0"></div>
+        <div style="font-size:.58rem;color:#6B7280">${d.dia}</div></div>`;
+    }).join('');
+  }
+
+  // ── Faltantes por proveedor ───────────────────────────
+  const tf = q('inv-faltantes');
+  if (tf) tf.innerHTML = (INV.faltantes||[]).length
+    ? INV.faltantes.map(f => {
+        const col = f.diferenciaKg < 0 ? '#EF4444' : (f.diferenciaKg > 0 ? '#F59E0B' : '#10B981');
+        return `<tr>
+          <td style="font-weight:600">${f.proveedor}</td>
+          <td style="text-align:right;color:#6B7280">${f.docs}</td>
+          <td style="text-align:right;color:#9CA3AF">${invKg(f.kgFactura)}</td>
+          <td style="text-align:right">${invKg(f.kgVerificado)}</td>
+          <td style="text-align:right;font-weight:800;color:${col}">${f.diferenciaKg ? invKg1(f.diferenciaKg) : 'exacto'}</td>
+          <td style="text-align:right;color:${f.pct < 0 ? '#EF4444' : '#6B7280'}">${f.pct ? invPct(f.pct) : '—'}</td>
+        </tr>`;
+      }).join('')
+    : vacio(6,'Sin compras con kilos de factura para comparar.');
+
+  // ── Merma ─────────────────────────────────────────────
+  const m = q('inv-merma');
+  if (m) {
+    m.innerHTML = merma.total
+      ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px">
+          ${poKpi('Declarado a canecas', invKg(merma.total.declarado), merma.total.ordenes+' órdenes', '#F59E0B')}
+          ${poKpi('Salió como producto', invKg(merma.total.teorico), 'unidades × peso pieza', '#3B82F6')}
+          ${poKpi('Merma', invKg1(merma.total.merma), 'colada, purga, barredura', '#EF4444')}
+          ${poKpi('Merma %', invPct(merma.total.pct), 'del material que entró', '#EF4444')}
+        </div>`
+      : `<div style="background:rgba(107,114,128,.08);border:1px solid #374151;border-radius:10px;padding:16px;font-size:.78rem;color:#9CA3AF">
+          Todavía no se puede calcular: <b style="color:#D1D5DB">${merma.motivo}</b>.<br>
+          <span style="font-size:.7rem">La merma es lo declarado a la caneca menos lo que salió como
+          producto. Necesita las dos cosas: consumo registrado y peso de pieza cargado.</span></div>`;
+  }
+
+  // ── Consumo por orden ─────────────────────────────────
+  const to = q('inv-ordenes');
+  if (to) to.innerHTML = (INV.consumo.porOrden||[]).length
+    ? INV.consumo.porOrden.slice(0,40).map(o => {
+        const mm = merma.porOrden[o.orden];
+        return `<tr>
+          <td style="font-weight:600">${o.orden}</td>
+          <td style="color:#9CA3AF;font-size:.72rem">${o.producto || '—'}</td>
+          <td style="text-align:right">${invKg(o.kgVirgen)}</td>
+          <td style="text-align:right;color:#8B5CF6">${invKg(o.kgMolido)}</td>
+          <td style="text-align:right;font-weight:700">${invKg1(o.kgTotal)}</td>
+          <td style="text-align:right;color:#8B5CF6">${invPct(o.pctMolido)}</td>
+          <td style="text-align:right;color:#9CA3AF">${mm ? invKg(mm.teorico) : '—'}</td>
+          <td style="text-align:right;font-weight:700;color:${mm && mm.merma > 0 ? '#EF4444' : '#6B7280'}">${mm ? invKg1(mm.merma) : '—'}</td>
+        </tr>`;
+      }).join('')
+    : vacio(8,'Ningún operario ha registrado material todavía.');
 }
 
 // ── Auto-init plan al abrir sección ───────────────────
