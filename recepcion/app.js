@@ -8,8 +8,9 @@
            docs/superpowers/specs/2026-08-21-inventario-mp-bolsa-enmienda.md §2
 
    Decisiones que NO hay que romper:
-   - La clave NUNCA se guarda en disco: vive en sessionStorage y se pierde
-     al cerrar la pestaña. El servidor la valida en cada llamada.
+   - SIN clave, por decisión del usuario: la PWA de operarios tampoco la
+     tiene y escribe en una hoja igual de critica. A cambio, "Recibido por"
+     es obligatorio: es lo unico que deja constancia de quien digito.
    - KG FACTURA y KG VERIFICADOS son dos campos distintos a propósito: su
      diferencia acumulada por proveedor es el faltante reclamable, que hoy
      no existe en ninguna parte.
@@ -26,7 +27,6 @@ var ENVIANDO = false;
 function $(id) { return document.getElementById(id); }
 function val(id) { var e = $(id); return e ? e.value.trim() : ''; }
 function num(v) { return parseFloat(String(v == null ? '' : v).replace(',', '.')) || 0; }
-function numId(id) { return num(val(id)); }
 function nf(n) { return Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 1 }); }
 
 function toast(msg, tipo) {
@@ -36,49 +36,12 @@ function toast(msg, tipo) {
   toast._t = setTimeout(function () { t.style.display = 'none'; }, 4000);
 }
 
-/* La clave solo en memoria de sesión: nunca en localStorage. */
-function pw() { return sessionStorage.getItem('fvlco_recep_pw') || ''; }
-
 function llamar(accion, datos) {
-  datos = datos || {};
-  datos.pw = pw();
-  return fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ accion: accion, datos: datos }) })
+  return fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ accion: accion, datos: datos || {} }) })
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      if (d && d.status === 'error') {
-        if (String(d.message).indexOf('CLAVE_INCORRECTA') >= 0) {
-          sessionStorage.removeItem('fvlco_recep_pw');
-          mostrarLogin('La clave no es correcta o la sesión se cerró.');
-          throw new Error('auth');
-        }
-        throw new Error(d.message);
-      }
+      if (d && d.status === 'error') throw new Error(d.message);
       return d;
-    });
-}
-
-/* ── Login ──────────────────────────────────────────────────── */
-function mostrarLogin(err) {
-  $('login').classList.remove('oculto');
-  var e = $('loginErr');
-  if (err) { e.textContent = err; e.className = 'on'; } else { e.className = ''; }
-  $('pw').value = ''; $('pw').focus();
-}
-
-function entrar() {
-  var clave = val('pw');
-  if (!clave) { mostrarLogin('Escribe la clave.'); return; }
-  sessionStorage.setItem('fvlco_recep_pw', clave);
-  $('btnEntrar').disabled = true;
-  llamar('recepLogin', {})
-    .then(function (d) {
-      $('btnEntrar').disabled = false;
-      guardarCatalogos(d);
-      $('login').classList.add('oculto');
-    })
-    .catch(function (e) {
-      $('btnEntrar').disabled = false;
-      if (e.message !== 'auth') mostrarLogin('No se pudo entrar: ' + e.message);
     });
 }
 
@@ -90,7 +53,6 @@ function guardarCatalogos(d) {
   llenarDatalist('l-prov', CAT.proveedores);
   var u = $('ultimoDoc');
   if (u) u.textContent = d.ultimoDoc ? ('último: ' + d.ultimoDoc) : '';
-  // Repintar las listas de las líneas que ya estén en pantalla
   Array.prototype.forEach.call(document.querySelectorAll('#lineas tr'), refrescarListas);
 }
 
@@ -224,12 +186,17 @@ function guardar() {
   if (ENVIANDO) return;
 
   var faltan = [];
-  if (!val('f-prov')) faltan.push('f-prov');
-  if (!val('f-doc'))  faltan.push('f-doc');
-  ['f-prov', 'f-doc'].forEach(function (id) {
+  if (!val('f-prov'))   faltan.push('f-prov');
+  if (!val('f-doc'))    faltan.push('f-doc');
+  if (!val('f-recibe')) faltan.push('f-recibe');   // sin clave, es la unica constancia
+  ['f-prov', 'f-doc', 'f-recibe'].forEach(function (id) {
     $(id).classList[faltan.indexOf(id) >= 0 ? 'add' : 'remove']('err');
   });
-  if (faltan.length) { toast('Falta el proveedor o el número del documento', 'warn'); return; }
+  if (faltan.length) {
+    toast('Faltan el proveedor, el número del documento o quién recibe', 'warn');
+    $(faltan[0]).focus();
+    return;
+  }
 
   var lineas = leerLineas();
   if (!lineas.length) { toast('Agrega al menos un material', 'warn'); return; }
@@ -250,7 +217,6 @@ function guardar() {
     recibidoPor: val('f-recibe'),
     verificadoPor: val('f-verifica'),
     observacion: val('f-obs'),
-    valorTotal: numId('f-valor'),
     lineas: lineas
   };
 
@@ -282,7 +248,6 @@ function pintarSiigo(datos, resp) {
   L.push('Documento    : ' + datos.tipoDoc + ' ' + datos.nDoc);
   if (datos.recibidoPor)   L.push('Recibido por : ' + datos.recibidoPor);
   if (datos.verificadoPor) L.push('Verificado   : ' + datos.verificadoPor);
-  if (datos.valorTotal)    L.push('Valor total  : $' + nf(datos.valorTotal));
   L.push('');
   L.push(pad('REFERENCIA', 16) + pad('FABRICANTE', 14) + pad('LOTE', 14) +
          pad('BULTOS', 8) + pad('KG FACT', 10) + 'KG VERIF');
@@ -328,7 +293,7 @@ function copiar() {
 }
 
 function limpiar() {
-  ['f-doc', 'f-obs', 'f-valor'].forEach(function (id) { $(id).value = ''; });
+  ['f-doc', 'f-obs'].forEach(function (id) { $(id).value = ''; });
   ['f-prov', 'f-doc'].forEach(function (id) { $(id).classList.remove('err'); });
   $('lineas').innerHTML = '';
   seqDatalist = 0;
@@ -343,10 +308,6 @@ window.addEventListener('DOMContentLoaded', function () {
     String(hoy.getMonth() + 1).padStart(2, '0') + '-' +
     String(hoy.getDate()).padStart(2, '0');
 
-  $('btnEntrar').addEventListener('click', entrar);
-  $('pw').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); entrar(); }
-  });
   $('btnAgregar').addEventListener('click', agregarLinea);
   $('btnGuardar').addEventListener('click', guardar);
   $('btnLimpiar').addEventListener('click', limpiar);
@@ -354,10 +315,12 @@ window.addEventListener('DOMContentLoaded', function () {
 
   agregarLinea();
 
-  // Si la sesión sigue viva (F5), entra directo
-  if (pw()) {
-    llamar('recepLogin', {})
-      .then(function (d) { guardarCatalogos(d); $('login').classList.add('oculto'); })
-      .catch(function () {});
-  }
+  // Sin login: los catálogos se cargan de una. Si falla, la página sigue
+  // sirviendo — los desplegables quedan como texto libre y el backend
+  // normaliza igual.
+  llamar('recepLogin', {})
+    .then(guardarCatalogos)
+    .catch(function (e) {
+      toast('No se pudieron cargar las sugerencias: ' + e.message, 'warn');
+    });
 });

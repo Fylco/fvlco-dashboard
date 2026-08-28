@@ -46,6 +46,7 @@ input:focus-visible,select:focus-visible{outline:none;border-color:var(--az);
 input.err{border-color:var(--er);background:var(--er-bg)}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .ancho2{grid-column:span 2}
+.anchoTodo{grid-column:1/-1}
 
 .lineas{overflow-x:auto}
 table{border-collapse:collapse;width:100%;min-width:1000px}
@@ -92,44 +93,18 @@ pre.copy{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.7;color
   background:#f7f9fb;border:1px solid var(--bo-soft);border-radius:8px;padding:14px 16px;
   white-space:pre;overflow-x:auto;user-select:all}
 
-/* Login */
-#login{position:fixed;inset:0;background:var(--ground);display:flex;align-items:center;
-  justify-content:center;padding:16px;z-index:50}
-#login.oculto{display:none}
-.login-box{background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(60,64,67,.18);
-  padding:26px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px}
-.login-box .marca{text-align:center;margin-bottom:4px}
-.login-box .marca b{font-weight:900;font-size:30px;color:#0b3a8c;letter-spacing:-1px}
-.login-box .marca div{font-size:12px;color:var(--ink-2);margin-top:2px}
-#loginErr{display:none;background:var(--er-bg);border:1px solid #f5c6c2;color:#a50e0e;
-  border-radius:7px;padding:8px 10px;font-size:12.5px}
-#loginErr.on{display:block}
-
 #toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);min-width:250px;max-width:92%;
   padding:12px 18px;border-radius:9px;color:#fff;font-weight:700;font-size:13.5px;
   box-shadow:0 4px 16px rgba(0,0,0,.3);display:none;z-index:99;text-align:center}
 #toast.ok{background:var(--ok)}#toast.err{background:var(--er)}#toast.warn{background:#f9ab00;color:#000}
 
 @media(max-width:760px){
-  .grid{grid-template-columns:1fr}.ancho2{grid-column:span 1}
+  .grid{grid-template-columns:1fr}.ancho2,.anchoTodo{grid-column:span 1}
   .wrap{padding:12px 10px 48px}
 }
 </style>
 </head>
 <body>
-
-<!-- ═══ LOGIN ═══ -->
-<div id="login">
-  <div class="login-box">
-    <div class="marca"><b>Fylco</b><div>Recepción de Materia Prima</div></div>
-    <div id="loginErr"></div>
-    <div>
-      <label for="pw">Clave</label>
-      <input id="pw" type="password" autocomplete="current-password" placeholder="Clave de recepción">
-    </div>
-    <button class="btn btn-lg" id="btnEntrar">Entrar</button>
-  </div>
-</div>
 
 <div class="wrap">
 
@@ -156,14 +131,12 @@ pre.copy{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.7;color
         <select id="f-tipo"><option>FACTURA</option><option>REMISION</option></select></div>
       <div><label for="f-doc">N° del documento <span class="req">*</span></label>
         <input id="f-doc" autocomplete="off" placeholder="Ej. FV-10482"></div>
-      <div><label for="f-recibe">Recibido por</label>
-        <input id="f-recibe" autocomplete="off" placeholder="Quién digita"></div>
+      <div><label for="f-recibe">Recibido por <span class="req">*</span></label>
+        <input id="f-recibe" autocomplete="off" placeholder="Tu nombre"></div>
       <div><label for="f-verifica">Verificado por</label>
         <input id="f-verifica" autocomplete="off" placeholder="Quién contó el material"></div>
-      <div class="ancho2"><label for="f-obs">Observación general</label>
+      <div class="anchoTodo"><label for="f-obs">Observación general</label>
         <input id="f-obs" autocomplete="off" placeholder="Opcional — ej. llegó un bulto roto"></div>
-      <div><label for="f-valor">Valor total del documento</label>
-        <input type="number" id="f-valor" min="0" step="1" placeholder="0"></div>
     </div>
   </div>
 </div>
