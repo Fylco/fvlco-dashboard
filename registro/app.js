@@ -17,11 +17,11 @@ var GD = {
 
 /* Bolsas de materia prima con su saldo. Se refresca al elegir orden y
    despues de cada registro. Sin conexion conserva la ultima lista. */
-var MAT = { virgen:[], molido:[], cargado:false, error:'', ultimoError:'' };
+var MAT = { virgen:[], molido:[], maquiladores:[], cargado:false, error:'', ultimoError:'' };
 var GS = {
   maq:null, orden:null, turno:1, esTap:false,
   horaInicio:null, prodCount:0, paroCount:0, confirmarCb:null,
-  matUltId:null, matUltTxt:'', matRegistrado:false,
+  matUltId:null, matUltTxt:'', matRegistrado:false, matDestino:'CANECA',
   // motivo de paro -> descripción, del tipo de máquina seleccionado
   paroDescMapa:{}
 };
@@ -323,6 +323,11 @@ function init(){
     var el=$(ev[0]);
     if(el) el.addEventListener(ev[1], ev[2]);
     else alert('Elemento no encontrado: '+ev[0]);
+  });
+
+  // Destino: a caneca (la maquina) o a maquila (sale de la planta)
+  Array.prototype.forEach.call(document.querySelectorAll('#matDest button'), function(b){
+    b.addEventListener('click', function(){ matSetDestino(b.getAttribute('data-dest')); });
   });
 
   // Los +25 / +50 son varios botones iguales: se enganchan en bloque
@@ -1511,7 +1516,7 @@ function matMostrar(visible){
      seguir corriendo (~9 s leyendo BD REPORTES PRODUCCION) y Apps Script
      serializa las ejecuciones del mismo usuario, asi que la peticion
      quedaria en cola. Se piden al elegir la orden — ver matAlCambiarOrden. */
-  if(v) matLlenarBolsas();
+  if(v){ matSetDestino(GS.matDestino||'CANECA'); matLlenarBolsas(); }
 }
 
 /* Se llama al elegir orden. Elegir orden solo es posible cuando la carga
@@ -1531,6 +1536,7 @@ function matCargarSaldos(){
     .then(function(d){
       if(!d || d.status!=='success') throw new Error((d&&d.message)||'sin datos');
       MAT.virgen=d.virgen||[]; MAT.molido=d.molido||[];
+      MAT.maquiladores=d.maquiladores||[];
       MAT.cargado=true; MAT.error='';
       matLlenarBolsas();
     })
@@ -1581,6 +1587,14 @@ function matLlenarBolsas(){
     return String(b.familia||'').toUpperCase()===famOrden;
   });
 
+  var dl=$('dl-maquiladores');
+  if(dl){
+    dl.innerHTML='';
+    (MAT.maquiladores||[]).forEach(function(m){
+      var op=document.createElement('option'); op.value=m; dl.appendChild(op);
+    });
+  }
+
   var pide=$('matPide');
   if(pide) pide.textContent = (o.mp||'—') + (o.mpReq ? ' ('+o.mpReq+')' : '');
 
@@ -1619,13 +1633,20 @@ function registrarMaterial(){
   if(kgV>0 && !bV){ toast('Elige de qué bolsa de virgen tomaste','warn'); return; }
   if(kgM>0 && !bM){ toast('Elige de qué bolsa de molido tomaste','warn'); return; }
 
+  var maquilador = val('matMl');
+  if(GS.matDestino==='MAQUILA' && !maquilador){
+    toast('Escribe a qué maquilador se envía','warn');
+    var e=$('matMl'); if(e){ e.classList.add('err-f'); e.focus(); }
+    return;
+  }
+
   /* Avisos suaves: informan y piden confirmación, nunca bloquean. */
   var avisos=[];
   if(bV && o.mp && String(bV.referencia||'').toUpperCase()!==String(o.mp).toUpperCase())
     avisos.push('La orden pide '+o.mp+' y estás echando '+bV.referencia+'.');
   if(bM && o.mpReq && String(bM.familia||'').toUpperCase()!==String(o.mpReq).toUpperCase())
     avisos.push('La orden es '+o.mpReq+' y el molido es '+bM.familia+'.');
-  if(kgV+kgM>300)
+  if(GS.matDestino==='CANECA' && kgV+kgM>300)
     avisos.push('Son '+nf(kgV+kgM)+' kg de un solo golpe. La caneca es de ~150 kg.');
   if(bV && kgV>0 && bV.saldoKg>0 && kgV>bV.saldoKg)
     avisos.push('Estás sacando '+nf(kgV)+' kg y la bolsa tiene '+nf(bV.saldoKg)+' kg.');
@@ -1633,6 +1654,8 @@ function registrarMaterial(){
   var base=datosBase();
   var datos=merge(base,{
     idRegistro:'m'+Date.now()+'-'+Math.floor(Math.random()*100000),
+    destino: GS.matDestino,
+    maquilador: GS.matDestino==='MAQUILA' ? maquilador : '',
     caneca:base.maquina,
     orden:ordId,
     virgenReferencia: bV?bV.referencia:'',
@@ -1654,10 +1677,12 @@ function registrarMaterial(){
         if(kgV>0) partes.push(nf(kgV)+' kg virgen');
         if(kgM>0) partes.push(nf(kgM)+' kg molido');
         GS.matUltId=datos.idRegistro;
-        GS.matUltTxt=partes.join(' + ');
+        GS.matUltTxt=partes.join(' + ') +
+          (GS.matDestino==='MAQUILA' ? ' → '+maquilador : '');
         GS.matRegistrado=true;
         matPintarUltimo();
         ['matKgV','matKgM','matObs'].forEach(function(id){ var e=$(id); if(e) e.value=''; });
+        var eMl=$('matMl'); if(eMl) eMl.classList.remove('err-f');
         cls('cardMat','mat-alerta',false);
         if(!(r&&r.offline)) matCargarSaldos();
       }catch(ex){}
@@ -1676,6 +1701,20 @@ function registrarMaterial(){
   } else {
     enviar();   // sin avisos no se pide confirmación: se registra varias veces por turno
   }
+}
+
+/* Destino del material. A caneca es lo normal; a maquila el material sale
+   de la planta, asi que baja el saldo igual pero NO lo consume ninguna
+   maquina nuestra — el tablero lo excluye del calculo de merma. */
+function matSetDestino(d){
+  GS.matDestino = d==='MAQUILA' ? 'MAQUILA' : 'CANECA';
+  Array.prototype.forEach.call(document.querySelectorAll('#matDest button'), function(b){
+    b.classList[b.getAttribute('data-dest')===GS.matDestino ? 'add' : 'remove']('act');
+  });
+  show('matBoxMl', GS.matDestino==='MAQUILA');
+  var btn=$('btnMat');
+  if(btn) btn.innerHTML = GS.matDestino==='MAQUILA'
+    ? '🚚 REGISTRAR ENVÍO' : '🧱 REGISTRAR MATERIAL';
 }
 
 function matPintarUltimo(){

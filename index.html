@@ -1370,14 +1370,32 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="section-title">Merma — lo que entró a la caneca contra lo que salió como producto</div>
       <div id="inv-merma" style="margin-bottom:26px"></div>
 
+      <!-- Material enviado a maquila -->
+      <div id="inv-maquila-wrap" style="display:none;margin-bottom:26px">
+        <div class="section-title">Material enviado a maquila</div>
+        <div style="font-size:.66rem;color:#6B7280;margin:-8px 0 10px">
+          Sale del saldo igual que el de las canecas, pero no entra al cálculo de merma:
+          no lo consumió ninguna máquina nuestra.
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Maquilador</th>
+              <th style="text-align:right">Órdenes</th>
+              <th style="text-align:right">Kg enviados</th></tr></thead>
+            <tbody id="inv-maquila"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Consumo por orden -->
-      <div class="section-title">Consumo por orden</div>
+      <div class="section-title">Material utilizado por orden</div>
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead><tr><th>Orden</th><th>Producto</th>
             <th style="text-align:right">Virgen</th>
             <th style="text-align:right">Molido</th>
-            <th style="text-align:right">Total</th>
+            <th style="text-align:right">A caneca</th>
+            <th style="text-align:right">A maquila</th>
             <th style="text-align:right">% molido</th>
             <th style="text-align:right">Teórico</th>
             <th style="text-align:right">Merma</th></tr></thead>
@@ -10143,9 +10161,16 @@ function invCalcularMerma() {
     const g = peso[String(c.producto||'').trim().toUpperCase()] ||
               peso[String(u.producto||'').trim().toUpperCase()];
     if (!g) return;
+    /* Solo lo que fue a CANECA: lo enviado a maquila salio de la planta y
+       no lo consumio ninguna maquina nuestra. Meterlo aqui compararia
+       material que se fue contra produccion que nunca se reporto aca, y la
+       merma se inflaria. Las filas viejas sin DESTINO cuentan como caneca. */
+    const kgCaneca = (c.kgCaneca != null) ? c.kgCaneca : c.kgTotal;
+    if (!kgCaneca) return;
     const kgTeorico = (u.unidades * g) / 1000;
-    porOrden[c.orden] = { teorico:kgTeorico, merma:c.kgTotal - kgTeorico, unidades:u.unidades };
-    decl += c.kgTotal; teo += kgTeorico;
+    porOrden[c.orden] = { teorico:kgTeorico, merma:kgCaneca - kgTeorico,
+                          unidades:u.unidades, kgCaneca:kgCaneca };
+    decl += kgCaneca; teo += kgTeorico;
   });
 
   if (!Object.keys(porOrden).length) {
@@ -10192,7 +10217,11 @@ function renderInventarioMP() {
     poKpi('Consumido hoy', invKg(INV.consumo.kgHoy), 'a las canecas', '#F59E0B') +
     poKpi('Faltante proveedores', falt ? invKg1(falt) : '—',
           falt ? 'acumulado' : 'sin diferencias', falt < 0 ? '#EF4444' : '#6B7280') +
-    poKpi('Molido del mes', invPct(INV.consumo.pctMolidoMes), 'del material usado', '#8B5CF6');
+    poKpi('Molido del mes', invPct(INV.consumo.pctMolidoMes), 'del material usado', '#8B5CF6') +
+    poKpi('Enviado a maquila', invKg(INV.consumo.kgMaquilaMes),
+          (INV.consumo.porMaquilador||[]).length ?
+            (INV.consumo.porMaquilador||[]).length+' maquilador(es) este mes' : 'este mes',
+          (INV.consumo.kgMaquilaMes ? '#EC4899' : '#6B7280'));
 
   // ── Hay que comprar ───────────────────────────────────
   const c = q('inv-comprar');
@@ -10293,7 +10322,17 @@ function renderInventarioMP() {
           producto. Necesita las dos cosas: consumo registrado y peso de pieza cargado.</span></div>`;
   }
 
-  // ── Consumo por orden ─────────────────────────────────
+  // ── Material enviado a maquila ────────────────────────
+  const wrap = q('inv-maquila-wrap'), tm = q('inv-maquila');
+  const porMl = INV.consumo.porMaquilador || [];
+  if (wrap) wrap.style.display = porMl.length ? 'block' : 'none';
+  if (tm) tm.innerHTML = porMl.map(m => `<tr>
+      <td style="font-weight:600">${m.maquilador}</td>
+      <td style="text-align:right;color:#6B7280">${m.ordenes}</td>
+      <td style="text-align:right;font-weight:800;color:#EC4899">${invKg1(m.kgTotal)}</td>
+    </tr>`).join('');
+
+  // ── Material utilizado por orden ──────────────────────
   const to = q('inv-ordenes');
   if (to) to.innerHTML = (INV.consumo.porOrden||[]).length
     ? INV.consumo.porOrden.slice(0,40).map(o => {
@@ -10303,13 +10342,14 @@ function renderInventarioMP() {
           <td style="color:#9CA3AF;font-size:.72rem">${o.producto || '—'}</td>
           <td style="text-align:right">${invKg(o.kgVirgen)}</td>
           <td style="text-align:right;color:#8B5CF6">${invKg(o.kgMolido)}</td>
-          <td style="text-align:right;font-weight:700">${invKg1(o.kgTotal)}</td>
+          <td style="text-align:right;font-weight:700">${invKg1(o.kgCaneca != null ? o.kgCaneca : o.kgTotal)}</td>
+          <td style="text-align:right;color:#EC4899">${o.kgMaquila ? invKg1(o.kgMaquila) : '—'}</td>
           <td style="text-align:right;color:#8B5CF6">${invPct(o.pctMolido)}</td>
           <td style="text-align:right;color:#9CA3AF">${mm ? invKg(mm.teorico) : '—'}</td>
           <td style="text-align:right;font-weight:700;color:${mm && mm.merma > 0 ? '#EF4444' : '#6B7280'}">${mm ? invKg1(mm.merma) : '—'}</td>
         </tr>`;
       }).join('')
-    : vacio(8,'Ningún operario ha registrado material todavía.');
+    : vacio(9,'Ningún operario ha registrado material todavía.');
 }
 
 // ── Auto-init plan al abrir sección ───────────────────

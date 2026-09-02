@@ -391,9 +391,17 @@ textarea{resize:none;min-height:42px;height:42px}
 <button class="btn bmo" id="btnCal">⚠ REGISTRAR CALIDAD</button>
 </div></div>
 
-<!-- COL 5: MATERIAL A LA CANECA (oculta hasta FVLCO_MATERIAL_ACTIVO=SI) -->
-<div class="card" id="cardMat" style="display:none"><div class="hd hd-mat">🧱 MATERIAL A CANECA</div><div class="bd">
+<!-- COL 5: MATERIAL UTILIZADO (oculta hasta FVLCO_MATERIAL_ACTIVO=SI) -->
+<div class="card" id="cardMat" style="display:none"><div class="hd hd-mat">🧱 MATERIAL UTILIZADO</div><div class="bd">
 <div class="mat-pide">La orden pide: <b id="matPide">—</b></div>
+
+<div class="seg" id="matDest">
+<button type="button" class="act" data-dest="CANECA">A CANECA<small>la máquina</small></button>
+<button type="button" data-dest="MAQUILA">A MAQUILA<small>sale de planta</small></button>
+</div>
+<div class="fld" id="matBoxMl" style="display:none"><label>Maquilador <span class="req">*</span></label>
+<input id="matMl" list="dl-maquiladores" autocomplete="off" placeholder="A quién se envía">
+<datalist id="dl-maquiladores"></datalist></div>
 
 <div class="fld"><label>Bolsa de virgen</label>
 <select id="matBolsaV"><option value="">— sin bolsas registradas —</option></select>
