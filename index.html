@@ -1460,9 +1460,29 @@ const _SID = '1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8';
    fijados y, si el libro pasa a privado, los CSV dejan de servir. Este
    endpoint agrega todo en el servidor y sigue funcionando igual. */
 const GAS_INVENTARIO_URL = 'https://script.google.com/macros/s/AKfycbxsw5EKTceLnra7xJJ7paPxkrE6Hi_1nX_XsJ_YDk5A4YX_32aCD_FaRr0e03bZuiqWMQ/exec';
+// Nombre real de la pestaña de producción, idéntico a CONFIG.HOJA_REGISTRO
+// del backend. Si algún día se renombra, se cambia aquí y en Codigo.gs.
+const HOJA_PRODUCCION = 'BD REPORTES PRODUCCIÓN';
+// Pide una hoja por NOMBRE. El proxy la resuelve con getSheetByName, igual
+// que el backend. Se usa para producción porque el gid ya se desvió una vez
+// (2026-09-03) y el tablero mostró ceros como si el día no hubiera producido.
+// OJO: el export directo de Google ignora &sheet=, así que esto SOLO sirve a
+// través del proxy — que es como corre producción (API_URL_DEFAULT está puesta).
+const _hoja = nombre => `https://docs.google.com/spreadsheets/d/${_SID}/export?format=csv&sheet=${encodeURIComponent(nombre)}`;
 const _exp = gid => `https://docs.google.com/spreadsheets/d/${_SID}/export?format=csv&gid=${gid}`;
 const SHEETS = {
-  produccion:   _exp('503325164'),
+  /* Producción se pide por NOMBRE, no por gid.
+     El gid es un número opaco que deja de apuntar a la pestaña viva si alguien
+     la recrea o la duplica — y este libro tiene DOS pestañas con estructura de
+     producción, una con datos de 2024. Cuando el gid se desvió (2026-09-03) el
+     proxy devolvió otra hoja EN SILENCIO y el tablero mostró ceros como si el
+     día no hubiera producido, aunque BD REPORTES PRODUCCIÓN sí tenía registros.
+     El backend (formulario, auditoría, inventario) siempre resolvió esta hoja
+     por nombre —CONFIG.HOJA_REGISTRO—; eran dos verdades sobre cuál era la hoja
+     y solo el número podía desviarse. Ahora hay una sola.
+     No se manda el gid a propósito: el proxy resuelve el gid ANTES del nombre,
+     así que mandar los dos dejaría ganar al gid desviado. */
+  produccion:   _hoja(HOJA_PRODUCCION),   // por NOMBRE, no por gid (gid viejo: 503325164)
   noConformes:  _exp('579426498'),
   planRef:      _exp('9934746'),
   accid:        _exp('904371036'),
@@ -2726,7 +2746,7 @@ async function loadBdProductos() {
   if (_bdProdLoaded) return;
   try {
     const res = await pfetch(BD_PRODUCTOS_CSV + `&_t=${Date.now()}`);
-    if (!res.ok) return;
+    if (!res.ok) { registrarFalla('BD Productos (ciclo estándar)', `HTTP ${res.status}`); return; }
     const txt = await res.text();
     const rows = Papa.parse(txt, { header: false, skipEmptyLines: true }).data;
     const map = {};
@@ -2737,7 +2757,8 @@ async function loadBdProductos() {
     });
     DATA.cicloEstMap = map;
     _bdProdLoaded = true;
-  } catch(e) { console.warn('BD Productos no cargó:', e.message); }
+    limpiarFalla('BD Productos (ciclo estándar)');
+  } catch(e) { registrarFalla('BD Productos (ciclo estándar)', e.message); }
 }
 
 // Maquilas: layout de dos clientes lado a lado (VELCOPLAST cols 0-2, PRACTIDENT cols 4-6).
@@ -2748,8 +2769,9 @@ async function loadMaquilas() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const rows = Papa.parse(await res.text(), { header: false, skipEmptyLines: false }).data;
     DATA.maquilas = parseMaquilas(rows);
+    limpiarFalla('Maquilas');
   } catch (e) {
-    console.warn('Maquilas no cargó (se omite):', e.message);
+    registrarFalla('Maquilas', e.message);
     DATA.maquilas = [];
   }
 }
@@ -3228,12 +3250,89 @@ function setProgress(p, msg) {
 }
 
 // Carga una hoja secundaria sin tumbar el dashboard si falla
+// =======================================================
+// FUENTES QUE FALLAN — nunca más ceros silenciosos
+// =======================================================
+// Antes, cada fuente que no cargaba se quedaba en un console.warn y su
+// pestaña mostraba 0. Un 0 se lee como "no hubo producción", no como "no
+// cargó": por eso un gid desviado pudo pasar días sin que nadie lo notara.
+// Ahora toda falla queda registrada y sale en un banner rojo, arriba del
+// tablero, donde la ve quien esté en planta.
+const FALLAS = new Map();
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+}
+
+function registrarFalla(fuente, motivo) {
+  const m = String(motivo || '').replace('__FVLCO_ERR__', '').trim() || 'error desconocido';
+  FALLAS.set(fuente, m);
+  console.warn(`[FVLco] ${fuente} NO cargó: ${m}`);
+  renderBannerFallas();
+}
+
+function limpiarFalla(fuente) { if (FALLAS.delete(fuente)) renderBannerFallas(); }
+
+function renderBannerFallas() {
+  let el = document.getElementById('fvlco-fallas');
+  if (!FALLAS.size) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'fvlco-fallas';
+    el.style.cssText = 'background:#7F1D1D;border:1px solid #EF4444;border-radius:10px;' +
+      'padding:12px 16px;margin-bottom:16px;color:#FEE2E2;font-family:Tahoma,Arial,sans-serif;' +
+      'font-size:.78rem;line-height:1.55';
+    const cont = document.getElementById('content') || document.body;
+    cont.insertBefore(el, cont.firstChild);
+  }
+  const filas = [...FALLAS.entries()]
+    .map(([f, m]) => `<div style="margin-top:4px">• <b>${escHtml(f)}</b> — ${escHtml(m)}</div>`)
+    .join('');
+  el.innerHTML =
+    `<div style="font-weight:700;font-size:.85rem">⚠️ Estos datos NO cargaron. Lo que ves está INCOMPLETO.</div>` +
+    filas +
+    `<div style="margin-top:8px;color:#FCA5A5">No tomes decisiones con estos números. ` +
+    `Pulsa <b>Actualizar</b>; si sigue igual, revisa el proxy: <code>curl "${escHtml(apiUrl() || '(sin proxy)')}"</code></div>`;
+}
+
+// Contrato de la hoja de producción. Es la fuente crítica: si llega otra hoja,
+// llega recortada o llega vieja, el tablero NO debe verse normal. Estos tres
+// chequeos son justo los que habrían delatado el gid desviado el 2026-09-02:
+// llegaban 9 filas y el registro más nuevo era de meses atrás.
+const PROD_COLS_MIN  = ['FECHA Y HORA', 'ORDEN', 'NUMERO DE CAJA'];
+const PROD_MIN_FILAS = 100;
+const PROD_MAX_DIAS  = 3;
+
+function validarProduccion(parsed, filas) {
+  const cols = (parsed && parsed.meta && parsed.meta.fields || []).map(x => String(x).trim().toUpperCase());
+  const faltan = PROD_COLS_MIN.filter(c => cols.indexOf(c) < 0);
+  if (faltan.length) {
+    throw new Error(`la hoja recibida no es "${HOJA_PRODUCCION}": le faltan las columnas ${faltan.join(', ')}. ` +
+      `Llegó una hoja con: ${cols.slice(0, 6).join(', ')}…`);
+  }
+  if (filas.length < PROD_MIN_FILAS) {
+    throw new Error(`solo llegaron ${filas.length} registros (se esperan más de ${PROD_MIN_FILAS}). ` +
+      `El proxy está devolviendo una hoja distinta o recortada.`);
+  }
+  const claves = filas.map(r => r._fechaKey).filter(Boolean).sort();
+  const ultima = claves[claves.length - 1];
+  if (!ultima) throw new Error('ningún registro trae fecha de turno legible.');
+  const dias = Math.floor((Date.now() - new Date(ultima + 'T12:00:00').getTime()) / 86400000);
+  if (dias > PROD_MAX_DIAS) {
+    throw new Error(`el registro más reciente es del ${ultima} (hace ${dias} días). ` +
+      `La hoja que llega está desactualizada: revisa que el gid/nombre apunte a "${HOJA_PRODUCCION}".`);
+  }
+  return { filas: filas.length, ultima };
+}
+
 async function loadOptional(label, url, assign) {
   try {
     const parsed = await fetchCSV(url);
     assign(parsed.data);
+    limpiarFalla(label);
   } catch (e) {
-    console.warn(`${label} no cargó (se continúa):`, e.message);
+    registrarFalla(label, e.message);
     assign([]);
   }
 }
@@ -3247,6 +3346,13 @@ async function loadAll() {
     DATA.dupes = dedupeProd(DATA.prod);
     DATA.prod  = DATA.prod.filter(r => !r._dup);
     canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
+
+    // El contrato se valida sobre lo que el tablero va a mostrar de verdad
+    // (después de dedupe y turnos). NO aborta: deja ver lo que haya, pero con
+    // el banner rojo puesto, para que nadie lea una hoja equivocada como un
+    // día sin producción.
+    try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
+    catch (e) { registrarFalla('Producción', e.message); }
 
     // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
     setProgress(28, 'Cargando No Conformes...');
@@ -3287,6 +3393,7 @@ async function loadAll() {
     renderAll();
     setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
   } catch(e) {
+    registrarFalla('Producción', e.message);
     document.getElementById('load-msg').textContent = '⚠️ Error al cargar Producción: '+e.message+' — reintenta con Actualizar.';
     document.getElementById('load-bar').style.background='#EF4444';
   }
@@ -3306,6 +3413,13 @@ async function silentRefresh() {
     DATA.dupes = dedupeProd(DATA.prod);
     DATA.prod  = DATA.prod.filter(r => !r._dup);
     canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
+
+    // El contrato se valida sobre lo que el tablero va a mostrar de verdad
+    // (después de dedupe y turnos). NO aborta: deja ver lo que haya, pero con
+    // el banner rojo puesto, para que nadie lea una hoja equivocada como un
+    // día sin producción.
+    try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
+    catch (e) { registrarFalla('Producción', e.message); }
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
@@ -8746,7 +8860,7 @@ async function progGids(sid) {
     }
     if (Object.keys(map).length) PROG_GIDMAP[sid] = map;
     return map;
-  } catch(e) { console.warn('progGids:', e.message); return {}; }
+  } catch(e) { registrarFalla('PROGRAMACIÓN (pestañas/gids)', e.message); return {}; }
 }
 let PROG_BLOCKS = [];
 let PROG_PEDIDOS = []; // pedidos por cliente (bloques CLIENTE/FECHA ENTREGA/CANTIDAD)

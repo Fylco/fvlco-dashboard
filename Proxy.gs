@@ -29,6 +29,8 @@
 
 // IDs de los libros autorizados. El proxy SOLO sirve estos; así no se
 // convierte en un relay abierto a cualquier sheet de la cuenta.
+var PROXY_VERSION = '4.0.0';
+
 var ALLOWED_IDS = [
   '1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8', // Producción / No Conformes / Ventas ...
   '1vZTs6xImawkKwiWEPmFaY4y6LrVRKrMaAHKuCz0dy98', // BD Productos / Pedidos (forecast)
@@ -41,10 +43,34 @@ var ALLOWED_IDS = [
   '1_mupUu7TEqC5HNEdhfO5bVSCCyXPyW_FJKnGdRZaNbQ'  // PROGRAMACION 2028
 ];
 
-// Prueba de salud en el navegador: abrir la URL /exec muestra este texto,
-// SIN entregar ningún dato. Sirve para confirmar que el deploy quedó bien.
-function doGet() {
-  return _out('FVLco proxy OK');
+/* Prueba de salud. Abrir la URL /exec (o con curl) dice QUÉ VERSIÓN está
+   desplegada y si el whitelist está completo. Antes esto devolvía el texto
+   fijo 'FVLco proxy OK', idéntico en las tres versiones del archivo: no había
+   forma de saber desde fuera qué código estaba arriba ni cuántos libros tenía
+   autorizados, y un despliegue viejo podía pasar inadvertido.
+   NO entrega datos: ni una celda, ni nombres de hoja. Solo los primeros 8
+   caracteres de cada ID, que además son inútiles porque los libros son privados.
+     curl "<URL /exec>"              -> version + cuántos IDs
+     curl "<URL /exec>?health=full"  -> además, si cada libro ABRE de verdad */
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  var out = {
+    ok: true,
+    servicio: 'FVLco proxy',
+    version: PROXY_VERSION,
+    idsAutorizados: ALLOWED_IDS.length
+  };
+  if (p.health === 'full') {
+    out.libros = ALLOWED_IDS.map(function (id) {
+      var r = { id: id.slice(0, 8) + '…', abre: false };
+      try { SpreadsheetApp.openById(id).getSheets().length; r.abre = true; }
+      catch (err) { r.error = String(err.message || err).slice(0, 120); }
+      return r;
+    });
+    out.librosQueAbren = out.libros.filter(function (l) { return l.abre; }).length;
+  }
+  return ContentService.createTextOutput(JSON.stringify(out, null, 2))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -83,22 +109,36 @@ function fetchSheetCsv(url) {
   var ss = SpreadsheetApp.openById(id);
   var sheet = null;
 
+  /* El NOMBRE manda sobre el gid.
+     El gid es un número opaco: si alguien recrea o duplica una pestaña, deja de
+     apuntar a la hoja viva. Eso pasó el 2026-09-03 con la hoja de producción y,
+     como abajo había un "si no la encuentro, devuelvo la primera", el proxy
+     entregó OTRA hoja como si fuera la pedida: el tablero mostró el día en
+     ceros teniendo registros. El nombre es estable y es lo que ya usaba el
+     backend, así que es la fuente de verdad. */
+  var mName = url.match(/[?&]sheet=([^&]+)/);
+  if (mName) {
+    var name = decodeURIComponent(mName[1]).replace(/\+/g, ' ').trim();
+    sheet = ss.getSheetByName(name) || ss.getSheetByName(name + ' ') || ss.getSheetByName(name.replace(/\s+$/, ''));
+    if (!sheet) return '__FVLCO_ERR__ el libro ' + id.slice(0, 8) + '… no tiene ninguna hoja llamada "' + name + '"';
+  }
+
   var mGid = url.match(/[?&]gid=(\d+)/);
-  if (mGid) {
+  if (!sheet && mGid) {
     var all = ss.getSheets();
     for (var i = 0; i < all.length; i++) {
       if (String(all[i].getSheetId()) === mGid[1]) { sheet = all[i]; break; }
     }
-  }
-  if (!sheet) {
-    var mName = url.match(/[?&]sheet=([^&]+)/);
-    if (mName) {
-      var name = decodeURIComponent(mName[1]).replace(/\+/g, ' ').trim();
-      sheet = ss.getSheetByName(name) || ss.getSheetByName(name + ' ') || ss.getSheetByName(name.replace(/\s+$/, ''));
+    // Prohibido sustituir: si el gid no existe, es un ERROR, no otra hoja.
+    if (!sheet) {
+      return '__FVLCO_ERR__ el libro ' + id.slice(0, 8) + '… no tiene ninguna hoja con gid ' + mGid[1] +
+             ' — el gid se desvió; pide la hoja por nombre (&sheet=NOMBRE)';
     }
   }
-  // export?format=csv sin gid → primera hoja (igual que Google)
-  if (!sheet) sheet = ss.getSheets()[0];
+
+  // Sin gid ni nombre → primera hoja, igual que export?format=csv de Google.
+  // Esto solo aplica cuando NO se pidió ninguna hoja en concreto.
+  if (!sheet && !mGid && !mName) sheet = ss.getSheets()[0];
   if (!sheet) return '__FVLCO_ERR__ hoja no encontrada';
 
   // getDisplayValues conserva el formato visible (ej. "3.476.000", "85%",
