@@ -1,6 +1,6 @@
 'use strict';
 
-var CACHE_NAME = 'fvl-registro-v20';
+var CACHE_NAME = 'fvl-registro-v21';
 var ASSETS = [
   './',
   './index.html',
@@ -42,13 +42,31 @@ self.addEventListener('fetch', function(event){
   });
   if(!isAppShell) return;
 
+  /* RED PRIMERO, caché solo como respaldo.
+     Antes era "cache || fresh": servía lo cacheado y refrescaba de fondo, así
+     que el equipo corría SIEMPRE la versión anterior y solo veía la nueva en
+     la siguiente apertura. Con código de captura eso es peligroso: el
+     2026-09-03 el operario reportó cajas con un app.js viejo cuyo selector de
+     máquina traía causas de calidad, y "CONTAMINACION" quedó escrito en la
+     columna MAQUINA de la hoja.
+     Ahora, con red, siempre corre el código recién desplegado. Sin red sigue
+     funcionando con lo cacheado, que es lo que la planta necesita. */
   event.respondWith(
     caches.match(req).then(function(cached){
-      var fresh = fetch(req).then(function(res){
-        caches.open(CACHE_NAME).then(function(cache){ cache.put(req, res.clone()); });
+      var red = fetch(req).then(function(res){
+        var copia = res.clone();
+        caches.open(CACHE_NAME).then(function(cache){ cache.put(req, copia); });
         return res;
-      }).catch(function(){ return cached; });
-      return cached || fresh;
+      });
+      // Tope de espera: en planta la señal a veces va lenta, y "red primero"
+      // sin límite colgaría el arranque de la app. Si la red no contesta en
+      // 3 s se abre con lo cacheado (y la copia nueva queda guardada para el
+      // siguiente arranque). Sin conexión, lo cacheado gana de inmediato.
+      if (!cached) return red;
+      return Promise.race([
+        red,
+        new Promise(function(r){ setTimeout(function(){ r(cached); }, 3000); })
+      ]).catch(function(){ return cached; });
     })
   );
 });
