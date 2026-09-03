@@ -1503,7 +1503,18 @@ const proxy = u => location.protocol === 'file:' ? 'https://corsproxy.io/?' + en
 //   → Pega abajo la URL /exec que te dio el deploy de Proxy.gs.
 // =======================================================
 const API_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwa5e8OCThvVtNYXnhEoeTDv3tg7wBgRj1gr2wUo1ue8mND26EMpaWhvPBNaYeptgZ4/exec';
-function apiUrl(){ return (localStorage.getItem('fvlco_api_url') || API_URL_DEFAULT || '').trim(); }
+/* La URL del servidor de datos sale SOLO de la constante de arriba, que viaja
+   en el despliegue y está en git. Una sola fuente de verdad.
+   Antes esto leía localStorage['fvlco_api_url'] y ese valor GANABA sobre la
+   constante. Nada en el código lo escribe —se puso a mano alguna vez—, pero un
+   valor viejo ahí redirige EN SILENCIO todas las peticiones de datos a otro
+   servidor. El 2026-09-03 el tablero le estaba pidiendo los CSV al Apps Script
+   del FORMULARIO, que contestaba con su página HTML, y el parser la leía como
+   si fueran filas: de ahí los "9 registros" que en realidad eran etiquetas.
+   Se elimina el override y se borra el valor viejo, para que cada equipo que
+   abra el tablero se cure solo sin que nadie toque su navegador. */
+function apiUrl(){ return (API_URL_DEFAULT || '').trim(); }
+try { if (localStorage.getItem('fvlco_api_url')) localStorage.removeItem('fvlco_api_url'); } catch(e) {}
 
 // La clave vive en localStorage, no en sessionStorage: así se escribe UNA vez
 // por equipo (el PC de planta, el del supervisor) en vez de cada vez que se
@@ -1530,6 +1541,19 @@ async function apiPost(payload){
     throw new Error('el proxy todavía exige clave — falta reimplementar Proxy.gs v5 en Apps Script');
   }
   if(body.indexOf('__FVLCO_ERR__') === 0){ throw new Error(body); }
+  /* Un servidor de datos bien configurado devuelve CSV o texto plano. Si
+     contesta HTML es que estamos hablando con OTRA cosa —el Apps Script del
+     formulario responde con su página—, y eso jamás debe llegar al parser de
+     CSV: Papa.parse "parsea" el HTML y produce filas basura que el tablero
+     muestra como datos. Preferimos fallar fuerte y decir con quién se habló. */
+  // Se compara con el INICIO, no "contiene": un CSV legítimo puede traer
+  // "<html>" dentro de una celda de OBSERVACIÓN, y rechazarlo por eso dejaría
+  // el tablero caído por nada. Ningún CSV empieza con estas etiquetas.
+  const cabeza = body.replace(/^﻿/, '').trimStart().slice(0, 60).toLowerCase();
+  if (cabeza.startsWith('<!doctype html') || cabeza.startsWith('<html')) {
+    throw new Error('el servidor de datos respondió una PÁGINA HTML en vez de CSV. ' +
+      'No es el proxy: es otro Apps Script. URL usada: ' + apiUrl());
+  }
   return body;
 }
 
