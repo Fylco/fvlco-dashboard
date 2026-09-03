@@ -1524,9 +1524,10 @@ async function apiPost(payload){
     body = await r.text();
   }catch(e){ throw new Error('Sin conexión con el servidor de datos.'); }
   if(body.indexOf('__FVLCO_AUTH_FAIL__') === 0){
-    forgetPw();
-    showLogin('La sesión expiró o la clave es incorrecta. Ingresa de nuevo.');
-    throw new Error('auth');
+    // Ya no existe pantalla de clave. Si el proxy todavía la exige, es que le
+    // falta el despliegue de Proxy.gs v5: se dice, en vez de abrir un login
+    // que nadie puede pasar.
+    throw new Error('el proxy todavía exige clave — falta reimplementar Proxy.gs v5 en Apps Script');
   }
   if(body.indexOf('__FVLCO_ERR__') === 0){ throw new Error(body); }
   return body;
@@ -1540,50 +1541,6 @@ async function pfetch(url){
   return { ok:true, status:200, text: async ()=> body };
 }
 
-async function apiLogin(pw){
-  const api = apiUrl();
-  if(!api) return false;
-  try{
-    const r = await fetch(api, { method:'POST', body: JSON.stringify({ action:'login', pw }) });
-    const t = await r.text();
-    return t.indexOf('__FVLCO_AUTH_FAIL__') !== 0 && t.indexOf('__FVLCO_ERR__') !== 0;
-  }catch(e){ return false; }
-}
-
-function showLogin(msg){
-  const existing = document.getElementById('fvlco-login');
-  if(existing){ if(msg){ const em=document.getElementById('fvlco-login-err'); if(em) em.textContent=msg; } return; }
-  const ov = document.getElementById('overlay'); if(ov) ov.style.display='none';
-  const o = document.createElement('div');
-  o.id = 'fvlco-login';
-  o.style.cssText = 'position:fixed;inset:0;z-index:999999;background:#0B0F19;display:flex;align-items:center;justify-content:center;font-family:Tahoma,Arial,sans-serif';
-  o.innerHTML = `
-    <div style="background:#1F2937;border:1px solid #374151;border-radius:16px;padding:40px 36px;max-width:360px;width:90%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.6)">
-      <div style="font-size:2.5rem;margin-bottom:10px">🔒</div>
-      <div style="font-size:1.15rem;font-weight:700;color:#EEEEEE;margin-bottom:4px">FVLco · Acceso</div>
-      <div style="font-size:.8rem;color:#6B7280;margin-bottom:22px">Ingresa la clave para ver el tablero</div>
-      <input id="fvlco-login-pw" type="password" placeholder="Clave" autocomplete="current-password"
-        style="width:100%;background:#111827;border:1px solid #374151;border-radius:8px;padding:12px 16px;color:#EEEEEE;font-size:.95rem;font-family:inherit;outline:none;box-sizing:border-box;text-align:center;letter-spacing:.15em"/>
-      <div id="fvlco-login-err" style="color:#EF4444;font-size:.75rem;margin-top:8px;min-height:18px"></div>
-      <button id="fvlco-login-btn" style="width:100%;margin-top:14px;background:#2563EB;border:none;color:#fff;border-radius:8px;padding:12px;cursor:pointer;font-family:inherit;font-size:.9rem;font-weight:600">Ingresar</button>
-    </div>`;
-  document.body.appendChild(o);
-  const inp = document.getElementById('fvlco-login-pw');
-  const btn = document.getElementById('fvlco-login-btn');
-  const err = document.getElementById('fvlco-login-err');
-  if(msg) err.textContent = msg;
-  const submit = async ()=>{
-    const pw = inp.value; if(!pw) return;
-    btn.disabled=true; btn.textContent='Verificando…'; err.textContent='';
-    const ok = await apiLogin(pw);
-    if(ok){ savePw(pw); o.remove(); startApp(); }
-    else { btn.disabled=false; btn.textContent='Ingresar'; inp.value=''; err.textContent='Clave incorrecta.'; inp.focus(); }
-  };
-  inp.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
-  btn.addEventListener('click', submit);
-  setTimeout(()=>inp.focus(), 100);
-}
-
 let _appStarted = false;
 function startApp(){
   if(_appStarted) return; _appStarted = true;
@@ -1592,11 +1549,10 @@ function startApp(){
   setTimeout(()=>ensurePlanReady().catch(e=>console.warn('Plan preload:',e)),2000);
 }
 
-function bootWithAuth(){
-  if(!apiUrl()){ startApp(); return; }  // sin proxy configurado: acceso directo a sheets públicos
-  if(getPw()){ startApp(); return; }
-  showLogin();
-}
+// El tablero arranca solo: no hay clave que escribir ni que olvidar.
+// La protección de los datos queda en el proxy, que sigue siendo el único que
+// puede abrir los sheets (privados) y solo sirve las hojas de ALLOWED_IDS.
+function bootWithAuth(){ startApp(); }
 
 // =======================================================
 // RECURSOS — Máquinas y Personal (datos del sheet Restricciones)
@@ -7160,9 +7116,10 @@ const SECTION_RENDERS = {
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
   paros:renderParos, 'analisis-paros':renderAnalisisParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, maquilas:renderMaquilas, descripcion:renderDescripcion
 };
-// Secciones protegidas con clave
-// Toda la app queda tras el login del servidor (ver showLogin/bootWithAuth),
-// así que ya NO se guarda ninguna clave por sección en este archivo.
+// Secciones protegidas con clave: ya no hay ninguna.
+// El tablero se abre sin clave (decisión del 2026-09-03). La protección de los
+// datos vive en el proxy: es el único que puede abrir los sheets, que son
+// privados, y solo sirve las hojas de su whitelist ALLOWED_IDS.
 const PROTECTED = {};
 const UNLOCKED  = new Set();
 

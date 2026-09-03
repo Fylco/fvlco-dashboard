@@ -1,35 +1,45 @@
 /***********************************************************************
- * FVLco · PROXY DE DATOS AUTENTICADO
+ * FVLco · PROXY DE DATOS  ·  v5 — SIN CLAVE
  * ---------------------------------------------------------------------
- * Lee los Google Sheets (que ahora son PRIVADOS) del lado del servidor
- * y solo entrega los datos si el navegador envía la clave correcta.
+ * Lee los Google Sheets (que son PRIVADOS) del lado del servidor y
+ * entrega los datos a quien los pida. NO hay contraseña.
  *
- * La clave NUNCA vive en el dashboard (index.html). Vive aquí, en las
- * Propiedades del Script del servidor. Aunque alguien lea el código del
- * dashboard, no obtiene la clave ni puede leer los sheets.
+ * POR QUÉ NO HAY CLAVE (2026-09-03)
+ *   Se quitó a propósito. Olvidarla dejaba a la planta sin tablero, y ese
+ *   costo pesó más que el de tener el tablero abierto. Consecuencia
+ *   aceptada: cualquiera con la URL del dashboard ve producción, clientes
+ *   y costos.
  *
- * ── CÓMO DESPLEGAR ──────────────────────────────────────────────────
- * 1. Abre https://script.google.com  →  Nuevo proyecto.
- * 2. Pega este archivo como código (borra el Code.gs de ejemplo).
- * 3. Configuración del proyecto (⚙) → Propiedades del script →
- *      Agregar propiedad:   FVLCO_PASSWORD = <la clave que elijas>
- *    (usa una clave larga; se comparte con quien deba entrar).
- * 4. Implementar → Nueva implementación → tipo "Aplicación web":
- *      - Ejecutar como:       Yo  (la cuenta dueña de los sheets)
- *      - Quién tiene acceso:  Cualquier usuario
- *    Copia la URL que termina en /exec.
- * 5. Pega esa URL en index.html, en la constante API_URL_DEFAULT.
- * 6. En cada Google Sheet listado abajo: Compartir → quitar
- *    "cualquiera con el enlace" y quitar "Publicar en la web".
- *    (La cuenta que ejecuta este script debe seguir teniendo acceso.)
+ * LO QUE SIGUE PROTEGIENDO — no lo quites
+ *   · Los sheets siguen PRIVADOS: nadie los abre directo (dan 401). Solo
+ *     este proxy los lee, y los lee como dueño.
+ *   · ALLOWED_IDS: es la ÚLTIMA barrera. Sin clave, es lo único que impide
+ *     que esta URL sirva CUALQUIER hoja de la cuenta —incluidas las
+ *     personales o financieras—. Nunca agregues un libro "por si acaso".
+ *   · Solo lectura: aquí no hay ninguna acción que escriba.
  *
- * Al cambiar la clave: edita FVLCO_PASSWORD en Propiedades del script.
- * NO necesitas volver a implementar por cambiar solo la clave.
+ * ── CÓMO DESPLEGAR UNA ACTUALIZACIÓN ────────────────────────────────
+ * 1. Pega este archivo completo sobre el anterior (Ctrl+A, Ctrl+V) y
+ *    guarda (Ctrl+S).
+ * 2. Implementar → Gestionar implementaciones → en la que YA EXISTE, el
+ *    lápiz ✏ → Versión: "Nueva versión" → Implementar.
+ *    ⚠ NO uses "Nueva implementación": crea otra URL /exec y el dashboard
+ *      seguiría llamando a la vieja. Editar la existente conserva la URL.
+ *    - Ejecutar como:       Yo  (la cuenta dueña de los sheets)
+ *    - Quién tiene acceso:  Cualquier usuario
+ * 3. Ya puedes BORRAR la propiedad FVLCO_PASSWORD (⚙ Configuración del
+ *    proyecto → Propiedades del script). El código ya no la lee.
+ *
+ * ── CÓMO VERIFICAR, SIN ABRIR EL NAVEGADOR ──────────────────────────
+ *    curl "<URL /exec>"             → "version":"5.0.0", "idsAutorizados":7
+ *    curl "<URL /exec>?health=full" → los 7 libros con "abre":true
+ *    Si alguno sale "abre":false, la cuenta que ejecuta el script perdió
+ *    acceso a ese libro: vuelve a compartirlo con ella.
  ***********************************************************************/
 
 // IDs de los libros autorizados. El proxy SOLO sirve estos; así no se
 // convierte en un relay abierto a cualquier sheet de la cuenta.
-var PROXY_VERSION = '4.0.0';
+var PROXY_VERSION = '5.0.0';
 
 var ALLOWED_IDS = [
   '1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8', // Producción / No Conformes / Ventas ...
@@ -76,8 +86,22 @@ function doGet(e) {
 function doPost(e) {
   try {
     var req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if (!checkPassword(String(req.pw || ''))) return _out('__FVLCO_AUTH_FAIL__');
 
+    /* SIN CLAVE (decisión del 2026-09-03).
+       Ya no se pide contraseña: el tablero es de lectura abierta para quien
+       tenga su URL. La clave se eliminó porque olvidarla dejaba la planta sin
+       tablero, y no porque los datos dejaran de importar.
+       LO QUE SIGUE PROTEGIENDO, y NO se debe quitar:
+        · Los sheets siguen PRIVADOS. Nadie los abre directo (dan 401); solo
+          este proxy los lee, como dueño.
+        · ALLOWED_IDS. Es lo ÚNICO que impide que este proxy sea un relay a
+          CUALQUIER hoja de la cuenta —incluidas las personales o financieras—
+          para quien encuentre esta URL. Sin clave, el whitelist es la última
+          barrera: nunca agregues un libro aquí "por si acaso".
+        · Solo lectura. No hay ninguna acción que escriba. */
+
+    // Se conserva 'login' por compatibilidad: un navegador con el HTML viejo
+    // en caché todavía la llama. Responde ok y ya.
     if (req.action === 'login') return _out(JSON.stringify({ ok: true }));
     if (req.action === 'fetch') return _out(fetchSheetCsv(String(req.url || '')));
     if (req.action === 'gids')  return _out(listGids(String(req.id || '')));
@@ -85,16 +109,6 @@ function doPost(e) {
   } catch (err) {
     return _out('__FVLCO_ERR__ ' + err.message);
   }
-}
-
-// Comparación en tiempo ~constante para no filtrar la longitud por timing.
-function checkPassword(pw) {
-  var real = PropertiesService.getScriptProperties().getProperty('FVLCO_PASSWORD');
-  if (!real) return false;               // sin clave configurada → nadie entra
-  if (pw.length !== real.length) return false;
-  var diff = 0;
-  for (var i = 0; i < real.length; i++) diff |= pw.charCodeAt(i) ^ real.charCodeAt(i);
-  return diff === 0;
 }
 
 // Dada una URL de Google Sheets (export?format=csv o gviz/tq), extrae el
