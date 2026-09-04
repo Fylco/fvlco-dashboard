@@ -44,6 +44,13 @@ var OPDEF = {
       // con _familiaMolido_() antes de armar el código de bolsa.
       // "REMOLIDO ALTA HDPE" es material ya reprocesado: familia propia, bolsa
       // aparte del HDPE molido de primera.
+      // De donde salio el material. Antes de esto el molido APARECIA DE
+      // LA NADA: el operario declaraba 200 kg y el sistema los sumaba a
+      // la bolsa sin descontarlos de ningun lado, mientras el no
+      // conforme entraba a NO CONFORMES y moria ahi.
+      // Son ~13 ton/mes de pitorro (la colada) que circulaban sin
+      // registro — la pieza mas grande que le faltaba al inventario.
+      {id:'mPilas', label:'De dónde molió', type:'bloque', req:false},
       {id:'mRef',  label:'Material',  type:'select',   req:true,
        options:['LLDPE (POLIETILENO BAJA)','HDPE (POLIETILENO ALTA)','PP (POLIPROPILENO)',
                 'REMOLIDO ALTA HDPE','50 / 50 (Conjunto alta + baja)']},
@@ -60,9 +67,33 @@ var OPDEF = {
       {id:'mHH',   label:'Horas Trabajadas',          type:'number',   req:true,  step:'0.5'},
       {id:'mObs',  label:'Observaciones',         type:'textarea', req:false}
     ],
-    collect:function(){ return { referencia:val('mRef'), color:val('mCol'), kilosMolidos:val('mKg'), kilosBarradura:val('mBar')||0, horasHombre:val('mHH'), observacion:val('mObs') }; },
+    collect:function(){
+      var o = { referencia:val('mRef'), color:val('mCol'), kilosMolidos:val('mKg'),
+                kilosBarradura:val('mBar')||0, horasHombre:val('mHH'), observacion:val('mObs'),
+                maquina:'MOLINO', origenes: molOrigenes() };
+      // El id lo genera el cliente para que un reenvio de la cola
+      // offline no duplique la molienda ni sus filas de origen.
+      if(o.origenes.length) o.idMolienda = 'g'+Date.now()+'-'+Math.floor(Math.random()*100000);
+      return o;
+    },
     validate:function(){ return reqs(['mRef','mCol','mKg','mHH']); },
-    summary:function(){ return [['Referencia',val('mRef')],['Color',val('mCol')],['Kg molidos',val('mKg')],['Kg barradura',val('mBar')||'0'],['H. Trabajadas',val('mHH')]]; }
+    summary:function(){
+      var s = [['Referencia',val('mRef')],['Color',val('mCol')],['Kg molidos',val('mKg')],
+               ['Kg barradura',val('mBar')||'0'],['H. Trabajadas',val('mHH')]];
+      var og = molOrigenes();
+      if(og.length){
+        s.push(['De dónde', og.map(function(o){
+          return MOL.etiquetas[o.codigo]+' ('+o.kg+' kg)'; }).join(' + ')]);
+        var tot = og.reduce(function(x,o){ return x+Number(o.kg); }, 0);
+        var sal = molNum(val('mKg')) + molNum(val('mBar'));
+        s.push(['Tomado vs salida', molNf(tot)+' kg tomados · '+molNf(sal)+' kg salieron' +
+                (Math.abs(tot-sal) > Math.max(5, sal*0.1)
+                  ? '  ⚠ ' + molNf(Math.abs(tot-sal)) + ' kg sin explicar' : '')]);
+      } else {
+        s.push(['De dónde', 'sin declarar origen']);
+      }
+      return s;
+    }
   },
   MANUALIDADES: {
     color:'#7c3aed', icon:'✋', label:'MANUALIDADES',
@@ -285,6 +316,9 @@ function buildOpPanel(){
         html += '<input id="'+f.id+'" type="text" list="'+f.id+'List" autocomplete="off"'
              +  (f.placeholder?' placeholder="'+f.placeholder+'"':'')+'>';
         html += '<datalist id="'+f.id+'List"></datalist>';
+      } else if(f.type==='bloque'){
+        // Contenedor que llena el JS: la lista de pilas no es un campo
+        html += '<div id="'+f.id+'"></div>';
       } else {
         html += '<input id="'+f.id+'" type="'+f.type+'"'+(f.step?' step="'+f.step+'"':'')+' min="0">';
       }
@@ -500,6 +534,9 @@ function onMaqChange(maqOverride){
     panel.className='op-panel show';
     var names=['MOLINO','MANUALIDADES','REPROCESOS'];
     names.forEach(function(n){ cls('sec'+n,'show', n===maq); });
+    // Al entrar, no al arrancar la app: Apps Script atiende una peticion
+    // por usuario a la vez y ?action=datos ya se demora ~9 s.
+    if(maq==='MOLINO') molCargarPilas();
   } else {
     panel.className='op-panel';
   }
@@ -1029,7 +1066,14 @@ function regOp(name){
       mostrarExito(r && r.offline
         ? '📴 Sin conexión — '+op.label+' guardado localmente. Se enviará al volver el internet.'
         : ((r&&r.message)||op.label+' registrado.'));
-      op.fields.forEach(function(f){ var e=$(f.id); if(e) e.value=''; });
+      op.fields.forEach(function(f){
+        if(f.type==='bloque') return;          // no es un campo con .value
+        var e=$(f.id); if(e) e.value='';
+      });
+      // Los saldos ya se movieron: seguir mostrando los viejos haria que
+      // la proxima molienda parta de un numero falso.
+      if(name==='MOLINO'){ MOL.sel={}; molCargarPilas(); }
+      if(r && r.avisos && r.avisos.length) r.avisos.forEach(function(m){ toast(m,'warn'); });
     });
   });
 }
@@ -1766,6 +1810,197 @@ function supInit(){
   });
 }
 
+
+/* ═══════════════════════════════════════════════════════
+   MOLINO — DE DÓNDE SALIÓ EL MATERIAL
+
+   El no conforme recuperable forma PILAS por causa + familia, y al
+   moler el operario marca de cuál tomó. Así el molido deja de aparecer
+   de la nada y el pitorro —~13 ton/mes— queda con trazabilidad.
+
+   La pila NO lleva color: se midió contra los 1441 registros reales y
+   el color falta en el 67,5% de los kilos. Con color, la pila más
+   grande sería "(sin color)" con 26 toneladas, que es un hueco de
+   registro y no un montón físico. El color del molido lo declara el
+   operario abajo, en la salida, que es donde lo tiene enfrente.
+═══════════════════════════════════════════════════════ */
+var MOL = { pilas:[], etiquetas:{}, sel:{}, cargado:false, error:'', cargando:false };
+
+function molNum(v){ var n=parseFloat(String(v).replace(',','.')); return isNaN(n)?0:n; }
+function molNf(n){ return Number(n).toLocaleString('es-CO',{maximumFractionDigits:1}); }
+
+function molCargarPilas(){
+  if(MOL.cargando) return;
+  MOL.cargando = true;
+  molPintar('cargando');
+
+  fetchTimeout(GAS_URL+'?action=pilasMolido', {}, 45000)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d || d.status!=='success') throw new Error((d&&d.message)||'Respuesta inesperada');
+      MOL.pilas = (d.pilas||[]).filter(function(p){ return p.saldoKg > 0; });
+      MOL.resumen = d.resumen || {};
+      MOL.etiquetas = {};
+      MOL.pilas.forEach(function(p){ MOL.etiquetas[p.codigo] = p.etiqueta; });
+      MOL.cargado = true; MOL.error = '';
+      molPintar();
+    })
+    .catch(function(e){
+      MOL.error = e.message || String(e);
+      molPintar('error');
+    })
+    .then(function(){ MOL.cargando = false; });
+}
+
+function molPintar(estado){
+  var c = $('mPilas');
+  if(!c) return;
+
+  if(estado==='cargando'){
+    c.innerHTML = '<div class="hint" style="padding:6px 0">Cargando pilas...</div>';
+    return;
+  }
+  if(estado==='error'){
+    c.innerHTML = '<div class="mol-err">No pude cargar las pilas: '+supEsc(MOL.error)+
+      '<br><b>Puedes registrar el molido igual</b>, pero sin decir de dónde salió.' +
+      '<br><button type="button" class="mol-rec" onclick="molCargarPilas()">↻ Reintentar</button></div>';
+    return;
+  }
+  if(!MOL.pilas.length){
+    c.innerHTML = '<div class="hint" style="padding:6px 0">No hay pilas con saldo. '+
+      'Se registra el molido igual, sin origen.' +
+      '<button type="button" class="mol-rec" onclick="molCargarPilas()">↻</button></div>';
+    return;
+  }
+
+  /* Dos pilas son el 91,5% de los kilos: las primeras 4 van visibles y
+     el resto colapsado, para que la lista no maree por 16 renglones de
+     los cuales 12 pesan menos de 100 kg. */
+  var top = MOL.pilas.slice(0, 4), resto = MOL.pilas.slice(4);
+  var html = top.map(molFila).join('');
+
+  if(resto.length){
+    html += '<details class="mol-mas"><summary>otras '+resto.length+' pila(s) · '+
+            molNf(resto.reduce(function(s,p){ return s+p.saldoKg; },0))+' kg</summary>'+
+            resto.map(molFila).join('')+'</details>';
+  }
+
+  if(MOL.resumen && MOL.resumen.pctRecuperable){
+    html += '<div class="mol-res">Del no conforme registrado, <b>'+
+            MOL.resumen.pctRecuperable+'%</b> es recuperable · disponible <b>'+
+            molNf(MOL.resumen.disponibleKg)+' kg</b>'+
+            '<button type="button" class="mol-rec" onclick="molCargarPilas()">↻</button></div>';
+  }
+
+  c.innerHTML = html;
+
+  MOL.pilas.forEach(function(p){
+    var ch = $('molC_'+molId(p.codigo));
+    var kg = $('molK_'+molId(p.codigo));
+    if(!ch || !kg) return;
+    ch.addEventListener('change', function(){
+      if(ch.checked){
+        // Se prellena con todo lo que hay: moler la pila completa es el
+        // caso normal, y ajustar un numero es mas rapido que escribirlo.
+        if(!kg.value) kg.value = p.saldoKg;
+        MOL.sel[p.codigo] = kg.value;
+      } else {
+        delete MOL.sel[p.codigo];
+      }
+      cls('molF_'+molId(p.codigo), 'act', ch.checked);
+      kg.disabled = !ch.checked;
+      molPintarTotal();
+    });
+    kg.addEventListener('input', function(){
+      if(ch.checked) MOL.sel[p.codigo] = kg.value;
+      molPintarTotal();
+    });
+    // Restaurar lo que ya estaba marcado
+    if(MOL.sel[p.codigo] !== undefined){
+      ch.checked = true; kg.value = MOL.sel[p.codigo]; kg.disabled = false;
+      cls('molF_'+molId(p.codigo), 'act', true);
+    }
+  });
+  molPintarTotal();
+}
+
+/* El codigo de pila trae | y * , que no sirven en un id de elemento. */
+function molId(cod){ return String(cod).replace(/[^A-Za-z0-9]/g, '_'); }
+
+function molFila(p){
+  var i = molId(p.codigo);
+  var meta = [];
+  if(p.diasSinNC !== null && p.diasSinNC !== undefined){
+    meta.push(p.diasSinNC===0 ? 'hoy' : 'hace '+p.diasSinNC+' día(s)');
+  }
+  if(p.coloresTop && p.coloresTop.length) meta.push('suele ser '+p.coloresTop.join(' / '));
+  if(!p.familia) meta.push('sin familia definida');
+
+  return '<div class="mol-p" id="molF_'+i+'">'+
+    '<label class="mol-h">'+
+      '<input type="checkbox" id="molC_'+i+'">'+
+      '<span class="mol-e">'+supEsc(p.etiqueta)+'</span>'+
+      '<span class="mol-s">'+molNf(p.saldoKg)+' kg</span>'+
+    '</label>'+
+    (meta.length ? '<div class="mol-m">'+supEsc(meta.join(' · '))+'</div>' : '')+
+    '<div class="mol-k"><span>kg que tomó</span>'+
+      '<input type="number" inputmode="decimal" step="0.1" min="0" id="molK_'+i+'" disabled>'+
+    '</div></div>';
+}
+
+/* La balanza de masa, en vivo. Lo que sale de la pila deberia ser el
+   molido mas la barradura. Se AVISA, no se bloquea: el operario pesa
+   las bolsas llenas, no la pila, y exigir que cuadre al kilo lo haria
+   dejar de registrar. */
+function molPintarTotal(){
+  var e = $('molTot');
+  var og = molOrigenes();
+  if(!e){
+    var c = $('mPilas');
+    if(!c) return;
+    e = document.createElement('div');
+    e.id = 'molTot'; e.className = 'mol-tot';
+    c.appendChild(e);
+  }
+  if(!og.length){ e.style.display='none'; return; }
+
+  var tot = og.reduce(function(s,o){ return s + molNum(o.kg); }, 0);
+  var sal = molNum(val('mKg')) + molNum(val('mBar'));
+  e.style.display = '';
+
+  var txt = '<b>'+molNf(tot)+' kg</b> tomados de '+og.length+' pila(s)';
+  if(sal > 0){
+    var dif = Math.round((tot - sal)*10)/10;
+    txt += ' · salieron <b>'+molNf(sal)+' kg</b>';
+    if(Math.abs(dif) > Math.max(5, sal*0.1)){
+      txt += '<br><span class="mol-w">'+(dif>0?'Faltan ':'Sobran ')+molNf(Math.abs(dif))+
+             ' kg por explicar</span>';
+    }
+  }
+  e.innerHTML = txt;
+}
+
+/* Solo lo que esta marcado Y sigue en la lista cargada. MOL.sel
+   sobrevive a un recargue fallido y a cambiar de maquina: sin este
+   filtro se podrian mandar kilos contra una pila que el operario YA NO
+   VE en pantalla, que es la peor version del problema que este cambio
+   viene a arreglar. */
+function molOrigenes(){
+  var vivas = {};
+  (MOL.pilas||[]).forEach(function(p){ vivas[p.codigo] = 1; });
+  return Object.keys(MOL.sel)
+    .filter(function(cod){ return vivas[cod]; })
+    .map(function(cod){ return { codigo: cod, kg: molNum(MOL.sel[cod]) }; })
+    .filter(function(o){ return o.kg > 0; });
+}
+
+function molInit(){
+  ['mKg','mBar'].forEach(function(id){
+    var e = $(id);
+    if(e) e.addEventListener('input', molPintarTotal);
+  });
+}
+
 /* ═══════════════════════════════════════════════════════
    REVISIÓN DE MATERIA PRIMA  (pestaña de supervisor)
 
@@ -2265,4 +2500,5 @@ window.addEventListener('DOMContentLoaded', function(){
   init();
   supInit();
   revInit();
+  molInit();
 });
