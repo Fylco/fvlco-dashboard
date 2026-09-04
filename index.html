@@ -1553,8 +1553,17 @@ function _esRespuestaDeSalud_(body){
 async function apiCall(payload){
   let t = null;
   try{
+    /* Rompe-caché OBLIGATORIO. Google cachea las respuestas GET de un Web App
+       por URL exacta: al probar el proxy v5.1.0 recién desplegado, la misma URL
+       seguía devolviendo el "FVLco proxy OK" del v3 de una prueba anterior, y
+       con un parámetro único devolvió las 12.701 filas. fetchCSV ya añade su
+       propio _t al url del sheet, pero action=gids no lleva ninguno: sin esto,
+       el mapa de pestañas de PROGRAMACIÓN quedaría congelado y una pestaña de
+       mes nueva no aparecería nunca. Va aquí para cubrir a todos los que
+       llamen, no solo a los que se acuerden. */
     const q = Object.keys(payload)
-      .map(k => k + '=' + encodeURIComponent(payload[k])).join('&');
+      .map(k => k + '=' + encodeURIComponent(payload[k])).join('&')
+      + '&_t=' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const r = await fetch(apiUrl() + '?' + q, { cache:'no-store' });
     t = await r.text();
   }catch(e){ t = null; }                       // GET no salió: probar POST
