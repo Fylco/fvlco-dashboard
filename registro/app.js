@@ -1873,11 +1873,22 @@ function molPintar(estado){
     return;
   }
 
+  /* El saldo es "lo generado menos lo molido CON ORIGEN", y el origen
+     se empieza a registrar hoy: los 5 meses de no conforme anteriores
+     ya se molieron sin declararse. O sea que estos numeros estan
+     inflados hasta que el conteo fisico fije la linea base.
+     Se dice en pantalla en vez de esconderlo: un numero grande sin
+     advertencia se lee como verdad, y el operario perderia la confianza
+     en el sistema el dia que note que no cuadra. */
+  var html = '<div class="mol-avi">Estos saldos traen el historico de no conformes. ' +
+             'Hasta el conteo fisico <b>no son lo que hay en el piso</b> — ' +
+             'escribe los kilos que de verdad tomaste.</div>';
+
   /* Dos pilas son el 91,5% de los kilos: las primeras 4 van visibles y
      el resto colapsado, para que la lista no maree por 16 renglones de
      los cuales 12 pesan menos de 100 kg. */
   var top = MOL.pilas.slice(0, 4), resto = MOL.pilas.slice(4);
-  var html = top.map(molFila).join('');
+  html += top.map(molFila).join('');
 
   if(resto.length){
     html += '<details class="mol-mas"><summary>otras '+resto.length+' pila(s) · '+
@@ -1900,10 +1911,13 @@ function molPintar(estado){
     if(!ch || !kg) return;
     ch.addEventListener('change', function(){
       if(ch.checked){
-        // Se prellena con todo lo que hay: moler la pila completa es el
-        // caso normal, y ajustar un numero es mas rapido que escribirlo.
-        if(!kg.value) kg.value = p.saldoKg;
+        /* NO se prellena con el saldo. La idea era que moler la pila
+           completa fuera un toque, pero mientras el saldo traiga el
+           historico eso pondria 37.000 kg en la casilla. Se prellena
+           solo cuando la pila es chica y creible. */
+        if(!kg.value && p.saldoKg > 0 && p.saldoKg <= 500) kg.value = p.saldoKg;
         MOL.sel[p.codigo] = kg.value;
+        kg.focus();
       } else {
         delete MOL.sel[p.codigo];
       }
