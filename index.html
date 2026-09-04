@@ -1528,12 +1528,40 @@ window.cerrarSesionFvlco = function(){ forgetPw(); location.reload(); };
 
 // POST al proxy con la clave guardada y manejo de auth. Devuelve el body en
 // texto. Único sitio que conoce el formato del backend (Proxy.gs).
-async function apiPost(payload){
+/* Reconoce la respuesta de SALUD del proxy (su doGet). No es un dato: es la
+   señal de que la petición se degradó y terminó en doGet en vez de doPost.
+   Por qué pasa: el POST a Apps Script contesta 302, y la especificación de
+   fetch, al seguir un 302, CONVIERTE EL POST EN GET y descarta el cuerpo.
+   Normalmente el Location apunta al 'echo' con el resultado del doPost; cuando
+   eso falla, el GET aterriza en doGet(). El 2026-09-03 el tablero recibió así
+   "FVLco proxy OK" y el parser lo leyó como si fuera la hoja de producción.
+   Se cubren las dos formas del doGet: el texto de v3 y el JSON de v4/v5. */
+function _esRespuestaDeSalud_(body){
+  const t = String(body || '').replace(/^﻿/, '').trim().slice(0, 200);
+  return /^FVLco proxy/i.test(t) || /"servicio"\s*:\s*"FVLco proxy"/i.test(t);
+}
+
+async function apiPost(payload, _intento){
+  const intento = _intento || 0;
   let body;
   try{
     const r = await fetch(apiUrl(), { method:'POST', body: JSON.stringify({ ...payload, pw: getPw() }) });
     body = await r.text();
   }catch(e){ throw new Error('Sin conexión con el servidor de datos.'); }
+
+  /* La degradación es intermitente (se midió: un GET dio 302 con 0 bytes y el
+     siguiente respondió bien), así que se reintenta antes de rendirse. El
+     reintento vive AQUÍ y no en fetchCSV porque progGids también usa apiPost
+     directamente y no pasa por fetchCSV. */
+  if(_esRespuestaDeSalud_(body)){
+    if(intento < 2){
+      await new Promise(r => setTimeout(r, 600 * (intento + 1)));
+      return apiPost(payload, intento + 1);
+    }
+    throw new Error('el proxy respondió su mensaje de salud en vez de los datos ' +
+      '(la petición POST se degradó a GET al seguir el redirect de Apps Script). ' +
+      'Se reintentó 3 veces. Pulsa Actualizar.');
+  }
   if(body.indexOf('__FVLCO_AUTH_FAIL__') === 0){
     // Ya no existe pantalla de clave. Si el proxy todavía la exige, es que le
     // falta el despliegue de Proxy.gs v5: se dice, en vez de abrir un login
