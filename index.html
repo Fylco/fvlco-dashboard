@@ -1541,6 +1541,30 @@ function _esRespuestaDeSalud_(body){
   return /^FVLco proxy/i.test(t) || /"servicio"\s*:\s*"FVLco proxy"/i.test(t);
 }
 
+
+/* GET PRIMERO — esto es lo que quita el fallo de raíz.
+   Un POST a Apps Script contesta 302 y fetch, al seguir el 302, convierte el
+   POST en GET y descarta el cuerpo; cuando eso pasaba, la petición aterrizaba
+   en doGet y el tablero recibía "FVLco proxy OK" como si fuera la hoja.
+   Un GET que sigue un 302 sigue siendo un GET: no hay nada que degradar.
+   Si el proxy desplegado es viejo y no sirve datos por GET (ignora el
+   parámetro y devuelve su mensaje de salud), se cae a POST, que es como
+   funcionaba hasta ahora. Así el tablero sirve antes y después del pegado. */
+async function apiCall(payload){
+  let t = null;
+  try{
+    const q = Object.keys(payload)
+      .map(k => k + '=' + encodeURIComponent(payload[k])).join('&');
+    const r = await fetch(apiUrl() + '?' + q, { cache:'no-store' });
+    t = await r.text();
+  }catch(e){ t = null; }                       // GET no salió: probar POST
+  if(t !== null && !_esRespuestaDeSalud_(t)){
+    if(t.indexOf('__FVLCO_ERR__') === 0) throw new Error(t);
+    if(t.indexOf('__FVLCO_AUTH_FAIL__') !== 0) return t;   // son los datos
+  }
+  return apiPost(payload);                     // proxy viejo, o pide clave
+}
+
 async function apiPost(payload, _intento){
   const intento = _intento || 0;
   let body;
@@ -1563,10 +1587,10 @@ async function apiPost(payload, _intento){
       'Se reintentó 3 veces. Pulsa Actualizar.');
   }
   if(body.indexOf('__FVLCO_AUTH_FAIL__') === 0){
-    // Ya no existe pantalla de clave. Si el proxy todavía la exige, es que le
-    // falta el despliegue de Proxy.gs v5: se dice, en vez de abrir un login
-    // que nadie puede pasar.
-    throw new Error('el proxy todavía exige clave — falta reimplementar Proxy.gs v5 en Apps Script');
+    // El proxy todavía exige clave (falta desplegar Proxy.gs v5). Se abre la
+    // puerta de emergencia en vez de dejar el equipo sin forma de entrar.
+    pedirClave(getPw() ? 'La clave guardada ya no sirve. Ingrésala de nuevo.' : '');
+    throw new Error('el proxy todavía exige clave — escríbela en el recuadro, o despliega Proxy.gs v5 para que no la pida');
   }
   if(body.indexOf('__FVLCO_ERR__') === 0){ throw new Error(body); }
   /* Un servidor de datos bien configurado devuelve CSV o texto plano. Si
@@ -1589,8 +1613,67 @@ async function apiPost(payload, _intento){
 // {ok, text()} compatible con los llamados existentes (res.ok / res.text()).
 async function pfetch(url){
   if(!apiUrl()){ return fetch(proxy(url), { cache:'no-store' }); } // modo dev sin backend
-  const body = await apiPost({ action:'fetch', url });
+  const body = await apiCall({ action:'fetch', url });
   return { ok:true, status:200, text: async ()=> body };
+}
+
+
+/* PUERTA DE EMERGENCIA — no es el login de antes.
+   Al eliminar la clave (2026-09-03) se quitó la pantalla de acceso dando por
+   hecho que el proxy quedaría sin clave con Proxy.gs v5. Ese despliegue es
+   manual y no se hizo, así que un equipo SIN la clave guardada se quedaba sin
+   ninguna forma de entrar: pared, no puerta.
+   Esto NO aparece al arrancar. Aparece únicamente si el proxy responde
+   __FVLCO_AUTH_FAIL__, o sea si todavía exige clave. Cuando se despliegue v5
+   dejará de aparecer solo, sin tocar nada. */
+let _pidiendoClave = false;
+function pedirClave(msg){
+  if(_pidiendoClave || document.getElementById('fvlco-clave')) return;
+  _pidiendoClave = true;
+  const o = document.createElement('div');
+  o.id = 'fvlco-clave';
+  o.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(11,15,25,.97);display:flex;align-items:center;justify-content:center;font-family:Tahoma,Arial,sans-serif';
+  o.innerHTML = `
+    <div style="background:#1F2937;border:1px solid #374151;border-radius:16px;padding:36px 32px;max-width:400px;width:90%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.6)">
+      <div style="font-size:2.2rem;margin-bottom:8px">🔑</div>
+      <div style="font-size:1.05rem;font-weight:700;color:#EEEEEE;margin-bottom:6px">El servidor de datos pide clave</div>
+      <div style="font-size:.75rem;color:#9CA3AF;margin-bottom:18px;line-height:1.5">
+        Se escribe UNA vez por equipo. Desaparecerá cuando se despliegue
+        <code>Proxy.gs</code> v5 en Apps Script.</div>
+      <input id="fvlco-clave-inp" type="password" placeholder="Clave" autocomplete="current-password"
+        style="width:100%;background:#111827;border:1px solid #374151;border-radius:8px;padding:12px 16px;color:#EEEEEE;font-size:.95rem;font-family:inherit;outline:none;box-sizing:border-box;text-align:center;letter-spacing:.15em"/>
+      <div id="fvlco-clave-err" style="color:#EF4444;font-size:.72rem;margin-top:8px;min-height:16px"></div>
+      <button id="fvlco-clave-btn" style="width:100%;margin-top:12px;background:#2563EB;border:none;color:#fff;border-radius:8px;padding:12px;cursor:pointer;font-family:inherit;font-size:.9rem;font-weight:600">Entrar</button>
+    </div>`;
+  document.body.appendChild(o);
+  const inp = document.getElementById('fvlco-clave-inp');
+  const btn = document.getElementById('fvlco-clave-btn');
+  const err = document.getElementById('fvlco-clave-err');
+  if(msg) err.textContent = msg;
+  const enviar = async ()=>{
+    const pw = inp.value; if(!pw) return;
+    btn.disabled = true; btn.textContent = 'Verificando…'; err.textContent = '';
+    let ok = false;
+    try{
+      const r = await fetch(apiUrl(), { method:'POST', body: JSON.stringify({ action:'login', pw }) });
+      const t = await r.text();
+      // Si la petición se degradó a doGet no se puede concluir nada: se reintenta.
+      if(_esRespuestaDeSalud_(t)){ err.textContent = 'El servidor no respondió bien. Intenta otra vez.'; }
+      else ok = t.indexOf('__FVLCO_AUTH_FAIL__') !== 0 && t.indexOf('__FVLCO_ERR__') !== 0;
+    }catch(e){ err.textContent = 'Sin conexión con el servidor.'; }
+    if(ok){
+      savePw(pw); o.remove(); _pidiendoClave = false;
+      FALLAS.clear(); renderBannerFallas();
+      reloadAll();
+    } else {
+      btn.disabled = false; btn.textContent = 'Entrar';
+      if(!err.textContent) err.textContent = 'Clave incorrecta.';
+      inp.value = ''; inp.focus();
+    }
+  };
+  inp.addEventListener('keydown', e=>{ if(e.key === 'Enter') enviar(); });
+  btn.addEventListener('click', enviar);
+  setTimeout(()=>inp.focus(), 100);
 }
 
 let _appStarted = false;
@@ -8858,7 +8941,7 @@ async function progGids(sid) {
   try {
     const map = {};
     if (apiUrl()) {
-      const j = JSON.parse(await apiPost({ action:'gids', id: sid }));
+      const j = JSON.parse(await apiCall({ action:'gids', id: sid }));
       Object.keys(j).forEach(k => map[k.trim().toUpperCase()] = String(j[k]));
     } else {
       const res = await pfetch(`https://docs.google.com/spreadsheets/d/${sid}/htmlview`);

@@ -39,7 +39,7 @@
 
 // IDs de los libros autorizados. El proxy SOLO sirve estos; así no se
 // convierte en un relay abierto a cualquier sheet de la cuenta.
-var PROXY_VERSION = '5.0.0';
+var PROXY_VERSION = '5.1.0';
 
 var ALLOWED_IDS = [
   '1o7bDszJpE4t0xL6AdKWhJ9MEanmz5n7xTQlKBDxVAE8', // Producción / No Conformes / Ventas ...
@@ -64,6 +64,19 @@ var ALLOWED_IDS = [
      curl "<URL /exec>?health=full"  -> además, si cada libro ABRE de verdad */
 function doGet(e) {
   var p = (e && e.parameter) || {};
+
+  /* DATOS POR GET — esto es lo que elimina el fallo de raíz.
+     El tablero pedía los CSV por POST. Apps Script contesta a un POST con un
+     302, y la especificación de fetch, al seguir un 302, CONVIERTE EL POST EN
+     GET y descarta el cuerpo: cuando eso ocurría, la petición aterrizaba aquí,
+     en doGet, y el tablero recibía "FVLco proxy OK" como si fuera la hoja de
+     producción (2026-09-03, tablero en 0 registros).
+     Con los datos servidos por GET no hay POST que degradar: un GET que sigue
+     un 302 sigue siendo un GET y llega al mismo sitio. Ya no hay clave, así que
+     pasar los parámetros por la URL no expone ningún secreto. */
+  if (p.action === 'fetch') return _out(fetchSheetCsv(String(p.url || '')));
+  if (p.action === 'gids')  return _out(listGids(String(p.id || '')));
+
   var out = {
     ok: true,
     servicio: 'FVLco proxy',
