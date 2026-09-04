@@ -12,7 +12,7 @@ var GD = {
   // opciones de OPDEF.MOLINO quedan solo como respaldo.
   materialesMolino:[],
   turnos:[], tapadoras:['5','6'], turnoSugerido:1, turnosValidos:[1],
-  materialActivo:false
+  materialActivo:false, molidoOrigenActivo:false
 };
 
 /* Bolsas de materia prima con su saldo. Se refresca al elegir orden y
@@ -405,6 +405,7 @@ function onData(data){
   GD.turnos         = (data.config && data.config.turnos)    || [];
   GD.tapadoras      = (data.config && data.config.tapadoras) || ['5','6'];
   GD.materialActivo = !!(data.config && data.config.materialActivo);
+  GD.molidoOrigenActivo = !!(data.config && data.config.molidoOrigenActivo);
   GD.turnoSugerido  = data.turnoServidor  || 1;
   GD.turnosValidos  = data.turnosValidos  || [1];
 
@@ -536,7 +537,7 @@ function onMaqChange(maqOverride){
     names.forEach(function(n){ cls('sec'+n,'show', n===maq); });
     // Al entrar, no al arrancar la app: Apps Script atiende una peticion
     // por usuario a la vez y ?action=datos ya se demora ~9 s.
-    if(maq==='MOLINO') molCargarPilas();
+    if(maq==='MOLINO') molMostrar();
   } else {
     panel.className='op-panel';
   }
@@ -1072,7 +1073,7 @@ function regOp(name){
       });
       // Los saldos ya se movieron: seguir mostrando los viejos haria que
       // la proxima molienda parta de un numero falso.
-      if(name==='MOLINO'){ MOL.sel={}; molCargarPilas(); }
+      if(name==='MOLINO'){ MOL.sel={}; molMostrar(); }
       if(r && r.avisos && r.avisos.length) r.avisos.forEach(function(m){ toast(m,'warn'); });
     });
   });
@@ -1829,7 +1830,29 @@ var MOL = { pilas:[], etiquetas:{}, sel:{}, cargado:false, error:'', cargando:fa
 function molNum(v){ var n=parseFloat(String(v).replace(',','.')); return isNaN(n)?0:n; }
 function molNf(n){ return Number(n).toLocaleString('es-CO',{maximumFractionDigits:1}); }
 
+/* La tarjeta muestra las pilas solo si la compuerta esta encendida.
+   Apagada, MOLINO se ve y funciona exactamente como antes de este
+   cambio: el operario registra sus kilos y no ve saldos que todavia no
+   son ciertos. */
+function molMostrar(){
+  var c = $('mPilas');
+  if(!c) return;
+  var lbl = c.previousElementSibling;   // la etiqueta "De dónde molió"
+
+  if(!GD.molidoOrigenActivo){
+    c.innerHTML = '';
+    c.style.display = 'none';
+    if(lbl && lbl.tagName === 'LABEL') lbl.style.display = 'none';
+    MOL.pilas = []; MOL.sel = {};       // que collect() no mande nada
+    return;
+  }
+  c.style.display = '';
+  if(lbl && lbl.tagName === 'LABEL') lbl.style.display = '';
+  molCargarPilas();
+}
+
 function molCargarPilas(){
+  if(!GD.molidoOrigenActivo) return;
   if(MOL.cargando) return;
   MOL.cargando = true;
   molPintar('cargando');
