@@ -1767,9 +1767,502 @@ function supInit(){
 }
 
 /* ═══════════════════════════════════════════════════════
+   REVISIÓN DE MATERIA PRIMA  (pestaña de supervisor)
+
+   Dos herramientas que responden preguntas distintas:
+
+     CONTEO FÍSICO  da una VENTANA. Si el lunes cuadraba y hoy faltan
+     200 kg, se perdieron en el medio. Estrecha, no señala.
+
+     COBERTURA      SÍ señala turno y operario, y no necesita que
+     nadie cuente nada: un turno que reportó cajas y declaró 0 kg es
+     un hecho.
+
+   Lo que NO se puede afirmar está escrito en la pantalla a propósito
+   (ver #cobNota): la caneca alcanza para dos turnos, así que un turno
+   suelto con 0 kg no prueba nada. Sin ese aviso la tabla invitaría a
+   acusar a alguien por algo que los datos no soportan.
+═══════════════════════════════════════════════════════ */
+var REV = { bolsas:[], tomado:null, nuevas:0, cargando:false, guardando:false };
+
+/* ── Sub-pestañas ─────────────────────────────────────── */
+function supVista(v){
+  ['Prog','Con','Cob'].forEach(function(x){
+    cls('supV'+x, 'show', x===v);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#supTabs button'), function(b){
+    b.classList[b.getAttribute('data-vista')===v ? 'add' : 'remove']('act');
+  });
+  // Se carga al entrar, no al abrir el panel: Apps Script atiende una
+  // petición por usuario a la vez y encadenarlas deja la pantalla pegada.
+  if(v==='Con' && !REV.bolsas.length && !REV.cargando) revCargar();
+  if(v==='Cob' && !$('cobOps').innerHTML)              cobCargar();
+}
+
+/* ── Cargar los saldos ────────────────────────────────── */
+function revCargar(){
+  if(REV.cargando) return Promise.resolve();
+  REV.cargando = true;
+  $('rvMeta').innerHTML = 'Cargando saldos...';
+  var fin = supEsperando($('rvBtnRec'), 'Cargando');
+
+  return supPost('audSaldos', {}).then(function(r){
+    REV.bolsas = (r.bolsas||[]).map(function(b){
+      return merge(b, { bodega:'', canecas:'' });
+    });
+    REV.tomado  = new Date();
+    REV.umbralKg  = r.umbralKg;
+    REV.umbralPct = r.umbralPct;
+    revPintarMeta(r);
+    revPintar();
+    revPintarPendientes(r.pendientes);
+    revLlenarQuien();
+  }).catch(function(e){
+    $('rvMeta').innerHTML = '<b style="color:var(--er)">'+supEsc(e.message)+'</b>';
+    toast(e.message, 'err');
+  }).then(function(){ REV.cargando=false; fin(); });
+}
+
+function revPintarMeta(r){
+  var h = 'Saldos tomados a las <b>'+rvHhmm(REV.tomado)+'</b> · '+
+          REV.bolsas.length+' bolsa(s)';
+  if(r.ultimaRevision){
+    var u = r.ultimaRevision;
+    h += '<br>Última revisión: <b>'+(u.diasHace===0 ? 'hoy' : 'hace '+u.diasHace+' día(s)')+
+         '</b> · '+supEsc(u.por)+' · '+u.bolsas+' bolsa(s)';
+  } else {
+    h += '<br><b style="color:var(--na)">Nunca se ha hecho una revisión.</b>';
+  }
+  h += '<br>Un ajuste mayor a <b>'+r.umbralKg+' kg</b> o al <b>'+r.umbralPct+
+       '%</b> del saldo no se aplica solo: queda por confirmar.';
+  $('rvMeta').innerHTML = h;
+}
+
+/* Quién revisa: sugiere los operarios que ya conoce la app, pero es
+   campo abierto — el supervisor puede no estar en esa lista. */
+function revLlenarQuien(){
+  var dl=$('rvPorList');
+  if(!dl || dl.children.length) return;
+  (GD.operarios||[]).forEach(function(op){
+    var o=document.createElement('option'); o.value=op.name; dl.appendChild(o);
+  });
+}
+
+/* ── Pintar la lista de bolsas ────────────────────────── */
+function revPintar(){
+  var c = $('rvLista');
+  if(!REV.bolsas.length){
+    c.innerHTML = '<div class="hint" style="padding:8px">No hay bolsas todavía. '+
+      'Usa el botón de abajo para cargar lo que encuentres en bodega.</div>';
+    revChequearBoton();
+    return;
+  }
+  c.innerHTML = '';
+  REV.bolsas.forEach(function(b, i){ c.appendChild(revFila(b, i)); });
+  revChequearBoton();
+}
+
+function revFila(b, i){
+  var d = document.createElement('div');
+  d.className = 'rv-b' + (b.nueva ? ' nueva' : '');
+  d.id = 'rvB'+i;
+
+  var vie = b.diasSinMov;
+  var meta = b.nueva
+    ? '<span style="color:var(--mo);font-weight:800">bolsa nueva — el sistema no la tenía</span>'
+    : (vie===null || vie===undefined
+        ? 'sin movimientos registrados'
+        : (vie>=5 ? '<span class="vie">hace '+vie+' día(s)</span>' : 'hace '+vie+' día(s)')
+          + ' · ' + supEsc(b.ultimoMovQue||''));
+
+  d.innerHTML =
+    '<div class="l1">'+
+      '<span class="et">'+supEsc(b.etiqueta||b.codigo)+'</span>'+
+      '<span class="sis">'+rvNf1(b.saldoKg)+' kg</span>'+
+    '</div>'+
+    '<div class="l2">'+meta+'</div>'+
+    (b.nueva ? revCamposNueva(i) : '')+
+    '<div class="l3">'+
+      '<div class="c"><label>En bodega</label>'+
+        '<input type="number" inputmode="decimal" step="0.1" min="0" id="rvBo'+i+'" placeholder="—"></div>'+
+      '<div class="c"><label>En canecas</label>'+
+        '<input type="number" inputmode="decimal" step="0.1" min="0" id="rvCa'+i+'" placeholder="—"></div>'+
+      '<div class="dif" id="rvDf'+i+'">—<small>diferencia</small></div>'+
+    '</div>';
+
+  ['rvBo','rvCa'].forEach(function(p){
+    var e = d.querySelector('#'+p+i);
+    e.value = (p==='rvBo' ? b.bodega : b.canecas);
+    e.addEventListener('input', function(){
+      if(p==='rvBo') b.bodega = e.value; else b.canecas = e.value;
+      revPintarDif(i);
+      revChequearBoton();
+    });
+  });
+
+  if(b.nueva) revEngancharNueva(d, b, i);
+  return d;
+}
+
+function revCamposNueva(i){
+  return '<div class="rv-nva">'+
+    '<select id="rvTp'+i+'"><option value="VIRGEN">Virgen</option><option value="MOLIDO">Molido</option></select>'+
+    '<select id="rvFa'+i+'"><option value="">— Familia —</option>'+
+      ['HDPE','LLDPE','PP','MASTERBATCH'].map(function(f){
+        return '<option value="'+f+'">'+f+'</option>'; }).join('')+
+    '</select>'+
+    '<input id="rvRe'+i+'" placeholder="Referencia" autocomplete="off">'+
+    '<input id="rvFb'+i+'" placeholder="Fabricante" autocomplete="off">'+
+    '<input id="rvCo'+i+'" placeholder="Color (solo molido)" autocomplete="off" style="grid-column:1/-1;display:none">'+
+  '</div>';
+}
+
+function revEngancharNueva(d, b, i){
+  var tp=d.querySelector('#rvTp'+i), fa=d.querySelector('#rvFa'+i),
+      re=d.querySelector('#rvRe'+i), fb=d.querySelector('#rvFb'+i),
+      co=d.querySelector('#rvCo'+i);
+
+  var repintar = function(){
+    b.tipo = tp.value;
+    var mol = b.tipo==='MOLIDO';
+    // Una bolsa de molido se identifica por familia+color; una de virgen
+    // por referencia+fabricante. Pedir los cuatro confundiría.
+    re.style.display = mol ? 'none' : '';
+    fb.style.display = mol ? 'none' : '';
+    co.style.display = mol ? '' : 'none';
+    b.familia=fa.value; b.referencia=re.value.trim();
+    b.fabricante=fb.value.trim(); b.color=co.value.trim();
+    b.etiqueta = mol
+      ? ('MOLIDO '+(b.familia||'?')+' '+(b.color||'?'))
+      : ((b.referencia||'?')+' · '+(b.fabricante||'SIN ESPECIFICAR'));
+    var et = d.querySelector('.et');
+    if(et) et.textContent = b.etiqueta;
+    revChequearBoton();
+  };
+  [tp,fa,re,fb,co].forEach(function(e){
+    e.addEventListener('input', repintar);
+    e.addEventListener('change', repintar);
+  });
+  repintar();
+}
+
+/* La diferencia se pinta en vivo. Un cero ESCRITO cuenta: una bolsa
+   vacía cuando el sistema dice 200 kg es el hallazgo más importante
+   que puede tener una revisión, y confundirlo con "no la conté" lo
+   perdería. */
+function revPintarDif(i){
+  var b = REV.bolsas[i], e = $('rvDf'+i), fila = $('rvB'+i);
+  var hay = rvEscrito(b.bodega) || rvEscrito(b.canecas);
+
+  cls('rvB'+i, 'tocada', hay);
+  if(!hay){ e.className='dif'; e.innerHTML='—<small>diferencia</small>'; return; }
+
+  var contado = (rvEscrito(b.bodega)?rvNum(b.bodega):0) + (rvEscrito(b.canecas)?rvNum(b.canecas):0);
+  var dif = Math.round((contado - rvNum(b.saldoKg))*10)/10;
+  var grande = Math.abs(dif) > Math.max(REV.umbralKg||50,
+                          Math.abs(rvNum(b.saldoKg))*(REV.umbralPct||20)/100);
+
+  if(dif===0){ e.className='dif bien'; e.innerHTML='exacto<small>cuadra</small>'; return; }
+  e.className = 'dif ' + (dif<0 ? 'mal' : 'mas');
+  e.innerHTML = (dif>0?'+':'')+rvNf1(dif)+' kg' +
+                '<small>'+(grande ? 'por confirmar' : 'diferencia')+'</small>';
+}
+
+function revChequearBoton(){
+  var n = REV.bolsas.filter(function(b){
+    return rvEscrito(b.bodega) || rvEscrito(b.canecas);
+  }).length;
+  var btn = $('rvBtnGuardar');
+  btn.disabled = (n===0);
+  btn.textContent = n ? ('💾 GUARDAR REVISIÓN · '+n+' bolsa(s)') : '💾 GUARDAR REVISIÓN';
+}
+
+/* ── Agregar una bolsa que el sistema no conoce ────────
+   Es la vía del conteo inicial: el material que ya estaba en bodega
+   antes de arrancar nunca se registró como compra. */
+function revAgregar(){
+  REV.nuevas++;
+  REV.bolsas.unshift({
+    codigo:'', etiqueta:'(nueva)', tipo:'VIRGEN', nueva:true,
+    referencia:'', fabricante:'', familia:'', color:'',
+    saldoKg:0, diasSinMov:null, ultimoMovQue:'', bodega:'', canecas:''
+  });
+  revPintar();
+  var e=$('rvRe0'); if(e) e.focus();
+}
+
+/* ── Guardar ──────────────────────────────────────────── */
+function revGuardar(){
+  if(REV.guardando) return;
+
+  var por = val('rvPor');
+  if(!por){
+    toast('Escribe quién está revisando','warn');
+    var e=$('rvPor'); if(e){ e.classList.add('err-f'); e.focus(); }
+    return;
+  }
+
+  var lineas = [];
+  for(var i=0;i<REV.bolsas.length;i++){
+    var b=REV.bolsas[i];
+    if(!rvEscrito(b.bodega) && !rvEscrito(b.canecas)) continue;
+
+    if(b.nueva){
+      // Se valida acá para no gastar 9 s de ida y vuelta en un error obvio
+      if(b.tipo==='MOLIDO' && (!b.familia || !b.color)){
+        toast('A la bolsa de molido nueva le falta familia o color','warn'); return;
+      }
+      if(b.tipo!=='MOLIDO' && !b.referencia){
+        toast('A la bolsa nueva le falta la referencia','warn'); return;
+      }
+    }
+    lineas.push({
+      codigo:b.codigo, nueva:!!b.nueva, tipo:b.tipo,
+      referencia:b.referencia, fabricante:b.fabricante,
+      familia:b.familia, color:b.color,
+      kgBodega:b.bodega, kgCanecas:b.canecas
+    });
+  }
+  if(!lineas.length){ toast('No escribiste kilos en ninguna bolsa','warn'); return; }
+
+  var grandes = lineas.filter(function(L, k){
+    var b = REV.bolsas.filter(function(x){ return rvEscrito(x.bodega)||rvEscrito(x.canecas); })[k];
+    if(!b) return false;
+    var contado = (rvEscrito(b.bodega)?rvNum(b.bodega):0)+(rvEscrito(b.canecas)?rvNum(b.canecas):0);
+    var dif = contado - rvNum(b.saldoKg);
+    return Math.abs(dif) > Math.max(REV.umbralKg||50,
+                         Math.abs(rvNum(b.saldoKg))*(REV.umbralPct||20)/100);
+  }).length;
+
+  var resumen = [['Quién revisa', por], ['Bolsas contadas', String(lineas.length)]];
+  if(grandes) resumen.push(['Diferencias grandes', grandes+' · quedan POR CONFIRMAR, no mueven el inventario']);
+
+  resumen.unshift(['Acción', 'Guardar revisión de materia prima']);
+  mostrarConfirm(resumen, function(){
+    REV.guardando = true;
+    var fin = supEsperando($('rvBtnGuardar'), 'Guardando');
+    supPost('audGuardar', {
+      idConteo: 'c'+Date.now()+'-'+Math.floor(Math.random()*100000),
+      contadoPor: por,
+      observacion: val('rvObs'),
+      lineas: lineas
+    }).then(function(r){
+      if(r.duplicado){ toast('Esta revisión ya estaba guardada','warn'); return; }
+      toast('Revisión guardada','ok');
+      revPintarDiagnostico(r.diagnostico);
+      $('rvObs').value='';
+      // Se recarga: los saldos ya se movieron y seguir mostrando los
+      // viejos haría que la próxima cuenta parta de un número falso.
+      return revCargar();
+    }).catch(function(e){
+      toast(e.message,'err');
+    }).then(function(){ REV.guardando=false; fin(); });
+  });
+}
+
+/* El resultado no es un "guardado ✓" sino un diagnóstico: la
+   diferencia cruzada con los días sin movimiento. */
+function revPintarDiagnostico(dg){
+  var c = $('rvDiag');
+  if(!dg || !dg.length){ c.style.display='none'; return; }
+  c.style.display = 'flex';
+  c.innerHTML = '<div class="hint" style="margin:0">RESULTADO DE LA REVISIÓN</div>' +
+    dg.map(function(d){
+      var aj = d.ajusteKg>0 ? '+'+rvNf1(d.ajusteKg) : rvNf1(d.ajusteKg);
+      return '<div class="rv-dg'+(d.estado==='PENDIENTE'?' p':'')+'">'+
+        '<b>'+supEsc(d.etiqueta)+'</b> · sistema '+rvNf1(d.sistemaKg)+' kg, contado '+
+        rvNf1(d.contadoKg)+' kg · <b>'+(d.ajusteKg===0?'exacto':aj+' kg')+'</b><br>'+
+        supEsc(d.lectura)+'</div>';
+    }).join('');
+}
+
+/* ── Cola de ajustes por confirmar ────────────────────── */
+function revPintarPendientes(n){
+  if(!n){
+    $('rvPend').innerHTML = '<div class="hint" style="padding:8px">Nada por confirmar.</div>';
+    $('rvPendN').textContent = '';
+    show('supBdgPend', false);
+    return;
+  }
+  $('rvPendN').textContent = n;
+  var b=$('supBdgPend'); if(b){ b.textContent=n; b.style.display=''; }
+  $('rvPend').innerHTML = '<div class="hint" style="padding:8px">Cargando...</div>';
+
+  supPost('audPendientes', {}).then(function(r){
+    var c=$('rvPend');
+    if(!r.pendientes || !r.pendientes.length){
+      c.innerHTML='<div class="hint" style="padding:8px">Nada por confirmar.</div>';
+      return;
+    }
+    c.innerHTML = r.pendientes.map(function(p){
+      var aj = p.ajusteKg>0 ? '+'+rvNf1(p.ajusteKg) : rvNf1(p.ajusteKg);
+      return '<div class="rv-pd" data-id="'+supEsc(p.idConteo)+'" data-cod="'+supEsc(p.codigo)+'">'+
+        '<div class="t">'+supEsc(p.etiqueta)+' · '+aj+' kg</div>'+
+        '<div class="n">El sistema decía <b>'+rvNf1(p.sistemaKg)+' kg</b> y se contaron '+
+          '<b>'+rvNf1(p.contadoKg)+' kg</b>. Contó '+supEsc(p.contadoPor)+'.'+
+          (p.observacion ? '<br>'+supEsc(p.observacion) : '')+'</div>'+
+        '<div class="bs">'+
+          '<button type="button" class="si">✔ Confirmar</button>'+
+          '<button type="button" class="no">✕ Descartar</button>'+
+        '</div></div>';
+    }).join('');
+
+    Array.prototype.forEach.call(c.querySelectorAll('.rv-pd'), function(caja){
+      var id=caja.getAttribute('data-id'), cod=caja.getAttribute('data-cod');
+      caja.querySelector('.si').addEventListener('click', function(){ revResolver(id,cod,'CONFIRMAR'); });
+      caja.querySelector('.no').addEventListener('click', function(){ revResolver(id,cod,'DESCARTAR'); });
+    });
+  }).catch(function(e){
+    $('rvPend').innerHTML='<div class="sup-warn">'+supEsc(e.message)+'</div>';
+  });
+}
+
+function revResolver(idConteo, codigo, accion){
+  var quien = val('rvPor');
+  if(!quien){
+    toast('Escribe tu nombre arriba antes de confirmar','warn');
+    var e=$('rvPor'); if(e){ e.classList.add('err-f'); e.focus(); }
+    return;
+  }
+  var txt = accion==='CONFIRMAR'
+    ? 'El ajuste va a MOVER el inventario.'
+    : 'El inventario NO se mueve. El conteo queda como registro, no se borra.';
+
+  mostrarConfirm([['Acción', accion==='CONFIRMAR' ? 'Confirmar ajuste' : 'Descartar ajuste'],
+                  ['Quién', quien], ['Efecto', txt]], function(){
+    supPost('audResolver', { idConteo:idConteo, codigo:codigo, accion:accion, quien:quien })
+      .then(function(r){ toast(r.mensaje,'ok'); return revCargar(); })
+      .catch(function(e){ toast(e.message,'err'); });
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   COBERTURA DE REGISTRO
+═══════════════════════════════════════════════════════ */
+function cobCargar(){
+  $('cobResumen').textContent='Cargando...';
+  var fin = supEsperando($('cobBtnRec'), '...');
+
+  return supPost('audCobertura', { dias: rvNum(val('cobDias'))||30 }).then(function(r){
+    cobPintar(r);
+  }).catch(function(e){
+    $('cobResumen').innerHTML='<b style="color:var(--er)">'+supEsc(e.message)+'</b>';
+    toast(e.message,'err');
+  }).then(function(){ fin(); });
+}
+
+function cobPintar(r){
+  var s=r.resumen;
+  $('cobResumen').innerHTML =
+    'Últimos <b>'+r.dias+'</b> días · <b>'+s.turnosProd+'</b> turnos con producción, '+
+    '<b>'+s.turnosMat+'</b> declararon material'+
+    (s.turnosSinMat ? ' · <b style="color:var(--er)">'+s.turnosSinMat+' sin declarar</b>' : '')+
+    '<br>Teórico <b>'+rvNf1(s.kgTeorico)+' kg</b> · declarado <b>'+rvNf1(s.kgDeclarado)+' kg</b>';
+
+  // Lo que falta para que estos números signifiquen algo
+  var f=$('cobFalta');
+  if((r.faltaPara||[]).length){
+    f.style.display='';
+    f.innerHTML = r.faltaPara.map(function(x){
+      return '<div class="sup-warn" style="margin-bottom:4px">'+supEsc(x.que)+
+             '<div style="font-weight:600;font-size:10.5px;margin-top:2px">→ '+
+             supEsc(x.comoSeArregla)+'</div></div>';
+    }).join('');
+  } else { f.style.display='none'; }
+
+  // ── Por operario ────────────────────────────────────
+  var t=$('cobOps');
+  if(!(r.operarios||[]).length){
+    t.innerHTML='<tr><td style="color:#9aa0a6;font-weight:600">Sin turnos en la ventana.</td></tr>';
+  } else {
+    t.innerHTML =
+      '<tr><th>Operario</th><th>Turnos prod.</th><th>Con material</th>'+
+      '<th>Cobertura</th><th>Teórico kg</th><th>Declarado kg</th></tr>' +
+      r.operarios.map(function(o){
+        var k = o.cobertura<50 ? 'mal' : (o.cobertura<85 ? 'med' : 'bien');
+        return '<tr'+(o.cobertura<50?' class="mal"':'')+'>'+
+          '<td>'+supEsc(o.operario||o.codOperario||'(sin operario)')+'</td>'+
+          '<td>'+o.turnosProd+'</td><td>'+o.turnosMat+'</td>'+
+          '<td class="pct '+k+'">'+o.cobertura+'%</td>'+
+          '<td>'+rvNf1(o.kgTeorico)+'</td><td>'+rvNf1(o.kgDeclarado)+'</td></tr>';
+      }).join('');
+  }
+
+  // ── Por máquina y semana ────────────────────────────
+  var m=$('cobMaq');
+  if(!(r.maquinaSemana||[]).length){
+    m.innerHTML='<tr><td style="color:#9aa0a6;font-weight:600">Sin datos.</td></tr>';
+  } else {
+    m.innerHTML =
+      '<tr><th>Máquina</th><th>Semana</th><th>Turnos</th><th>Teórico kg</th>'+
+      '<th>Declarado kg</th><th>Brecha</th><th>¿La caneca lo explica?</th></tr>' +
+      r.maquinaSemana.map(function(x){
+        return '<tr'+(!x.explicaCaneca?' class="mal"':'')+'>'+
+          '<td>'+supEsc(x.maquina)+'</td><td>'+supEsc(x.semana)+'</td><td>'+x.turnos+'</td>'+
+          '<td>'+rvNf1(x.kgTeorico)+'</td><td>'+rvNf1(x.kgDeclarado)+'</td>'+
+          '<td class="pct '+(x.brechaKg<0?'mal':'bien')+'">'+
+            (x.brechaKg>0?'+':'')+rvNf1(x.brechaKg)+'</td>'+
+          '<td style="font-weight:800">'+(x.explicaCaneca
+            ? 'sí — no concluye nada'
+            : '<span style="color:var(--er)">NO — pasa los '+r.canecaKg+' kg</span>')+'</td></tr>';
+      }).join('');
+  }
+
+  // ── Turnos concretos sin material ───────────────────
+  var s2=$('cobSin');
+  if(!(r.sinMaterial||[]).length){
+    s2.innerHTML='<tr><td style="color:var(--ok);font-weight:800">Todos los turnos con producción declararon material.</td></tr>';
+  } else {
+    s2.innerHTML =
+      '<tr><th>Fecha</th><th>Máq.</th><th>Turno</th><th>Operario</th>'+
+      '<th>Unidades</th><th>Debió declarar</th></tr>' +
+      r.sinMaterial.slice(0,60).map(function(x){
+        return '<tr><td>'+rvFechaCorta(x.fecha)+'</td><td>'+supEsc(x.maquina)+'</td>'+
+          '<td>T'+supEsc(x.turno)+'</td><td>'+supEsc(x.operario||x.codOperario)+'</td>'+
+          '<td>'+nf(x.unidades)+'</td><td>'+rvNf1(x.kgTeorico)+' kg</td></tr>';
+      }).join('') +
+      (r.sinMaterial.length>60
+        ? '<tr><td colspan="6" style="color:#9aa0a6;font-weight:600">y '+
+          (r.sinMaterial.length-60)+' más</td></tr>' : '');
+  }
+}
+
+
+/* ── Ayudantes ────────────────────────────────────────── */
+function rvEscrito(v){ return v!==null && v!==undefined && String(v).trim()!==''; }
+function rvNum(v){ var n=parseFloat(String(v).replace(',','.')); return isNaN(n)?0:n; }
+function rvNf1(n){
+  return Number(n).toLocaleString('es-CO', { maximumFractionDigits:1 });
+}
+function rvHhmm(d){
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function rvFechaCorta(v){
+  var d = v instanceof Date ? v : new Date(v);
+  if(isNaN(d.getTime())) return '—';
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+}
+
+function revInit(){
+  Array.prototype.forEach.call(document.querySelectorAll('#supTabs button'), function(b){
+    b.addEventListener('click', function(){ supVista(b.getAttribute('data-vista')); });
+  });
+  var e;
+  e=$('rvBtnRec');      if(e) e.addEventListener('click', revCargar);
+  e=$('rvBtnAdd');      if(e) e.addEventListener('click', revAgregar);
+  e=$('rvBtnGuardar');  if(e) e.addEventListener('click', revGuardar);
+  e=$('rvPor');         if(e) e.addEventListener('input', function(){ e.classList.remove('err-f'); });
+  e=$('cobBtnRec');     if(e) e.addEventListener('click', cobCargar);
+  e=$('cobDias');       if(e) e.addEventListener('change', cobCargar);
+}
+
+
+/* ═══════════════════════════════════════════════════════
    ARRANQUE
 ═══════════════════════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', function(){
   init();
   supInit();
+  revInit();
 });

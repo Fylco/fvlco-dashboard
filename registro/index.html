@@ -116,8 +116,22 @@ textarea{resize:none;min-height:42px;height:42px}
 .hd-sup{background:#334155}
 .btn-sup{background:#334155}
 .sup-panel{display:none;flex:1;min-height:0;gap:7px}
-.sup-panel.show{display:grid;grid-template-columns:1fr}
-@media(min-width:900px){.sup-panel.show{grid-template-columns:1fr 1.15fr}}
+.sup-panel.show{display:flex;flex-direction:column}
+/* Sub-pestañas: el supervisor hace tres trabajos distintos y cada uno
+   necesita el ancho completo. Apilarlos en columnas los dejaba ilegibles. */
+.sup-tabs{display:flex;gap:5px;flex-shrink:0}
+.sup-tabs button{flex:1;padding:7px 4px;border:1.4px solid #475569;background:#fff;
+  border-radius:7px 7px 0 0;font-weight:900;font-size:11.5px;cursor:pointer;color:#334155;
+  line-height:1.15;border-bottom-width:0}
+.sup-tabs button.act{background:#334155;color:#fff}
+.sup-tabs button .bdg{display:inline-block;background:var(--er);color:#fff;border-radius:9px;
+  padding:0 5px;font-size:9.5px;margin-left:4px;vertical-align:1px}
+.sup-vista{display:none;flex:1;min-height:0;gap:7px}
+.sup-vista.show{display:grid;grid-template-columns:1fr}
+@media(min-width:900px){
+  #supVProg.show{grid-template-columns:1fr 1.15fr}
+  #supVCon.show{grid-template-columns:1.5fr 1fr}
+}
 /* Lista con barra de desplazamiento SIEMPRE visible: con 25+ órdenes la barra
    fina por defecto de Windows es invisible y parece que la lista está cortada. */
 .sup-lista{display:flex;flex-direction:column;gap:5px;flex:1;
@@ -128,8 +142,62 @@ textarea{resize:none;min-height:42px;height:42px}
 .sup-lista::-webkit-scrollbar-thumb{background:#8a94a6;border-radius:7px;border:2.5px solid #e6eaf0}
 .sup-lista::-webkit-scrollbar-thumb:hover{background:#5f6b7f}
 /* El panel completo también desplaza, para que el botón PROGRAMAR siempre se alcance */
-.sup-panel.show>.card{min-height:0}
-.sup-panel.show>.card>.bd{overflow-y:auto;min-height:0}
+.sup-vista.show>.card{min-height:0}
+.sup-vista.show>.card>.bd{overflow-y:auto;min-height:0}
+
+/* ── Revisión de MP ────────────────────────────────────────────────── */
+.rv-top{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
+.rv-top .fld{flex:1;min-width:130px;margin:0}
+.rv-meta{font-size:10px;color:#5f6368;line-height:1.35}
+.rv-meta b{color:#0b3a8c}
+.rv-lista{display:flex;flex-direction:column;gap:5px}
+.rv-b{border:1px solid #e2e8f0;border-radius:7px;padding:6px 8px;background:#fbfcfd}
+.rv-b.tocada{border-color:var(--az);background:#f5f9ff}
+.rv-b.nueva{border-color:var(--mo);background:#faf5ff}
+.rv-b .l1{display:flex;align-items:baseline;gap:8px}
+.rv-b .et{font-weight:900;font-size:12.5px;color:#0b3a8c;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-b .sis{font-weight:900;font-size:12.5px;color:#3c4043;flex-shrink:0}
+.rv-b .l2{font-size:9.5px;color:#5f6368;margin-top:1px}
+.rv-b .l2 .vie{color:var(--na);font-weight:800}
+.rv-b .l3{display:flex;gap:6px;align-items:center;margin-top:5px}
+.rv-b .l3 label{font-size:9px;color:#80868b;font-weight:800;text-transform:uppercase;
+  display:block;line-height:1}
+.rv-b .l3 .c{flex:1;min-width:0}
+.rv-b .l3 input{width:100%;padding:5px 6px;border:1.4px solid var(--bo);border-radius:6px;
+  font-size:13px;font-weight:700;text-align:right}
+.rv-b .dif{flex-shrink:0;min-width:74px;text-align:right;font-weight:900;font-size:12.5px}
+.rv-b .dif.mal{color:var(--er)}.rv-b .dif.mas{color:var(--mo)}.rv-b .dif.bien{color:var(--ok)}
+.rv-b .dif small{display:block;font-size:8.5px;font-weight:700;color:#80868b;text-transform:uppercase}
+.rv-nva{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px}
+.rv-nva input,.rv-nva select{padding:5px 6px;border:1.4px solid var(--bo);border-radius:6px;font-size:12px}
+.rv-add{background:#fff;border:1.4px dashed var(--mo);color:var(--mo);border-radius:7px;
+  padding:7px;font-size:11px;font-weight:800;cursor:pointer;width:100%}
+.rv-add:hover{background:#faf5ff}
+.rv-dg{border-left:3px solid var(--az);background:#f8fafc;border-radius:0 6px 6px 0;
+  padding:5px 8px;font-size:10.5px;color:#3c4043;line-height:1.4}
+.rv-dg b{color:#0b3a8c}
+.rv-dg.p{border-left-color:var(--wn);background:#fffbeb}
+.rv-pd{border:1.4px solid var(--wn);background:#fffbeb;border-radius:7px;padding:7px 8px}
+.rv-pd .t{font-weight:900;font-size:12px;color:#92400e}
+.rv-pd .n{font-size:10.5px;color:#78350f;margin:2px 0 6px;line-height:1.4}
+.rv-pd .bs{display:flex;gap:5px}
+.rv-pd button{flex:1;border:none;border-radius:6px;padding:6px;font-size:10.5px;
+  font-weight:800;cursor:pointer;color:#fff}
+.rv-pd .si{background:var(--ok)}.rv-pd .no{background:#78716c}
+.rv-tab{width:100%;border-collapse:collapse;font-size:10.5px}
+.rv-tab th{background:#f1f5f9;color:#475569;font-size:9px;text-transform:uppercase;
+  padding:4px 5px;text-align:right;font-weight:900;border-bottom:1.4px solid #cbd5e1}
+.rv-tab th:first-child{text-align:left}
+.rv-tab td{padding:4px 5px;text-align:right;border-bottom:1px solid #eef2f6}
+.rv-tab td:first-child{text-align:left;font-weight:800;color:#0b3a8c}
+.rv-tab tr.mal td{background:#fef2f2}
+.rv-tab .pct{font-weight:900}
+.rv-tab .pct.mal{color:var(--er)}.rv-tab .pct.med{color:var(--na)}.rv-tab .pct.bien{color:var(--ok)}
+.rv-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.rv-nota{font-size:9.5px;color:#78716c;background:#fafaf9;border-radius:6px;
+  padding:5px 7px;line-height:1.45}
+.rv-nota b{color:#44403c}
 .sup-row{border:1px solid #e2e8f0;border-radius:7px;padding:6px 8px;display:flex;align-items:center;gap:9px;background:#fbfcfd}
 .sup-row .ix{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .sup-row .o{font-weight:900;font-size:13px;color:#0b3a8c;line-height:1.15}
@@ -432,8 +500,16 @@ textarea{resize:none;min-height:42px;height:42px}
 <!-- PANEL OPERACIONES (generado por JS) -->
 <div class="op-panel" id="opPanel"></div>
 
-<!-- PANEL SUPERVISOR — programación de pedidos en REGISTRO LIDER -->
+<!-- PANEL SUPERVISOR — programación, conteo físico de MP y cobertura -->
 <div class="sup-panel" id="supPanel">
+
+<div class="sup-tabs" id="supTabs">
+  <button type="button" class="act" data-vista="Prog">🗓️ PROGRAMAR</button>
+  <button type="button" data-vista="Con">🔍 CONTEO FÍSICO<span class="bdg" id="supBdgPend" style="display:none">0</span></button>
+  <button type="button" data-vista="Cob">📊 COBERTURA</button>
+</div>
+
+<div class="sup-vista show" id="supVProg">
 
   <div class="card">
     <div class="hd hd-sup">🗓️ PROGRAMAR ORDEN NUEVA</div>
@@ -481,7 +557,115 @@ textarea{resize:none;min-height:42px;height:42px}
     </div>
   </div>
 
-</div>
+</div><!-- /supVProg -->
+
+
+<!-- ═══ CONTEO FÍSICO ═══════════════════════════════════════════════
+     Lo que el sistema cree que hay contra lo que hay de verdad. La
+     columna del último movimiento es la herramienta: una diferencia
+     sola no dice nada, cruzada con los días sin movimiento dice desde
+     cuándo se dejó de reportar. -->
+<div class="sup-vista" id="supVCon">
+
+  <div class="card">
+    <div class="hd hd-sup">🔍 REVISIÓN DE MATERIA PRIMA</div>
+    <div class="bd" style="gap:6px">
+
+      <div class="rv-top">
+        <div class="fld"><label>Quién revisa <span class="req">*</span></label>
+          <input id="rvPor" list="rvPorList" autocomplete="off" placeholder="Tu nombre">
+          <datalist id="rvPorList"></datalist></div>
+        <button type="button" class="sup-fin" style="background:var(--az)" id="rvBtnRec">↻ Actualizar saldos</button>
+      </div>
+
+      <div class="rv-meta" id="rvMeta">Toca <b>Actualizar saldos</b> para empezar.</div>
+
+      <div class="rv-nota">
+        Cuenta <b>todo</b> lo de cada bolsa. Si cuentas solo la bodega, la diferencia
+        va a salir negativa por el material que está en las canecas — por eso los dos
+        campos van separados. Si una bolsa se acabó, <b>escribe 0</b>: no es lo mismo
+        que dejarla vacía.
+      </div>
+
+      <div class="rv-lista" id="rvLista"></div>
+
+      <button type="button" class="rv-add" id="rvBtnAdd">
+        + Agregar una bolsa que no está en la lista
+      </button>
+
+      <div class="fld" style="margin:0"><label>Observación</label>
+        <input id="rvObs" autocomplete="off" placeholder="Opcional"></div>
+
+      <button class="btn btn-sup" id="rvBtnGuardar" disabled>💾 GUARDAR REVISIÓN</button>
+
+      <div id="rvDiag" style="display:none;gap:5px;flex-direction:column"></div>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hd" style="background:#b45309">⚠️ AJUSTES POR CONFIRMAR <span id="rvPendN" style="margin-left:auto;font-weight:700"></span></div>
+    <div class="bd" style="gap:6px">
+      <div class="rv-nota">
+        Una diferencia grande <b>no mueve el inventario sola</b>. Queda acá hasta que
+        alguien la confirme, para que un 700 escrito en vez de 7.000 no descuadre todo
+        en silencio. Descartar <b>no borra</b> el conteo: queda como registro.
+      </div>
+      <div id="rvPend" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+
+</div><!-- /supVCon -->
+
+
+<!-- ═══ COBERTURA ═══════════════════════════════════════════════════
+     Quién reportó producción sin declarar material. Esta es la parte
+     que de verdad señala turno y operario, y no necesita que nadie
+     cuente nada. -->
+<div class="sup-vista" id="supVCob">
+
+  <div class="card">
+    <div class="hd" style="background:#0e7490">📊 COBERTURA DE REGISTRO
+      <select id="cobDias" style="margin-left:auto;flex:0 0 auto;width:auto;padding:2px 5px;border-radius:5px;border:none;font-size:11px;font-weight:800">
+        <option value="7">7 días</option>
+        <option value="30" selected>30 días</option>
+        <option value="90">90 días</option>
+      </select>
+      <button type="button" id="cobBtnRec" style="margin-left:5px;border:none;background:#fff;color:#0e7490;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:800;cursor:pointer">↻</button>
+    </div>
+    <div class="bd" style="gap:8px">
+
+      <div id="cobResumen" class="rv-meta">Toca ↻ para cargar.</div>
+      <div id="cobFalta" style="display:none"></div>
+
+      <div>
+        <div class="hint" style="margin:0 0 3px">POR OPERARIO — el patrón</div>
+        <div class="rv-scroll"><table class="rv-tab" id="cobOps"></table></div>
+      </div>
+
+      <div>
+        <div class="hint" style="margin:0 0 3px">POR MÁQUINA Y SEMANA — el nivel concluyente</div>
+        <div class="rv-scroll"><table class="rv-tab" id="cobMaq"></table></div>
+      </div>
+
+      <div class="rv-nota" id="cobNota">
+        <b>Cuidado con acusar por un turno.</b> La caneca tiene ~150 kg y un turno gasta
+        ~75, así que alcanza para dos turnos: un operario <b>puede</b> producir un turno
+        completo sin sacar material de bodega. Un turno suelto no prueba nada. Una máquina
+        en una semana sí, porque la caneca solo tapa el 13% de lo que gasta.
+      </div>
+
+      <div>
+        <div class="hint" style="margin:0 0 3px">TURNOS SIN MATERIAL DECLARADO</div>
+        <div class="rv-scroll"><table class="rv-tab" id="cobSin"></table></div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /supVCob -->
+
+</div><!-- /supPanel -->
 
 </div><!-- /wrap -->
 <div id="toast"></div>
