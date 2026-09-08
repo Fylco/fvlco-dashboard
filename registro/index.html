@@ -235,6 +235,11 @@ textarea{resize:none;min-height:42px;height:42px}
 .sup-row .m b{color:#0e7490;font-weight:800}
 .sup-fin{background:var(--ok);color:#fff;border:none;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0;line-height:1.15;text-align:center}
 .sup-fin:hover{opacity:.88}.sup-fin:disabled{opacity:.5;cursor:not-allowed}
+.sup-item{display:flex;flex-direction:column}
+.sup-item.falta .sup-row{border-color:#f59e0b;background:#fffbeb}
+.sup-row .av{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.sup-falta{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:4px;
+  padding:1px 5px;font-size:9px;font-weight:800;letter-spacing:.02em;white-space:nowrap}
 .sup-warn{background:#fef3c7;border:1.4px solid #f59e0b;color:#92400e;border-radius:6px;padding:6px 8px;font-size:11.5px;font-weight:700}
 .pw-wrap{position:relative;display:flex}
 .pw-wrap input{padding-right:40px}
@@ -732,6 +737,7 @@ textarea{resize:none;min-height:42px;height:42px}
 <div id="exitoOv"><div class="exb"><div class="ic">🎉</div><h2>¡Trabajo bien hecho!</h2><p id="exitoM">Registro guardado.</p></div></div>
 
 <script src="idb.js"></script>
+<script src="supLotes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1424,14 +1424,17 @@ function supRender(){
     var op=document.createElement('option'); op.value=m; dl.appendChild(op);
   });
 
-  // Lista de programadas
-  $('supCount').textContent = prog.length ? prog.length+' en producción' : '';
-  if(!prog.length){
+  // Lista de programadas — las que les falta lote van primero, porque el
+  // lote lo asigna otra persona después y ese es su pendiente.
+  var ordenadas = supOrdenarProgramadas(prog);
+  $('supCount').textContent = supResumenLotes(prog);
+  if(!ordenadas.length){
     $('supLista').innerHTML='<div class="hint" style="padding:8px">No hay órdenes en REGISTRO LIDER.</div>';
     return;
   }
   var html='';
-  prog.forEach(function(p){
+  ordenadas.forEach(function(p){
+    var f = supLotesFaltantes(p);
     var det=[];
     if(p.maquina)  det.push('Máq <b>'+supEsc(p.maquina)+'</b>');
     if(p.mp)       det.push('MP '+supEsc(p.mp));
@@ -1440,13 +1443,21 @@ function supRender(){
     // La col. S llega como float crudo (ej. 51.851851851851855) — se redondea
     var nCaj = parseFloat(String(p.cajas).replace(',','.'));
     if(!isNaN(nCaj) && nCaj > 0) det.push((Math.round(nCaj*10)/10)+' cajas');
-    html += '<div class="sup-row">'
-         +    '<div class="ix">'
-         +      '<span class="o">'+supEsc(p.orden)+'<span style="font-weight:600;color:#9aa0a6;font-size:10px"> · fila '+p.fila+'</span></span>'
-         +      '<span class="p">'+supEsc(p.producto || '(sin producto en ORDENES)')+'</span>'
-         +      '<span class="m">'+det.join(' · ')+'</span>'
+
+    var av='';
+    if(f.loteProd) av += '<span class="sup-falta">⚠ SIN LOTE PROD</span>';
+    if(f.loteMp)   av += '<span class="sup-falta">⚠ SIN LOTE MP</span>';
+
+    html += '<div class="sup-item'+(f.alguno?' falta':'')+'" id="supIt-'+p.fila+'">'
+         +    '<div class="sup-row">'
+         +      '<div class="ix">'
+         +        '<span class="o">'+supEsc(p.orden)+'<span style="font-weight:600;color:#9aa0a6;font-size:10px"> · fila '+p.fila+'</span></span>'
+         +        '<span class="p">'+supEsc(p.producto || '(sin producto en ORDENES)')+'</span>'
+         +        '<span class="m">'+det.join(' · ')+'</span>'
+         +        (av ? '<span class="av">'+av+'</span>' : '')
+         +      '</div>'
+         +      '<button class="sup-fin" onclick="supFin('+p.fila+',\''+supEsc(p.orden).replace(/'/g,'')+'\')">✔ FIN<br>PRODUCCIÓN</button>'
          +    '</div>'
-         +    '<button class="sup-fin" onclick="supFin('+p.fila+',\''+supEsc(p.orden).replace(/'/g,'')+'\')">✔ FIN<br>PRODUCCIÓN</button>'
          +  '</div>';
   });
   $('supLista').innerHTML=html;
