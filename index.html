@@ -7363,26 +7363,34 @@ function renderInvLogistica() {
     (!fMaq   || String(r._maq||'').trim() === fMaq)
   );
 
-  // ── Agrupar máquina → producto. Los LOTES y las unidades se acumulan por
-  //    PRODUCTO: dentro de un mismo turno puede cambiar el molde, y logística
-  //    recibe por lote, no por máquina.
+  // ── Agrupar máquina → SLOT (turno × producto). El slot es la unidad del
+  //    informe: una línea por turno con su producto, sus lotes y sus unidades,
+  //    y al cierre de cada máquina el total del día. Se agrupa por turno —y no
+  //    solo por producto— porque logística recibe turno a turno, y si el molde
+  //    cambia a media jornada necesita saber en cuál turno salió cada lote.
   const maqMap = {};
   rows.forEach(r => {
     const maq  = String(r._maq  || '—').trim();   // trim: evita split "4" vs "4 "
     const prod = String(r._prod || '—').trim();
-    const g = (maqMap[maq] ||= { maq, dtSet:{}, turnos:new Set(), prods:{}, paroT:{}, und:0, razones:[] });
+    const g = (maqMap[maq] ||= { maq, dtSet:{}, turnos:new Set(), slots:{}, paroT:{}, und:0, razones:[] });
     // t = _turno YA canonicalizado por canonicalizeTurnos (T1/T2 diurno → 4,
     // T2 nocturno/T3 → 5 en los turnos físicos de 12 h): un T1 y un T4 del
-    // mismo bloque son el MISMO turno y deben contarse una sola vez.
+    // mismo bloque son el MISMO turno y deben verse en UNA línea, no en dos.
     const t = String(r._turno||'');
     if (t) g.turnos.add(t);
     const dia = String(r._diaTurno||'');
     if (dia && TURNO_INTERVALS[t]) (g.dtSet[dia] ||= new Set()).add(t);
-    const p = (g.prods[prod] ||= { prod, und:0, lotes:new Set(), turnos:new Set() });
-    p.und += pN(r._cant);
-    if (t) p.turnos.add(t);
+    const sl = (g.slots[t + '|' + prod] ||= { turno:t, prod, und:0, lotes:{}, sinLoteUnd:0 });
+    sl.und += pN(r._cant);
+    // lotes = { lote: unidades }. Las unidades se acumulan POR LOTE: un turno
+    // puede cerrar un lote y abrir el siguiente, y bodega rotula por lote.
+    // Las cajas SIN lote van a su propio balde en vez de quedar fuera: si no,
+    // las líneas de lote no suman el total del turno y el informe se lee como
+    // si esas unidades no existieran (7-sep-2026 maq 3 T1: las cajas 22 y 23 de
+    // la orden 191, 16.000 und, salieron del sheet con LOTE PROD vacío).
     const lote = String(r._lote||'').trim();
-    if (lote) p.lotes.add(lote);
+    if (lote) sl.lotes[lote] = (sl.lotes[lote]||0) + pN(r._cant);
+    else      sl.sinLoteUnd += pN(r._cant);
     g.und += pN(r._cant);
     g.paroT[t] = (g.paroT[t]||0) + pN(r._paro);
     if (pN(r._paro) > 0) {
@@ -7406,47 +7414,70 @@ function renderInvLogistica() {
 
   const totUnd   = maqList.reduce((s,g)=>s+g.und,0);
   const lotesSet = new Set();
-  maqList.forEach(g => Object.values(g.prods).forEach(p => p.lotes.forEach(l => lotesSet.add(l))));
-  // Productos CON producción pero SIN lote: es justo lo que impide recibir en
-  // bodega. Se cuenta aparte para que se vea en el encabezado, no enterrado.
-  let sinLote = 0;
-  maqList.forEach(g => Object.values(g.prods).forEach(p => { if (p.und > 0 && !p.lotes.size) sinLote++; }));
+  maqList.forEach(g => Object.values(g.slots).forEach(sl => Object.keys(sl.lotes).forEach(l => lotesSet.add(l))));
+  // UNIDADES sin lote (no turnos): es justo lo que bodega no puede recibir, y
+  // se mide en unidades porque un turno puede traer una parte con lote y otra
+  // sin él. Contar turnos ocultaba los casos parciales.
+  const sinLote = maqList.reduce((s,g)=>
+    s + Object.values(g.slots).reduce((s2,sl)=>s2+(sl.sinLoteUnd||0), 0), 0);
 
   const turnoTxt = fTurno ? `Turno ${fTurno}` : 'Todos los turnos';
   const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
 
-  // ── Filas: una por MÁQUINA × PRODUCTO. La máquina y sus turnos se repiten en
+  // ── Chip de lote. Lleva las unidades al lado SOLO cuando el turno tuvo más de
+  //    un lote: con un solo lote la columna Und. ya dice esa misma cifra y
+  //    repetirla en cada línea ensucia el informe sin agregar nada.
+  const chipLote = (l, und, mostrarUnd) =>
+    `<span style="background:#ECFEFF;border:1px solid #A5F3FC;border-radius:5px;padding:1px 7px;font-weight:600;color:#0E7490;font-size:.95rem;white-space:nowrap">${l}</span>`
+    + (mostrarUnd ? `<span style="text-align:right;color:#059669;font-weight:700;font-size:1.05rem;white-space:nowrap">${ri(und)}</span>` : '');
+
+  // ── Filas: una por TURNO (con su producto, lotes y unidades) y al cierre de
+  //    cada máquina su TOTAL del día. La máquina y el producto se repiten en
   //    cada línea a propósito (sin rowspan): así el layout de tarjetas del
   //    celular sigue funcionando y cada tarjeta se lee sola.
   const bodyRows = maqList.map(g => {
-    const prodList = Object.values(g.prods).sort((a,b)=>b.und-a.und);
     // Máquina parada el día completo: 0 producidas y el paro cubre todo el
     // tiempo programado (turno(s) enteros perdidos, ej. daño mecánico). Se
     // distingue de un simple "sin datos" para no confundirla con una máquina
     // que sí produjo el mismo molde ese día.
     const paradaTodoElDia = g.und === 0 && g.horas > 0 && g.paro >= g.tProg - 1;
-    const turnosCell = g.nTurnos
-      ? `<div style="font-weight:700">${g.nTurnos}</div>`
-        + `<div style="font-size:.7rem;color:#6B7280">${[...g.turnos].sort().map(t=>'T'+t).join(' · ')}</div>`
-      : '—';
-    return prodList.map(p => {
-      const undCell = (p.und === 0 && paradaTodoElDia)
-        ? `<span title="Máquina parada todo el turno — ${g.razones.join(', ')||'sin razón registrada'}" style="color:#92400E;font-weight:700;cursor:help">🔧 0</span>`
-        : ri(p.und);
-      const lotesCell = p.lotes.size
-        ? [...p.lotes].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}))
-            .map(l=>`<span style="display:inline-block;background:#ECFEFF;border:1px solid #A5F3FC;border-radius:5px;padding:1px 7px;margin:1px 3px 1px 0;font-weight:600;color:#0E7490;font-size:.95rem">${l}</span>`).join('')
-        : (p.und > 0
-            ? `<span title="Producción sin lote registrado en el sheet" style="color:#B45309;font-weight:700">⚠ sin lote</span>`
-            : '—');
+    const marcaParada = und => (und === 0 && paradaTodoElDia)
+      ? `<span title="Máquina parada todo el turno — ${g.razones.join(', ')||'sin razón registrada'}" style="color:#92400E;font-weight:700;cursor:help">🔧 0</span>`
+      : ri(und);
+    // Orden cronológico por turno; dentro de un turno, el producto que más
+    // produjo primero. Los registros sin turno digitado van al final.
+    const slots = Object.values(g.slots).sort((a,b)=>
+      String(a.turno||'~').localeCompare(String(b.turno||'~'), undefined, {numeric:true}) || b.und - a.und);
+
+    const detalle = slots.map(sl => {
+      const lotesKeys = Object.keys(sl.lotes).sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));
+      // La línea "sin lote" cuenta como una más: así las unidades de la columna
+      // Lotes SIEMPRE suman las de la columna Und. Reportadas.
+      const nLineas = lotesKeys.length + (sl.sinLoteUnd > 0 ? 1 : 0);
+      const verUnd  = nLineas > 1;
+      const faltante = sl.sinLoteUnd > 0
+        ? `<span title="Cajas reportadas con LOTE PROD vacío en el sheet" style="color:#B45309;font-weight:700;white-space:nowrap">⚠ sin lote</span>`
+          + (verUnd ? `<span style="text-align:right;color:#B45309;font-weight:700;font-size:1.05rem;white-space:nowrap">${ri(sl.sinLoteUnd)}</span>` : '')
+        : '';
+      const lotesCell = nLineas
+        ? `<div class="il-lote-grid${verUnd?'':' il-1col'}">`
+          + lotesKeys.map(l => chipLote(l, sl.lotes[l], verUnd)).join('') + faltante + `</div>`
+        : '—';
       return `<tr>
         <td class="il-mq" data-label="Máquina" style="font-weight:700;color:#111827">${g.maq}</td>
-        <td data-label="Producto">${p.prod || '—'}</td>
-        <td data-label="Turnos" style="text-align:center">${turnosCell}</td>
+        <td data-label="Producto">${sl.prod || '—'}</td>
+        <td data-label="Turno" style="text-align:center;font-weight:700">${sl.turno ? 'T'+sl.turno : 'Sin turno'}</td>
         <td class="il-lotes" data-label="Lotes">${lotesCell}</td>
-        <td data-label="Und. producidas" style="text-align:right;color:#059669;font-weight:700">${undCell}</td>
+        <td data-label="Und. reportadas" style="text-align:right;color:#059669;font-weight:700">${marcaParada(sl.und)}</td>
       </tr>`;
     }).join('');
+
+    const totalMaq = `<tr class="il-subtot" style="background:#F3F4F6">
+        <td colspan="4" style="font-weight:800;color:#374151">Total Máquina ${g.maq}${g.nTurnos?` · ${g.nTurnos} turno${g.nTurnos>1?'s':''}`:''}</td>
+        <td style="text-align:right;font-weight:800;color:#0E7490">${marcaParada(g.und)}</td>
+      </tr>`;
+
+    return detalle + totalMaq;
   }).join('');
 
   contentEl.innerHTML = `
@@ -7455,6 +7486,13 @@ function renderInvLogistica() {
       #il-paper .tbl th { color:#1F2937; font-weight:700; border-bottom:1px solid #D1D5DB; font-size:1.1rem; padding:7px 12px; }
       #il-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#111827; font-size:1.25rem; padding:6px 10px; vertical-align:middle; }
       #il-paper .tbl tr:hover td { background:#F3F4F6; }
+      /* Lote + sus unidades en dos columnas alineadas. Va por CLASE y no en el
+         atributo style porque el CSS global del movil colapsa a una sola
+         columna TODA grilla declarada inline:
+           [style*="grid-template-columns"] { grid-template-columns:1fr !important }
+         Con la clase esa regla no aplica y el numero se queda al lado del chip. */
+      #il-paper .il-lote-grid { display:inline-grid; grid-template-columns:auto auto; gap:3px 10px; align-items:center; }
+      #il-paper .il-lote-grid.il-1col { grid-template-columns:auto; }
       /* ── Móvil: cada línea como tarjeta apilada (sin scroll lateral). La
          clase il-share-force (clon para la imagen de WhatsApp) desactiva este
          layout y conserva la tabla clásica tipo Excel. */
@@ -7473,6 +7511,9 @@ function renderInvLogistica() {
         #il-content:not(.il-share-force) .il-resp td.il-lotes::before { display:block; margin-bottom:5px; }
         #il-content:not(.il-share-force) .il-resp td[colspan] { display:block; text-align:center !important; }
         #il-content:not(.il-share-force) .il-resp td[colspan]::before { content:none; }
+        /* El total por máquina es un cierre, no otra tarjeta: se pega a la
+           última línea de la máquina y se distingue por el fondo. */
+        #il-content:not(.il-share-force) .il-resp tr.il-subtot { border-color:#9CA3AF; background:#F3F4F6; margin-top:-8px; }
       }
     </style>
     <div id="il-paper" style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:12px;overflow:hidden">
@@ -7492,8 +7533,8 @@ function renderInvLogistica() {
             <div style="font-size:1.5rem;font-weight:800;color:#0891B2">${lotesSet.size}</div>
           </div>
           <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid ${sinLote?'#D97706':'#9CA3AF'}">
-            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Sin lote</div>
-            <div style="font-size:1.5rem;font-weight:800;color:${sinLote?'#D97706':'#9CA3AF'}">${sinLote}</div>
+            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Und. sin lote</div>
+            <div style="font-size:1.5rem;font-weight:800;color:${sinLote?'#D97706':'#9CA3AF'}">${ri(sinLote)}</div>
           </div>
         </div>
       </div>
@@ -7503,9 +7544,9 @@ function renderInvLogistica() {
           <thead><tr style="background:#FCE4D6">
             <th style="background:#FCE4D6;color:#7A4B12">Máq</th>
             <th style="background:#FCE4D6;color:#7A4B12">Producto</th>
-            <th style="text-align:center;background:#FCE4D6;color:#7A4B12">Turnos</th>
+            <th style="text-align:center;background:#FCE4D6;color:#7A4B12">Turno</th>
             <th style="background:#FCE4D6;color:#7A4B12">Lotes</th>
-            <th style="text-align:right;background:#D6EFF5;color:#155E63">Und. Producidas</th>
+            <th style="text-align:right;background:#D6EFF5;color:#155E63">Und. Reportadas</th>
           </tr></thead>
           <tbody>${bodyRows||'<tr><td colspan="5" style="text-align:center;padding:20px;color:#6B7280">Sin datos para este día</td></tr>'}</tbody>
           <tfoot><tr style="background:#F3F4F6">
@@ -7516,7 +7557,7 @@ function renderInvLogistica() {
       </div>
       ${sinLote ? `
       <div style="background:#FEF3C7;border-top:1px solid #F59E0B;padding:10px 20px;font-size:.78rem;color:#92400E;line-height:1.5">
-        <i class="fa-solid fa-circle-info" style="margin-right:6px"></i>${sinLote} producto(s) con producción pero <b>sin lote registrado</b> en el sheet. El lote se asigna en la pestaña SUPERVISOR de <b>/registro/</b> (✏ LOTES); mientras esté vacío, logística no puede identificar el producto que recibe.
+        <i class="fa-solid fa-circle-info" style="margin-right:6px"></i><b>${ri(sinLote)} unidades</b> reportadas con la columna <b>LOTE PROD vacía</b> en el sheet: aparecen en las líneas <b>⚠ sin lote</b>. Sí están sumadas en los totales, pero bodega no puede rotularlas. El lote se corrige en la pestaña SUPERVISOR de <b>/registro/</b> (✏ LOTES).
       </div>` : ''}
     </div>`;
 }
