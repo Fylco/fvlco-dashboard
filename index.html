@@ -250,7 +250,6 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
     <div class="nav-group-header" onclick="toggleNavGroup('plan-op')" style="color:#10B981">
       <span class="nav-icon" style="background:rgba(16,185,129,.15);color:#10B981"><i class="fa-solid fa-clipboard-list"></i></span>
       Plan Operativo
-      <span class="po-badge" style="margin-left:4px">NUEVO</span>
       <i class="fa-solid fa-chevron-down nav-chevron" id="chevron-plan-op" style="color:#10B981"></i>
     </div>
     <div class="nav-group-items collapsed" id="group-plan-op" style="max-height:1200px">
@@ -277,6 +276,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
       <div class="nav-item" onclick="showSection('po-inventario')" data-section="po-inventario" data-color="#34D399">
         <span class="nav-icon"><i class="fa-solid fa-warehouse"></i></span> Inventario MP
+      </div>
+      <div class="nav-item" onclick="showSection('inv-log')" data-section="inv-log" data-color="#22D3EE">
+        <span class="nav-icon"><i class="fa-solid fa-dolly"></i></span> Inventario Logística Diario
       </div>
       <div class="nav-item" onclick="showSection('po-recursos')" data-section="po-recursos" data-color="#8B5CF6">
         <span class="nav-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span> Máquinas y Personal
@@ -518,6 +520,31 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       </div>
       <div id="rc-debug-panel" style="display:none;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:.78rem;color:#92400E;font-family:monospace"></div>
       <div id="rc-content"></div>
+    </div>
+
+    <!-- ============================= INVENTARIO LOGÍSTICA DIARIO == -->
+    <div class="section" id="sec-inv-log">
+      <div class="filter-bar" style="align-items:center">
+        <button class="btn-clear" onclick="ilStepDay(-1)" title="Día anterior" style="font-weight:700;padding:6px 14px">◀ Día anterior</button>
+        <select id="il-f-dia" onchange="renderInvLogistica()" style="min-width:220px;text-align:center;font-weight:600"></select>
+        <button class="btn-clear" onclick="ilStepDay(1)" title="Día siguiente" style="font-weight:700;padding:6px 14px">Día siguiente ▶</button>
+        <select id="il-f-turno" onchange="renderInvLogistica()">
+          <option value="">Todos los turnos</option>
+          <option value="1">Turno 1 — 6:00 AM a 2:00 PM</option>
+          <option value="2">Turno 2 — 2:00 PM a 10:00 PM</option>
+          <option value="3">Turno 3 — 10:00 PM a 6:00 AM</option>
+          <option value="4">Turno 1 — 6:00 AM a 6:00 PM</option>
+          <option value="5">Turno 2 — 6:00 PM a 6:00 AM</option>
+        </select>
+        <select id="il-f-maq" onchange="renderInvLogistica()">
+          <option value="">Todas las máquinas</option>
+        </select>
+        <button class="btn-clear" onclick="ilGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
+        <button id="il-share-btn" onclick="shareInvLogImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
+          <i class="fa-brands fa-whatsapp"></i> Compartir
+        </button>
+      </div>
+      <div id="il-content"></div>
     </div>
 
     <!-- ======================================= PLAN MENSUAL == -->
@@ -2901,9 +2928,30 @@ function parseMaquilas(rows) {
 
 const _MESES_ES = ['','enero','febrero','marzo','abril','mayo','junio',
                    'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+// LOTE DE PRODUCCIÓN (col. G de BD REPORTES PRODUCCIÓN). Se busca por TEXTO en
+// vez de por nombre exacto porque el encabezado ha aparecido como "LOTE" y como
+// "LOTE PRODUCCIÓN", y la Ó a veces llega en otra codificación (mismo problema
+// que ya obligó a buscar "QUINA" para la máquina). Se excluye el LOTE DE MATERIA
+// PRIMA (col. H), que es otro dato: es el lote de la resina, no del producto.
+function _loteProdOf(r) {
+  for (const k of Object.keys(r)) {
+    const up = k.trim().toUpperCase();
+    if (!up.includes('LOTE')) continue;
+    if (up.includes('MP') || up.includes('MATERIA') || up.includes('ORIGEN')) continue;
+    const v = String(r[k] ?? '').trim();
+    if (v) return v;
+  }
+  return '';
+}
 function normalizeProd(r) {
   const out = {};
   for (const k in r) out[k.trim()] = r[k];
+
+  // LOTE DE PRODUCCIÓN, crudo. Se lee ANTES de la conversión numérica masiva y
+  // se vuelve a poner DESPUÉS: esa conversión recorre TODAS las claves de out
+  // —incluidas las que empiezan por "_"— y convertiría el lote "007" en 7, el
+  // "8.5" en 85 (pNum quita el punto de miles) y el "0" en un valor falsy.
+  const _loteRaw = _loteProdOf(out);
 
   // ── Extraer fecha de turno ANTES de la conversión numérica masiva
   // El día de planta va de 6:00am a 6:00am del día siguiente. Turnos 1/2/4
@@ -3021,6 +3069,7 @@ function normalizeProd(r) {
   out._turno = String(out['TURNO'] ?? '').trim();
   out._prod  = String(out['PRODUCTO'] ?? '').trim();
   out._orden = out['ORDEN'] ?? '';
+  out._lote  = _loteRaw;
   out._cant  = pNum(out['CANT REPORTADA']) || _findColVal(out,'CANT REPORT','') || 0;
   // Si la fila trae la columna autoritativa "TIEMPO PARO MIN", usar SIEMPRE ese
   // valor (incluyendo 0 = sin paro). Antes, "0 || siguienteFallback" trataba un
@@ -6480,16 +6529,10 @@ async function exportCompactImage() {
   if (btn) { btn.disabled = false; btn.innerHTML = prev; }
 }
 
-// Comparte el reporte como imagen PNG (Web Share API → WhatsApp en celular).
-// En PC / navegador sin soporte, descarga la imagen como respaldo.
-//
-// IMPORTANTE (bug corregido): navigator.share() SOLO funciona mientras está
-// vigente el "gesto de usuario" (transient activation, ~5s en Chrome). Generar
-// la imagen con html2canvas tarda más que eso, así que si compartimos DESPUÉS
-// del render, el navegador rechaza con "Must be handling a user gesture".
-// Solución: cacheamos la imagen ya generada; si el gesto expiró, un 2º toque
-// comparte al instante (sin await previo, con el gesto fresco del nuevo clic).
-let _rcShareCache = { key:null, file:null };
+// Imagen ya generada por reporte: { elId: {key, file} }. La clave identifica el
+// día/turno capturado; si cambia, la imagen vieja ya no vale.
+const _shareCache = {};
+function invalidateShareCache(elId) { delete _shareCache[elId]; }
 
 // Saludo según la hora REAL de envío (no la fecha del reporte): 6:00am-12:00pm
 // Buenos días, 12:01pm-6:00pm Buenas tardes, 6:00pm-6:00am Buenas noches.
@@ -6500,24 +6543,25 @@ function saludoPorHora() {
   return 'Buenas noches';
 }
 
-async function shareCompactImage() {
-  const el  = document.getElementById('rc-content');
-  const btn = document.getElementById('rc-share-btn');
+// Compartidor genérico de reportes en imagen. Lo usan el Reporte Compacto y el
+// Inventario Logística Diario: los dos capturan su propio contenedor a ancho
+// fijo y lo mandan por Web Share API.
+//   opts = { elId, btnId, forceClass, key, fname, title, text, width }
+async function shareReportImage(opts) {
+  const el  = document.getElementById(opts.elId);
+  const btn = document.getElementById(opts.btnId);
   if (!el) return;
-  const sel   = document.getElementById('rc-f-dia');
-  const fecha = (sel && sel.value) ? sel.value : 'reporte';
-  const turno = (document.getElementById('rc-f-turno')?.value || '');
-  const key   = `${fecha}|${turno}`;
-  const fname = `Reporte_Compacto_${fecha}.png`;
-  const shareData = f => ({ files:[f], title:'Reporte de Producción FVLco', text:`${saludoPorHora()}, aquí el Reporte de Producción FVLco — ${fecha}` });
+  const key = opts.key;
+  const shareData = f => ({ files:[f], title:opts.title, text:opts.text });
   const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
 
   // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
   //    previo, para no perder el gesto del clic actual (camino del 2º toque).
-  if (_rcShareCache.key === key && _rcShareCache.file &&
-      navigator.canShare && navigator.canShare({ files:[_rcShareCache.file] })) {
+  const cached = _shareCache[opts.elId];
+  if (cached && cached.key === key && cached.file &&
+      navigator.canShare && navigator.canShare({ files:[cached.file] })) {
     try {
-      await navigator.share(shareData(_rcShareCache.file));
+      await navigator.share(shareData(cached.file));
       return;
     } catch(err) {
       if (err && err.name === 'AbortError') return;   // el usuario canceló
@@ -6529,18 +6573,19 @@ async function shareCompactImage() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
   try {
     // Capturar SIEMPRE el formato clásico de tabla ancha (aunque la pantalla
-    // sea móvil): se clona fuera de pantalla a 1100px y rc-share-force
+    // sea móvil): se clona fuera de pantalla y la clase *-share-force
     // desactiva el layout de tarjetas del media query.
-    // RC_W = ancho fijo de la imagen. A 1280 el reporte salía como tira
-    // vertical (alto/ancho ≈3.1) y en WhatsApp se veía "estirado"; a 1900 las
-    // columnas y los textos largos (motivos de paro) tienen espacio y queda
-    // apaisado (~1.3–1.5), como el reporte que se veía bien. Se conservan las
-    // fuentes grandes y legibles.
-    const RC_W = 1900;
+    // RC_W = ancho fijo de la imagen. A 1280 el Reporte Compacto salía como
+    // tira vertical (alto/ancho ≈3.1) y en WhatsApp se veía "estirado"; a 1900
+    // sus columnas y los textos largos (motivos de paro) tienen espacio y queda
+    // apaisado (~1.3–1.5). Es un parámetro porque un reporte con MENOS columnas
+    // se estira al contrario: el Inventario Logística, con 5 columnas, a 1900
+    // quedaba en ~3.2:1 con media imagen en blanco.
+    const RC_W = opts.width || 1900;
     const stage = document.createElement('div');
     stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
     const cloneEl = el.cloneNode(true);
-    cloneEl.classList.add('rc-share-force');
+    cloneEl.classList.add(opts.forceClass);
     stage.appendChild(cloneEl);
     document.body.appendChild(stage);
     let canvas;
@@ -6554,10 +6599,9 @@ async function shareCompactImage() {
         width: RC_W, windowWidth: RC_W
       });
     } finally { stage.remove(); }
-    const blob   = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    const file   = new File([blob], fname, { type:'image/png' });
-    _rcShareCache = { key, file };   // guardar para poder compartir en el 2º toque
-
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file = new File([blob], opts.fname, { type:'image/png' });
+    _shareCache[opts.elId] = { key, file };   // para poder compartir en el 2º toque
     if (navigator.canShare && navigator.canShare({ files:[file] })) {
       try {
         // Camino feliz (móvil rápido): comparte directo en el 1er toque
@@ -6573,7 +6617,7 @@ async function shareCompactImage() {
     } else {
       // PC / sin soporte de compartir archivos: descargar como respaldo
       const link = document.createElement('a');
-      link.download = fname; link.href = canvas.toDataURL('image/png'); link.click();
+      link.download = opts.fname; link.href = canvas.toDataURL('image/png'); link.click();
       alert('Este dispositivo no permite compartir directamente. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.\n\nTip: desde el celular el botón Compartir abre WhatsApp automáticamente.');
     }
   } catch(err) {
@@ -6584,6 +6628,44 @@ async function shareCompactImage() {
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = prev; }
   }
+}
+
+// Comparte el REPORTE COMPACTO como imagen PNG (Web Share API → WhatsApp en
+// celular). En PC / navegador sin soporte, descarga la imagen como respaldo.
+//
+// IMPORTANTE (bug corregido): navigator.share() SOLO funciona mientras está
+// vigente el "gesto de usuario" (transient activation, ~5s en Chrome). Generar
+// la imagen con html2canvas tarda más que eso, así que si compartimos DESPUÉS
+// del render, el navegador rechaza con "Must be handling a user gesture".
+// Solución: shareReportImage cachea la imagen ya generada; si el gesto expiró,
+// un 2º toque comparte al instante (sin await previo, con el gesto fresco).
+async function shareCompactImage() {
+  const sel   = document.getElementById('rc-f-dia');
+  const fecha = (sel && sel.value) ? sel.value : 'reporte';
+  const turno = (document.getElementById('rc-f-turno')?.value || '');
+  return shareReportImage({
+    elId:'rc-content', btnId:'rc-share-btn', forceClass:'rc-share-force',
+    key:`${fecha}|${turno}`,
+    fname:`Reporte_Compacto_${fecha}.png`,
+    title:'Reporte de Producción FVLco',
+    text:`${saludoPorHora()}, aquí el Reporte de Producción FVLco — ${fecha}`
+  });
+}
+
+// Comparte el INVENTARIO LOGÍSTICA DIARIO por el mismo camino.
+async function shareInvLogImage() {
+  const sel   = document.getElementById('il-f-dia');
+  const fecha = (sel && sel.value) ? sel.value : 'reporte';
+  const turno = (document.getElementById('il-f-turno')?.value || '');
+  const maq   = (document.getElementById('il-f-maq')?.value   || '');
+  return shareReportImage({
+    elId:'il-content', btnId:'il-share-btn', forceClass:'il-share-force',
+    width:1100,   // 5 columnas: a 1900 sobraba la mitad del ancho
+    key:`${fecha}|${turno}|${maq}`,
+    fname:`Inventario_Logistica_${fecha}.png`,
+    title:'Inventario Logística Diario — FVLco',
+    text:`${saludoPorHora()}, aquí el Inventario Logística Diario FVLco — ${fecha}`
+  });
 }
 
 // =======================================================
@@ -6657,7 +6739,7 @@ function renderReporteCompacto() {
   // de turnos). La invalidamos para que el próximo Compartir capture lo que se ve
   // ahora, no un PNG viejo. Seguro para el flujo de 2 toques: entre toque y toque
   // no se re-renderiza. (Ver bug reporte: Máquina #3 salía con Turno 3 fantasma.)
-  _rcShareCache = { key:null, file:null };
+  invalidateShareCache('rc-content');
   const pN = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
   const ri = n => Math.round(n||0).toLocaleString('es-CO'); // entero con separador de miles
   const pc = v => (v===null||isNaN(v)) ? '—' : v.toFixed(2)+'%';
@@ -7219,6 +7301,227 @@ function renderReporteCompacto() {
 }
 
 // =======================================================
+// INVENTARIO LOGÍSTICA DIARIO
+// -------------------------------------------------------
+// Misma navegación que el Reporte Compacto (día / turno) pero recortado a lo
+// que logística necesita para recibir producto terminado: MÁQUINA, PRODUCTO,
+// TURNOS, LOTES y UNIDADES PRODUCIDAS. A propósito NO trae cavidades, ciclos
+// ni unidades programadas: eso es lectura de producción, no de bodega, y
+// mezclarlo obliga a leer una tabla de 10 columnas en el celular.
+// =======================================================
+function ilStepDay(delta) {
+  const sel = document.getElementById('il-f-dia');
+  if (!sel || !sel.options.length) return;
+  sel.selectedIndex = Math.max(0, Math.min(sel.options.length - 1, sel.selectedIndex + delta));
+  renderInvLogistica();
+}
+function ilGoLatest() {
+  const sel = document.getElementById('il-f-dia');
+  if (!sel || !sel.options.length) return;
+  sel.selectedIndex = sel.options.length - 1;   // último día = más reciente
+  renderInvLogistica();
+}
+
+function renderInvLogistica() {
+  const contentEl = document.getElementById('il-content');
+  if (!contentEl) return;
+  // El contenido se redibuja: la imagen cacheada para Compartir quedó obsoleta.
+  invalidateShareCache('il-content');
+  const pN = v => { const n=parseFloat(String(v||'').replace(',','.')); return isNaN(n)?0:n; };
+  const ri = n => Math.round(n||0).toLocaleString('es-CO');
+
+  // ── Navegador de día: solo fechas bien formadas (el sheet trae alguna fecha
+  //    mal digitada tipo "202-07-01"). Mismo criterio que el Reporte Compacto.
+  const diaEl = document.getElementById('il-f-dia');
+  const fechas = [...new Set((DATA.prod||[]).map(r=>r._fechaKey).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(String(k||''))))].sort();
+  if (diaEl && diaEl.options.length === 0) {
+    fechas.forEach(k=>{
+      const o=document.createElement('option');
+      o.value=k;
+      const row=(DATA.prod||[]).find(r=>r._fechaKey===k);
+      o.textContent = row && row._fechaLabel ? row._fechaLabel : k;
+      diaEl.appendChild(o);
+    });
+    if (fechas.length) diaEl.value = fechas[fechas.length-1];   // default: último día
+  }
+  // ── Selector de máquina: se llena una sola vez (options.length<=1 = solo el
+  //    "Todas las máquinas") para no perder la selección en cada render.
+  const maqEl = document.getElementById('il-f-maq');
+  if (maqEl && maqEl.options.length <= 1) {
+    [...new Set((DATA.prod||[]).map(r=>String(r._maq||'').trim()).filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+      .forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent='Máquina '+m; maqEl.appendChild(o); });
+  }
+
+  const fKey   = (diaEl?.value || (fechas.length?fechas[fechas.length-1]:'')).trim();
+  const fTurno = (document.getElementById('il-f-turno')?.value || '').trim();
+  const fMaq   = (maqEl?.value || '').trim();
+
+  const rows = (DATA.prod||[]).filter(r =>
+    r._fechaKey === fKey &&
+    (!fTurno || String(r._turno) === fTurno) &&
+    (!fMaq   || String(r._maq||'').trim() === fMaq)
+  );
+
+  // ── Agrupar máquina → producto. Los LOTES y las unidades se acumulan por
+  //    PRODUCTO: dentro de un mismo turno puede cambiar el molde, y logística
+  //    recibe por lote, no por máquina.
+  const maqMap = {};
+  rows.forEach(r => {
+    const maq  = String(r._maq  || '—').trim();   // trim: evita split "4" vs "4 "
+    const prod = String(r._prod || '—').trim();
+    const g = (maqMap[maq] ||= { maq, dtSet:{}, turnos:new Set(), prods:{}, paroT:{}, und:0, razones:[] });
+    // t = _turno YA canonicalizado por canonicalizeTurnos (T1/T2 diurno → 4,
+    // T2 nocturno/T3 → 5 en los turnos físicos de 12 h): un T1 y un T4 del
+    // mismo bloque son el MISMO turno y deben contarse una sola vez.
+    const t = String(r._turno||'');
+    if (t) g.turnos.add(t);
+    const dia = String(r._diaTurno||'');
+    if (dia && TURNO_INTERVALS[t]) (g.dtSet[dia] ||= new Set()).add(t);
+    const p = (g.prods[prod] ||= { prod, und:0, lotes:new Set(), turnos:new Set() });
+    p.und += pN(r._cant);
+    if (t) p.turnos.add(t);
+    const lote = String(r._lote||'').trim();
+    if (lote) p.lotes.add(lote);
+    g.und += pN(r._cant);
+    g.paroT[t] = (g.paroT[t]||0) + pN(r._paro);
+    if (pN(r._paro) > 0) {
+      const rz = String(r['RAZON PARO'] || r['RAZÓN PARO'] || '').trim();
+      if (rz && !g.razones.includes(rz)) g.razones.push(rz);
+    }
+  });
+
+  const maqList = Object.values(maqMap).sort((a,b)=>String(a.maq).localeCompare(String(b.maq),undefined,{numeric:true}));
+  maqList.forEach(g => {
+    // Horas por UNIÓN de las ventanas de turno, no por suma de códigos.
+    g.horas = Object.values(g.dtSet).reduce((s,ts)=>s+calcShiftHours(ts),0);
+    g.tProg = g.horas*60;
+    // Turnos = horas / 8 (8h→1, 16h→2, 24h→3), igual que el Reporte Compacto.
+    g.nTurnos = g.horas>0 ? Math.max(1, Math.min(3, Math.round(g.horas/8))) : 0;
+    // Tope de paro por turno (8h = 480 min, 12h = 720): el mismo paro digitado
+    // en varios turnos daría un total imposible. Aquí el paro solo decide si la
+    // máquina estuvo parada todo el día, pero sin topar sería un falso positivo.
+    g.paro = Object.keys(g.paroT).reduce((s,t)=>s+Math.min(g.paroT[t], (t==='4'||t==='5')?720:480), 0);
+  });
+
+  const totUnd   = maqList.reduce((s,g)=>s+g.und,0);
+  const lotesSet = new Set();
+  maqList.forEach(g => Object.values(g.prods).forEach(p => p.lotes.forEach(l => lotesSet.add(l))));
+  // Productos CON producción pero SIN lote: es justo lo que impide recibir en
+  // bodega. Se cuenta aparte para que se vea en el encabezado, no enterrado.
+  let sinLote = 0;
+  maqList.forEach(g => Object.values(g.prods).forEach(p => { if (p.und > 0 && !p.lotes.size) sinLote++; }));
+
+  const turnoTxt = fTurno ? `Turno ${fTurno}` : 'Todos los turnos';
+  const fechaTxt = (rows[0] && rows[0]._fechaLabel) ? rows[0]._fechaLabel : (fKey || 'Sin día seleccionado');
+
+  // ── Filas: una por MÁQUINA × PRODUCTO. La máquina y sus turnos se repiten en
+  //    cada línea a propósito (sin rowspan): así el layout de tarjetas del
+  //    celular sigue funcionando y cada tarjeta se lee sola.
+  const bodyRows = maqList.map(g => {
+    const prodList = Object.values(g.prods).sort((a,b)=>b.und-a.und);
+    // Máquina parada el día completo: 0 producidas y el paro cubre todo el
+    // tiempo programado (turno(s) enteros perdidos, ej. daño mecánico). Se
+    // distingue de un simple "sin datos" para no confundirla con una máquina
+    // que sí produjo el mismo molde ese día.
+    const paradaTodoElDia = g.und === 0 && g.horas > 0 && g.paro >= g.tProg - 1;
+    const turnosCell = g.nTurnos
+      ? `<div style="font-weight:700">${g.nTurnos}</div>`
+        + `<div style="font-size:.7rem;color:#6B7280">${[...g.turnos].sort().map(t=>'T'+t).join(' · ')}</div>`
+      : '—';
+    return prodList.map(p => {
+      const undCell = (p.und === 0 && paradaTodoElDia)
+        ? `<span title="Máquina parada todo el turno — ${g.razones.join(', ')||'sin razón registrada'}" style="color:#92400E;font-weight:700;cursor:help">🔧 0</span>`
+        : ri(p.und);
+      const lotesCell = p.lotes.size
+        ? [...p.lotes].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}))
+            .map(l=>`<span style="display:inline-block;background:#ECFEFF;border:1px solid #A5F3FC;border-radius:5px;padding:1px 7px;margin:1px 3px 1px 0;font-weight:600;color:#0E7490;font-size:.95rem">${l}</span>`).join('')
+        : (p.und > 0
+            ? `<span title="Producción sin lote registrado en el sheet" style="color:#B45309;font-weight:700">⚠ sin lote</span>`
+            : '—');
+      return `<tr>
+        <td class="il-mq" data-label="Máquina" style="font-weight:700;color:#111827">${g.maq}</td>
+        <td data-label="Producto">${p.prod || '—'}</td>
+        <td data-label="Turnos" style="text-align:center">${turnosCell}</td>
+        <td class="il-lotes" data-label="Lotes">${lotesCell}</td>
+        <td data-label="Und. producidas" style="text-align:right;color:#059669;font-weight:700">${undCell}</td>
+      </tr>`;
+    }).join('');
+  }).join('');
+
+  contentEl.innerHTML = `
+    <style>
+      #il-paper { color:#1F2937; }
+      #il-paper .tbl th { color:#1F2937; font-weight:700; border-bottom:1px solid #D1D5DB; font-size:1.1rem; padding:7px 12px; }
+      #il-paper .tbl td { border-bottom:1px solid #E5E7EB; color:#111827; font-size:1.25rem; padding:6px 10px; vertical-align:middle; }
+      #il-paper .tbl tr:hover td { background:#F3F4F6; }
+      /* ── Móvil: cada línea como tarjeta apilada (sin scroll lateral). La
+         clase il-share-force (clon para la imagen de WhatsApp) desactiva este
+         layout y conserva la tabla clásica tipo Excel. */
+      @media (max-width: 768px) {
+        #il-content:not(.il-share-force) .il-resp { min-width:0 !important; }
+        #il-content:not(.il-share-force) .il-resp,
+        #il-content:not(.il-share-force) .il-resp tbody,
+        #il-content:not(.il-share-force) .il-resp tfoot { display:block; width:100%; }
+        #il-content:not(.il-share-force) .il-resp thead { display:none; }
+        #il-content:not(.il-share-force) .il-resp tr { display:block; border:1px solid #D1D5DB; border-radius:10px; margin-bottom:12px; overflow:hidden; background:#FFFFFF; }
+        #il-content:not(.il-share-force) .il-resp td { display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:right !important; padding:7px 12px !important; font-size:1rem !important; border-bottom:1px solid #F3F4F6 !important; }
+        #il-content:not(.il-share-force) .il-resp td::before { content:attr(data-label); color:#6B7280; font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; font-weight:700; flex-shrink:0; }
+        #il-content:not(.il-share-force) .il-resp td.il-mq { display:block; background:#0891B2; color:#FFFFFF !important; font-size:1.02rem !important; text-align:left !important; padding:8px 12px !important; font-weight:800 !important; }
+        #il-content:not(.il-share-force) .il-resp td.il-mq::before { content:attr(data-label) ' '; color:rgba(255,255,255,.75); font-size:.7rem; margin-right:6px; }
+        #il-content:not(.il-share-force) .il-resp td.il-lotes { display:block; text-align:left !important; }
+        #il-content:not(.il-share-force) .il-resp td.il-lotes::before { display:block; margin-bottom:5px; }
+        #il-content:not(.il-share-force) .il-resp td[colspan] { display:block; text-align:center !important; }
+        #il-content:not(.il-share-force) .il-resp td[colspan]::before { content:none; }
+      }
+    </style>
+    <div id="il-paper" style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:12px;overflow:hidden">
+      <div style="background:#F3F4F6;padding:14px 20px;border-bottom:3px solid #0891B2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:1.5rem;font-weight:800;color:#111827">PRODUCCIÓN FYLCO</div>
+          <div style="font-size:1.05rem;color:#374151;font-weight:600">${fechaTxt}</div>
+          <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:2px">Inventario Logística Diario · ${turnoTxt}${fMaq?' · Máquina '+fMaq:''}</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #059669">
+            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Total und. producidas</div>
+            <div style="font-size:1.5rem;font-weight:800;color:#059669">${ri(totUnd)}</div>
+          </div>
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid #0891B2">
+            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Lotes</div>
+            <div style="font-size:1.5rem;font-weight:800;color:#0891B2">${lotesSet.size}</div>
+          </div>
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:8px 14px;text-align:center;border-left:3px solid ${sinLote?'#D97706':'#9CA3AF'}">
+            <div style="font-size:.8rem;color:#6B7280;text-transform:uppercase">Sin lote</div>
+            <div style="font-size:1.5rem;font-weight:800;color:${sinLote?'#D97706':'#9CA3AF'}">${sinLote}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table class="tbl il-resp" style="width:100%;min-width:640px">
+          <thead><tr style="background:#FCE4D6">
+            <th style="background:#FCE4D6;color:#7A4B12">Máq</th>
+            <th style="background:#FCE4D6;color:#7A4B12">Producto</th>
+            <th style="text-align:center;background:#FCE4D6;color:#7A4B12">Turnos</th>
+            <th style="background:#FCE4D6;color:#7A4B12">Lotes</th>
+            <th style="text-align:right;background:#D6EFF5;color:#155E63">Und. Producidas</th>
+          </tr></thead>
+          <tbody>${bodyRows||'<tr><td colspan="5" style="text-align:center;padding:20px;color:#6B7280">Sin datos para este día</td></tr>'}</tbody>
+          <tfoot><tr style="background:#F3F4F6">
+            <td colspan="4" style="font-weight:800;color:#111827">TOTAL</td>
+            <td style="text-align:right;font-weight:800;color:#0E7490;font-size:1.35rem">${ri(totUnd)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+      ${sinLote ? `
+      <div style="background:#FEF3C7;border-top:1px solid #F59E0B;padding:10px 20px;font-size:.78rem;color:#92400E;line-height:1.5">
+        <i class="fa-solid fa-circle-info" style="margin-right:6px"></i>${sinLote} producto(s) con producción pero <b>sin lote registrado</b> en el sheet. El lote se asigna en la pestaña SUPERVISOR de <b>/registro/</b> (✏ LOTES); mientras esté vacío, logística no puede identificar el producto que recibe.
+      </div>` : ''}
+    </div>`;
+}
+
+// =======================================================
 // RENDER ALL
 // =======================================================
 function renderAll() {
@@ -7226,6 +7529,7 @@ function renderAll() {
   renderOEE();
   renderReporteDiario();
   renderReporteCompacto();
+  renderInvLogistica();
   renderMaquilas();
   renderPlanMensual();
   renderPlanRef();
@@ -7251,14 +7555,16 @@ const TITLES = {
   'po-capacidad':'Capacidad Mensual','po-maquila':'Maquila Plan',
   'po-personal':'Personal Q1/Q2','po-horas':'Horas & Costos',
   'po-lote':'Lote Mínimo','po-inventario':'Inventario MP',
-  'po-recursos':'Máquinas y Personal'
+  'po-recursos':'Máquinas y Personal',
+  'inv-log':'Inventario Logística Diario'
 };
 const SECTION_RENDERS = {
   resumen:renderResumen, oee:renderOEE, 'reporte-diario':renderReporteDiario,
   'reporte-compacto':renderReporteCompacto,
   'plan-mensual':renderPlanMensual,
   'plan-ref':renderPlanRef, noconf:renderNC, otif:renderOTIF,
-  paros:renderParos, 'analisis-paros':renderAnalisisParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, maquilas:renderMaquilas, descripcion:renderDescripcion
+  paros:renderParos, 'analisis-paros':renderAnalisisParos, accid:renderAccid, costos:renderCostos, forecast:renderForecast, maquilas:renderMaquilas, descripcion:renderDescripcion,
+  'inv-log':renderInvLogistica
 };
 // Secciones protegidas con clave: ya no hay ninguna.
 // El tablero se abre sin clave (decisión del 2026-09-03). La protección de los
@@ -7293,10 +7599,10 @@ function showSection(id) {
 
   // Filtro global: oculto donde hay filtros propios (Reporte Diario, Compacto, No Conformes)
   const gf = document.getElementById('global-filter-group');
-  if (gf) gf.style.display = (id==='reporte-diario' || id==='reporte-compacto' || id==='noconf') ? 'none' : 'flex';
+  if (gf) gf.style.display = (id==='reporte-diario' || id==='reporte-compacto' || id==='inv-log' || id==='noconf') ? 'none' : 'flex';
   // Descargar PDF: oculto en el Reporte Compacto (solo se usa Compartir)
   const pdf = document.getElementById('btn-pdf');
-  if (pdf) pdf.style.display = (id==='reporte-compacto') ? 'none' : 'flex';
+  if (pdf) pdf.style.display = (id==='reporte-compacto' || id==='inv-log') ? 'none' : 'flex';
 
   if(SECTION_RENDERS[id] && DATA.prod.length) SECTION_RENDERS[id]();
   if(id === 'po-recursos') { renderRecursos(); initRecursosSync(); }
