@@ -1151,7 +1151,7 @@ if('serviceWorker' in navigator){
    solo en memoria durante la sesión — nunca en disco ni en
    este archivo.
 ═══════════════════════════════════════════════════════ */
-var SUP = { pw:null, activo:false, datos:null };
+var SUP = { pw:null, activo:false, datos:null, editando:null };
 
 function supEsc(s){
   return String(s==null?'':s)
@@ -1424,6 +1424,10 @@ function supRender(){
     var op=document.createElement('option'); op.value=m; dl.appendChild(op);
   });
 
+  // El innerHTML de abajo rearma la lista: cualquier formulario abierto
+  // deja de existir, así que el estado tiene que reflejarlo.
+  SUP.editando = null;
+
   // Lista de programadas — las que les falta lote van primero, porque el
   // lote lo asigna otra persona después y ese es su pendiente.
   var ordenadas = supOrdenarProgramadas(prog);
@@ -1456,11 +1460,140 @@ function supRender(){
          +        '<span class="m">'+det.join(' · ')+'</span>'
          +        (av ? '<span class="av">'+av+'</span>' : '')
          +      '</div>'
-         +      '<button class="sup-fin" onclick="supFin('+p.fila+',\''+supEsc(p.orden).replace(/'/g,'')+'\')">✔ FIN<br>PRODUCCIÓN</button>'
+         +      '<div class="sup-acc">'
+         +        '<button class="sup-lot" onclick="supEditar('+p.fila+')">✏ LOTES</button>'
+         +        '<button class="sup-fin" onclick="supFin('+p.fila+',\''+supEsc(p.orden).replace(/'/g,'')+'\')">✔ FIN<br>PRODUCCIÓN</button>'
+         +      '</div>'
          +    '</div>'
+         +    supEditHtml(p)
          +  '</div>';
   });
   $('supLista').innerHTML=html;
+}
+
+/* ── Lotes de una orden ya programada ──────────────────────────────
+   El lote lo asigna una persona distinta a quien programa, después, y
+   desde el PC de planta que no tiene acceso al Sheet. Estas funciones
+   son la única vía para que ese dato entre sin abrir el libro.
+
+   El formulario se renderiza OCULTO para cada orden: abrirlo no exige
+   re-render, y el `id` lleva la fila porque supCargar() rearma la lista
+   completa con innerHTML. supEsc() escapa comillas, así que los valores
+   pueden ir en atributos value="".                                   */
+
+/** Busca una orden programada por su número de fila. */
+function supProgFila(fila){
+  var out=null;
+  ((SUP.datos||{}).programadas||[]).forEach(function(x){ if(x.fila===fila) out=x; });
+  return out;
+}
+
+function supEditHtml(p){
+  var f=p.fila;
+  return '<div class="sup-edit" id="supEd-'+f+'">'
+    +  '<div class="fld"><label>Materia prima <span class="req">*</span> '
+    +  '<span style="text-transform:none;color:#9aa0a6">→ col. M</span></label>'
+    +  '<input id="supEdMp-'+f+'" type="text" list="supMpList" autocomplete="off" value="'+supEsc(p.mp)+'"></div>'
+    +  '<div class="r2">'
+    +    '<div class="fld"><label>Lote materia prima '
+    +    '<span style="text-transform:none;color:#9aa0a6">→ col. N</span></label>'
+    +    '<input id="supEdLoteMp-'+f+'" type="text" autocomplete="off" placeholder="ej. DTB920720" value="'+supEsc(p.loteMp)+'"></div>'
+    +    '<div class="fld"><label>Lote producción '
+    +    '<span style="text-transform:none;color:#9aa0a6">→ col. O</span></label>'
+    +    '<input id="supEdLoteProd-'+f+'" type="text" autocomplete="off" placeholder="ej. 821-0" value="'+supEsc(p.loteProd)+'"></div>'
+    +  '</div>'
+    +  '<div class="sup-edit-acc">'
+    +    '<button type="button" class="btn btn-sup" id="supEdBtn-'+f+'" onclick="supGuardarLotes('+f+')">💾 GUARDAR LOTES</button>'
+    +    '<button type="button" class="sup-lnk" onclick="supEdCancelar('+f+')">cancelar</button>'
+    +  '</div>'
+    + '</div>';
+}
+
+/** Vuelve a poner en los campos lo que dice SUP.datos (o sea, la hoja). */
+function supEdRestaurar(fila){
+  var p=supProgFila(fila);
+  if(!p) return;
+  var m=$('supEdMp-'+fila);       if(m) m.value = p.mp       || '';
+  var n=$('supEdLoteMp-'+fila);   if(n) n.value = p.loteMp   || '';
+  var o=$('supEdLoteProd-'+fila); if(o) o.value = p.loteProd || '';
+  cls('supEdMp-'+fila, 'err-f', false);
+}
+
+function supEdCerrar(fila){
+  cls('supEd-'+fila, 'open', false);
+  cls('supIt-'+fila, 'abierto', false);
+  if(SUP.editando === fila) SUP.editando = null;
+}
+
+function supEdCancelar(fila){
+  supEdRestaurar(fila);
+  supEdCerrar(fila);
+}
+
+/** Abre el formulario de una orden. Solo uno a la vez: dos abiertos
+    invitan a escribir en la fila equivocada. */
+function supEditar(fila){
+  if(SUP.editando && SUP.editando !== fila) supEdCerrar(SUP.editando);
+  if(!$('supEd-'+fila)) return;
+
+  supEdRestaurar(fila);                       // parte siempre de lo que dice la hoja
+  cls('supEd-'+fila, 'open', true);
+  cls('supIt-'+fila, 'abierto', true);
+  SUP.editando = fila;
+
+  // El foco entra en el primer campo VACÍO: casi siempre el lote de
+  // producción, que es justo lo que se viene a llenar.
+  var ids=['supEdMp-'+fila, 'supEdLoteMp-'+fila, 'supEdLoteProd-'+fila], i, e;
+  for(i=0;i<ids.length;i++){
+    e=$(ids[i]);
+    if(e && !e.value.trim()){ e.focus(); return; }
+  }
+  e=$('supEdLoteProd-'+fila);                 // todo lleno: a corregir el último
+  if(e){ e.focus(); e.select(); }
+}
+
+/** Guarda M, N y O. La confirmación muestra SOLO lo que cambió, en
+    formato "antes → después", para que sobrescribir nunca sea silencioso.
+    OJO: mostrarConfirm inyecta HTML sin escapar → supEsc() en cada celda. */
+function supGuardarLotes(fila){
+  var p=supProgFila(fila);
+  if(!p){ toast('Recarga la lista y vuelve a intentar','err'); return; }
+
+  var nuevo = { mp:       val('supEdMp-'+fila),
+                loteMp:   val('supEdLoteMp-'+fila),
+                loteProd: val('supEdLoteProd-'+fila) };
+  var d = supDiffLotes(p, nuevo);
+
+  if(d.error){
+    cls('supEdMp-'+fila, 'err-f', true);
+    toast('❌ '+d.error, 'err');
+    var e=$('supEdMp-'+fila); if(e) e.focus();
+    return;
+  }
+  cls('supEdMp-'+fila, 'err-f', false);
+
+  if(!d.hayCambios){ toast('No cambiaste nada','warn'); supEdCerrar(fila); return; }
+
+  var filas=[['Orden', supEsc(p.orden)], ['Producto', supEsc(p.producto || '—')]];
+  d.cambios.forEach(function(c){
+    filas.push([supEsc(c.label),
+                supEsc(c.antes || '(vacío)') + ' → ' + supEsc(c.despues || '(vacío)')]);
+  });
+  filas.push(['Fila', String(fila)]);
+
+  mostrarConfirm(filas, function(){
+    var restaurar = supEsperando($('supEdBtn-'+fila), 'GUARDANDO');
+    supPost('supActualizarLotes', {
+      fila: fila, orden: p.orden,
+      mp: nuevo.mp, loteMp: nuevo.loteMp, loteProd: nuevo.loteProd
+    }).then(function(r){
+      mostrarExito(r.message);
+      supEdCerrar(fila);
+      return supCargar();
+    }).catch(function(err){
+      toast('❌ '+err.message,'err');
+    }).then(restaurar);
+  });
 }
 
 function supOrdenDisp(id){
@@ -1523,8 +1656,7 @@ function supProgramar(){
 
 /* ── Fin de producción (col. U) → elimina la fila ──────── */
 function supFin(fila, orden){
-  var p=null;
-  ((SUP.datos||{}).programadas||[]).forEach(function(x){ if(x.fila===fila) p=x; });
+  var p=supProgFila(fila);
 
   mostrarConfirm([
     ['Orden',        orden],
