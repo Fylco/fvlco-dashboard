@@ -83,6 +83,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .multi-sel-dropdown { display:none; position:absolute; top:calc(100% + 4px); left:0; background:#111827; border:1px solid #374151; border-radius:8px; padding:8px 4px; z-index:200; min-width:150px; max-height:260px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.5); }
 .multi-sel-dropdown.show { display:block; }
 /* ── Escala de tiempo del filtro global ─────────────────────────────────── */
+.rg-dd { min-width:min(780px,92vw); padding:0; max-height:none; }
 .rg-presets { display:flex; flex-wrap:wrap; gap:9px 18px; padding:11px 13px; border-bottom:1px solid #374151; }
 .rg-group { display:flex; flex-direction:column; gap:5px; }
 .rg-group + .rg-group { border-left:1px solid #374151; padding-left:18px; }
@@ -342,20 +343,8 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <span id="global-filter-group" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="gf-label" style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
         <div class="multi-sel-wrap">
-          <button class="multi-sel-btn" id="g-rango-btn" onclick="toggleRangoDD(event)" style="min-width:200px;text-align:left">Todo el periodo ▾</button>
-          <div class="multi-sel-dropdown" id="g-rango-dd" style="min-width:min(780px,92vw);padding:0;max-height:none">
-            <div class="rg-presets" id="rg-presets"></div>
-            <div class="rg-brushwrap">
-              <div class="rg-brush" id="rg-brush"><div class="rg-sel" id="rg-sel"></div><div class="rg-tip" id="rg-tip"></div></div>
-              <div class="rg-months" id="rg-months"></div>
-            </div>
-            <div class="rg-foot">
-              <div class="rg-ro cy"><span class="k">Rango</span><span class="v" id="rg-rango">Todo</span></div>
-              <div class="rg-ro"><span class="k">Días con producción</span><span class="v" id="rg-dias">—</span></div>
-              <div class="rg-ro gr"><span class="k">Unidades</span><span class="v" id="rg-und">—</span></div>
-              <button class="btn-x" onclick="setRangoGlobal(null,null,'todo')" title="Quitar el filtro de periodo">✕ Todo el periodo</button>
-            </div>
-          </div>
+          <button class="multi-sel-btn" id="g-rango-btn" onclick="toggleRangoDD('g', event)" style="min-width:200px;text-align:left">Todo el periodo ▾</button>
+          <div class="multi-sel-dropdown rg-dd" id="g-rango-dd"></div>
         </div>
         <div class="multi-sel-wrap">
           <button class="multi-sel-btn" id="g-proc-btn" onclick="toggleGProcDD(event)" style="min-width:150px;text-align:left">Todos los procesos ▾</button>
@@ -626,14 +615,9 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div class="filter-bar" style="align-items:center;background:#111827;border:1px solid #374151;border-radius:10px;padding:10px 14px">
         <span style="font-size:.62rem;font-weight:700;color:#4B5563;text-transform:uppercase;letter-spacing:.1em">Filtros:</span>
         <div class="multi-sel-wrap">
-          <button class="multi-sel-btn" id="nc-mes-btn" onclick="toggleMesMultiDD('nc-mes-dd', event)">Todos los meses ▾</button>
-          <div class="multi-sel-dropdown" id="nc-mes-dd"></div>
+          <button class="multi-sel-btn" id="nc-rango-btn" onclick="toggleRangoDD('nc', event)" style="min-width:200px;text-align:left">Todo el periodo ▾</button>
+          <div class="multi-sel-dropdown rg-dd" id="nc-rango-dd"></div>
         </div>
-        <div class="multi-sel-wrap">
-          <button class="multi-sel-btn" id="nc-dia-btn" onclick="toggleNcDiaDD(event)">Todos los días ▾</button>
-          <div class="multi-sel-dropdown" id="nc-dia-dd"></div>
-        </div>
-        <button class="btn-x" onclick="clearNcDias()" title="Quitar filtro de días">✕ días</button>
         <div class="multi-sel-wrap">
           <button class="multi-sel-btn" id="nc-maq-btn" onclick="toggleNcMaqDD(event)">Todas las máquinas ▾</button>
           <div class="multi-sel-dropdown" id="nc-maq-dd"></div>
@@ -685,18 +669,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <div style="background:#111827;border:1px solid #1F2937;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
 
         <div style="display:flex;flex-direction:column;gap:4px">
-          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Mes</span>
+          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Periodo</span>
           <div class="multi-sel-wrap">
-            <button class="multi-sel-btn" id="paro-mes-btn" onclick="toggleMesMultiDD('paro-mes-dd', event)" style="min-width:140px;text-align:left">Todos los meses ▾</button>
-            <div class="multi-sel-dropdown" id="paro-mes-dd"></div>
-          </div>
-        </div>
-
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <span style="font-size:.7rem;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Día</span>
-          <div class="multi-sel-wrap">
-            <button class="multi-sel-btn" id="paro-dia-btn" onclick="toggleParoDiaDD(event)" style="min-width:140px;text-align:left">Todos los días ▾</button>
-            <div class="multi-sel-dropdown" id="paro-dia-dd"></div>
+            <button class="multi-sel-btn" id="paro-rango-btn" onclick="toggleRangoDD('paro', event)" style="min-width:200px;text-align:left">Todo el periodo ▾</button>
+            <div class="multi-sel-dropdown rg-dd" id="paro-rango-dd"></div>
           </div>
         </div>
 
@@ -735,7 +711,6 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
         </div>
 
         <div style="display:flex;gap:8px;align-items:flex-end">
-          <button class="btn-x" onclick="clearParoDias()" style="white-space:nowrap">✕ Quitar días</button>
           <button class="btn-filter" onclick="renderParos()">Filtrar</button>
           <button class="btn-clear" onclick="clearParoPanel()">Limpiar</button>
         </div>
@@ -2428,30 +2403,14 @@ function buildGProcDd(procesos) {
   _syncGProcAllChk();
 }
 // ── Panel paros: días independientes
-function toggleParoDiaDD(e) {
-  e.stopPropagation();
-  const dd = document.getElementById('paro-dia-dd');
-  dd.classList.toggle('show');
-  anclarDropdown(dd);
-  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
-}
-function toggleParoDia(dia) {
-  if (SEL_DIAS_PARO.has(dia)) SEL_DIAS_PARO.delete(dia); else SEL_DIAS_PARO.add(dia);
-  updateParoDiaBtn();
-}
-function clearParoDias() {
-  SEL_DIAS_PARO.clear();
-  document.querySelectorAll('#paro-dia-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
-  updateParoDiaBtn();
-  renderParos();
-}
+// El multi-select de dias de Paros lo reemplazo su escala de tiempo.
 function updateParoDiaBtn() {
   const btn = document.getElementById('paro-dia-btn');
   if (!btn) return;
   if (SEL_DIAS_PARO.size===0) { btn.textContent='Todos los días ▾'; btn.classList.remove('active'); }
   else { btn.textContent=`${SEL_DIAS_PARO.size} día(s) ▾`; btn.classList.add('active'); }
 }
-function buildParoDiaDd(dias) {
+function buildParoDiaDd(dias) {   // muerta: la cubre la escala de tiempo
   const dd = document.getElementById('paro-dia-dd');
   if (!dd) return;
   dd.innerHTML = dias.map(d=>`
@@ -2535,8 +2494,7 @@ function updateParoRazonBtn() {
 function clearParoPanel() {
   SEL_RAZONES.clear(); SEL_DIAS_PARO.clear(); SEL_PROCESOS.clear(); SEL_MAQ_PARO.clear();
   SEL_MESES_PARO.clear();
-  document.querySelectorAll('#paro-mes-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
-  updateMesMultiBtn('paro-mes-dd');
+  setRango('paro', null, null, 'todo', true);   // vuelve a seguir el periodo global
   _updateMaqBtn('paro-maq-btn', SEL_MAQ_PARO);
   document.querySelectorAll('#paro-razones-list input,#paro-dia-dd input,#paro-proc-list input,#paro-maq-dd input').forEach(cb=>cb.checked=false);
   const allChk = document.getElementById('paro-razon-all');
@@ -2592,6 +2550,7 @@ function buildProcList(procesos) {
 }
 
 // ── Panel NC: días independientes
+// El multi-select de dias de No Conformes lo reemplazo su escala de tiempo.
 function toggleNcDiaDD(e) {
   e.stopPropagation();
   const dd = document.getElementById('nc-dia-dd');
@@ -2623,8 +2582,7 @@ function toggleCausa(c) {
 function clearNcPanel() {
   SEL_CAUSAS.clear(); SEL_DIAS_NC.clear(); SEL_MAQ_NC.clear();
   SEL_MESES_NC.clear();
-  document.querySelectorAll('#nc-mes-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
-  updateMesMultiBtn('nc-mes-dd');
+  setRango('nc', null, null, 'todo', true);     // vuelve a seguir el periodo global
   _updateMaqBtn('nc-maq-btn', SEL_MAQ_NC);
   document.querySelectorAll('#nc-causas-list input,#nc-dia-dd input,#nc-maq-dd input').forEach(cb=>cb.checked=false);
   const btn=document.getElementById('nc-dia-btn'); if(btn){btn.textContent='Todos los días ▾';btn.classList.remove('active');}
@@ -3621,9 +3579,13 @@ function populateAllFilters() {
   const meses = [...new Set(DATA.prod.map(r=>r._mes).filter(v => v && !v.startsWith('#')))];
   const maqs  = [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort();
   const dias  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(x=>x!=null&&x!==''))].sort((a,b)=>Number(a)-Number(b));
-  // Global top bar: los desplegables de mes y día se reemplazaron por la
-  // escala de tiempo (un rango real). SEL_MESES se deriva del rango.
-  construirRango();
+  // Los desplegables de mes y día se reemplazaron por la escala de tiempo (un
+  // rango real). Cada instancia deriva su propio conjunto de meses.
+  _rgEnlazarConjuntos();
+  construirDiasCal();
+  construirRango('g',    applyGlobalFilter);
+  construirRango('paro', renderParos);
+  construirRango('nc',   renderNC);
   const procesos = [...new Set(DATA.prod.filter(r=>r._paro>0).map(_getProc).filter(Boolean))].sort();
   buildGProcDd(procesos);
   // OEE section
@@ -3637,10 +3599,8 @@ function populateAllFilters() {
   registrarFiltroMes('pref-mes-dd', 'pref-mes-btn', SEL_MESES_PREF, renderPlanRef);
   buildMesMultiDd('pref-mes-dd', MESES_CAP);
   // Paros panel
-  registrarFiltroMes('paro-mes-dd', 'paro-mes-btn', SEL_MESES_PARO, renderParos);
-  buildMesMultiDd('paro-mes-dd', meses);
+  // (mes y día de Paros los cubre ahora su escala de tiempo)
   buildParoMaqDd(maqs);
-  buildParoDiaDd(dias);
   // Análisis de Paros: filtros propios (mes, máquina, molde)
   registrarFiltroMes('ap-mes-dd', 'ap-mes-btn', SEL_MESES_AP, renderAnalisisParos);
   buildMesMultiDd('ap-mes-dd', meses);
@@ -3671,10 +3631,8 @@ function populateAllFilters() {
   // r._maq (no el header 'MÁQUINA' directo): esa columna en la hoja NC llega
   // con la Á en una codificación distinta y el lookup textual nunca coincide.
   const ncMaq   = [...new Set(DATA.nc.map(r=>r._maq).filter(Boolean))].sort();
-  registrarFiltroMes('nc-mes-dd', 'nc-mes-btn', SEL_MESES_NC, renderNC);
-  buildMesMultiDd('nc-mes-dd', ncMeses);
+  // (mes y día de No Conformes los cubre ahora su escala de tiempo)
   buildNcMaqDd(ncMaq);
-  buildNcDiaDd(dias);
   // Causas NC
   const causaMap = {};
   DATA.nc.forEach(r=>{ const k=(r['CAUSA']||'').trim(); if(k){ const v=pNum(r['CANTIDAD NC'])||0; causaMap[k]=(causaMap[k]||0)+v; }});
@@ -3775,22 +3733,43 @@ function gDia() { return SEL_DIAS; } // Set
 // funcionando sin tocarlo. SEL_DIAS queda siempre vacío: la precisión de día
 // la pone el rango sobre _fechaKey, no el cruce mes × día.
 // =======================================================
-let RANGO = null;           // {a:'YYYY-MM-DD', b:'YYYY-MM-DD'} | null = todo el periodo
-let RANGO_PRESET = 'todo';  // id del atajo activo (solo para pintarlo)
-let DIAS_CAL = [];          // universo de días: [{k,m,dia,dow,u}] incluidos los sin producción
+// Una instancia por prefijo: 'g' (filtro global), 'paro', 'nc'.
+// Cada una guarda su propio rango y DERIVA su conjunto de meses, que es
+// justamente lo que ya usaban los filtros para saber "este panel manda sobre
+// el global". Así la regla de precedencia de siempre se mantiene sola.
+const RANGOS = {
+  g:    { rango:null, preset:'todo', meses:null, dias:null, onChange:null },
+  paro: { rango:null, preset:null,   meses:null, dias:null, onChange:null },
+  nc:   { rango:null, preset:null,   meses:null, dias:null, onChange:null }
+};
+// Los conjuntos que cada instancia alimenta. Se enlazan aquí y no en la
+// declaración porque SEL_MESES_* se declaran más arriba en el archivo.
+function _rgEnlazarConjuntos() {
+  RANGOS.g.meses    = SEL_MESES;      RANGOS.g.dias    = SEL_DIAS;
+  RANGOS.paro.meses = SEL_MESES_PARO; RANGOS.paro.dias = SEL_DIAS_PARO;
+  RANGOS.nc.meses   = SEL_MESES_NC;   RANGOS.nc.dias   = SEL_DIAS_NC;
+}
+let RANGO = null;           // espejo del global, para los consumidores ya escritos
+let RANGO_PRESET = 'todo';
+let DIAS_CAL = [];          // universo de días compartido: [{k,m,dia,dow,u}]
 
 const _RG_MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const _RG_ID  = (pref, parte) => `${pref}-rango-${parte}`;
+const _RG_EL  = (pref, parte) => document.getElementById(_RG_ID(pref, parte));
 
-// ¿La fila cae dentro del periodo global?
-function enRangoGlobal(r) {
-  if (!RANGO) return true;
+// ¿La fila cae dentro del rango de esta instancia?
+function enRango(pref, r) {
+  const R = RANGOS[pref] && RANGOS[pref].rango;
+  if (!R) return true;
   const k = String((r && r._fechaKey) || '');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(k)) return k >= RANGO.a && k <= RANGO.b;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(k)) return k >= R.a && k <= R.b;
   // Hoja sin fecha utilizable (p. ej. Ventas): se degrada a mes completo, que
-  // es toda la precisión que esa hoja permite. Se avisa en el botón.
-  return mesMatch(SEL_MESES, String((r && (r._mesTurno || r._mes)) || ''));
+  // es toda la precisión que esa hoja permite. Se avisa en el tooltip.
+  return mesMatch(RANGOS[pref].meses || SEL_MESES, String((r && (r._mesTurno || r._mes)) || ''));
 }
-// Igual, para una fecha suelta "d/m/aaaa" (maquilas traen la fecha como texto).
+function enRangoGlobal(r) { return enRango('g', r); }
+
+// Igual, para una fecha suelta "d/m/aaaa" (maquilas la traen como texto).
 function enRangoFechaTexto(f) {
   if (!RANGO) return true;
   const mm = String(f||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
@@ -3829,34 +3808,42 @@ function _rgHoyIdx() {
 }
 function _rgLbl(i) { const x = DIAS_CAL[i]; return x ? `${x.dia} ${_RG_MES[x.m]}` : '—'; }
 
-// SEL_MESES derivado: los meses que toca el rango.
-function _rgSincronizarMeses() {
-  SEL_MESES.clear();
-  SEL_DIAS.clear();                       // el rango sustituye al día-del-mes
-  if (!RANGO) return;
+// Meses derivados del rango. Alimentan las etiquetas y —en paro/nc— la regla
+// "si el panel tiene selección propia, manda sobre el global".
+function _rgSincronizarMeses(pref) {
+  const R = RANGOS[pref];
+  if (!R.meses) return;
+  R.meses.clear();
+  if (R.dias) R.dias.clear();     // el rango sustituye al día-del-mes
+  if (!R.rango) return;
   DIAS_CAL.forEach(d => {
-    if (d.k >= RANGO.a && d.k <= RANGO.b) SEL_MESES.add(_MESES_ES[d.m+1]);
+    if (d.k >= R.rango.a && d.k <= R.rango.b) R.meses.add(_MESES_ES[d.m+1]);
   });
 }
 
 // Punto de entrada único. a/b nulos = todo el periodo.
-function setRangoGlobal(a, b, presetId, soloPintar) {
-  RANGO = (a && b) ? { a, b } : null;
-  RANGO_PRESET = presetId || null;
-  _rgSincronizarMeses();
-  pintarRango();
-  if (!soloPintar) applyGlobalFilter();
+function setRango(pref, a, b, presetId, soloPintar) {
+  const R = RANGOS[pref]; if (!R) return;
+  R.rango  = (a && b) ? { a, b } : null;
+  R.preset = presetId || null;
+  if (pref === 'g') { RANGO = R.rango; RANGO_PRESET = R.preset; }
+  _rgSincronizarMeses(pref);
+  pintarRango(pref);
+  if (!soloPintar && R.onChange) R.onChange();
 }
-function _rgSetIdx(ia, ib, presetId, soloPintar) {
+function setRangoGlobal(a, b, presetId, soloPintar) { setRango('g', a, b, presetId, soloPintar); }
+
+function _rgSetIdx(pref, ia, ib, presetId, soloPintar) {
   if (!DIAS_CAL.length) return;
   const n = DIAS_CAL.length;
   ia = Math.max(0, Math.min(n-1, ia));
   ib = Math.max(0, Math.min(n-1, ib));
-  setRangoGlobal(DIAS_CAL[Math.min(ia,ib)].k, DIAS_CAL[Math.max(ia,ib)].k, presetId, soloPintar);
+  setRango(pref, DIAS_CAL[Math.min(ia,ib)].k, DIAS_CAL[Math.max(ia,ib)].k, presetId, soloPintar);
 }
-function _rgActualIdx() {
-  if (!RANGO) return [0, DIAS_CAL.length-1];
-  const a = _rgIdx(RANGO.a), b = _rgIdx(RANGO.b);
+function _rgActualIdx(pref) {
+  const R = RANGOS[pref].rango;
+  if (!R) return [0, DIAS_CAL.length-1];
+  const a = _rgIdx(R.a), b = _rgIdx(R.b);
   return [a<0?0:a, b<0?DIAS_CAL.length-1:b];
 }
 
@@ -3864,11 +3851,11 @@ function _rgActualIdx() {
 // "Últimos N días" cuenta desde LA FECHA QUE SE ESTÁ REVISANDO (el final del
 // rango actual), no desde hoy: parado en el 20 de agosto, 10 son del 11 al 20.
 // Con "Hoy" se vuelve a anclar en hoy.
-function _rgGrupos() {
+function _rgGrupos(pref) {
   const HI = _rgHoyIdx();
-  const finActual = () => _rgActualIdx()[1];
+  const fin = () => _rgActualIdx(pref)[1];
   const mesDe = (i, delta) => {
-    const base = DIAS_CAL[i]; if (!base) return [0,0];
+    const base = DIAS_CAL[i]; if (!base) return [i,i];
     const m = base.m + (delta||0);
     let a=-1, b=-1;
     DIAS_CAL.forEach((d,j)=>{ if (d.m===m){ if(a<0) a=j; b=j; } });
@@ -3882,7 +3869,7 @@ function _rgGrupos() {
     ]},
     { lbl:'Últimos … días', ancla:true, num:true,
       items:[7,10,15,20,30,45,60,90].map(n=>({ id:n+'d', txt:String(n),
-        f:()=>{ const e=finActual(); return [e-(n-1), e]; } })) },
+        f:()=>{ const e=fin(); return [e-(n-1), e]; } })) },
     { lbl:'Calendario', items:[
       { id:'sem',  txt:'Esta semana',   f:()=>[lunesDe(HI), HI] },
       { id:'psem', txt:'Semana pasada', f:()=>{ const l=lunesDe(HI); return [l-7, l-1]; } },
@@ -3893,48 +3880,64 @@ function _rgGrupos() {
   ];
 }
 
-let _RG_BOTONES = [], _RG_BARS = [], _RG_LISTO = false;
+const _RG_UI = {};   // pref -> {botones, bars, listo}
 
-// Se construye una sola vez, cuando ya hay datos cargados.
-function construirRango() {
-  construirDiasCal();
-  const brush = document.getElementById('rg-brush');
-  const pres  = document.getElementById('rg-presets');
-  const mos   = document.getElementById('rg-months');
-  if (!brush || !pres || !mos || !DIAS_CAL.length) return;
+// Construye (o reconstruye) una instancia. El markup del panel se genera aquí
+// para no repetir quince líneas de HTML por cada pestaña.
+function construirRango(pref, onChange) {
+  if (!DIAS_CAL.length) construirDiasCal();
+  const dd = _RG_EL(pref, 'dd');
+  if (!dd || !DIAS_CAL.length) return;
+  RANGOS[pref].onChange = onChange || RANGOS[pref].onChange;
+
+  dd.innerHTML =
+    `<div class="rg-presets" id="${_RG_ID(pref,'presets')}"></div>
+     <div class="rg-brushwrap">
+       <div class="rg-brush" id="${_RG_ID(pref,'brush')}">
+         <div class="rg-sel" id="${_RG_ID(pref,'sel')}"></div>
+         <div class="rg-tip" id="${_RG_ID(pref,'tip')}"></div>
+       </div>
+       <div class="rg-months" id="${_RG_ID(pref,'months')}"></div>
+     </div>
+     <div class="rg-foot">
+       <div class="rg-ro cy"><span class="k">Rango</span><span class="v" id="${_RG_ID(pref,'txt')}">Todo</span></div>
+       <div class="rg-ro"><span class="k">Días con producción</span><span class="v" id="${_RG_ID(pref,'dias')}">—</span></div>
+       <div class="rg-ro gr"><span class="k">Unidades</span><span class="v" id="${_RG_ID(pref,'und')}">—</span></div>
+       <button class="btn-x" onclick="setRango('${pref}',null,null,'todo')" title="Quitar el filtro de periodo">✕ Todo el periodo</button>
+     </div>`;
+
+  const ui = _RG_UI[pref] = { botones:[], bars:[], listo:(_RG_UI[pref]||{}).listo };
 
   // Atajos
-  pres.innerHTML = '';
-  _RG_BOTONES = [];
-  _rgGrupos().forEach(g => {
+  const pres = _RG_EL(pref, 'presets');
+  _rgGrupos(pref).forEach(g => {
     const wrap = document.createElement('div'); wrap.className = 'rg-group';
     const lab  = document.createElement('span'); lab.className = 'rg-lbl'; lab.textContent = g.lbl;
-    if (g.ancla) { const an = document.createElement('span'); an.className = 'rg-ancla'; an.id = 'rg-ancla'; lab.appendChild(an); }
+    if (g.ancla) { const an = document.createElement('span'); an.className = 'rg-ancla'; an.id = _RG_ID(pref,'ancla'); lab.appendChild(an); }
     const row  = document.createElement('div'); row.className = 'rg-chips' + (g.num ? ' num' : '');
     g.items.forEach(it => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'rg-chip'; b.textContent = it.txt; b.dataset.id = it.id;
       if (g.num) b.title = 'Últimos ' + it.txt + ' días';
-      b.onclick = ev => { ev.stopPropagation(); const r = it.f(); _rgSetIdx(r[0], r[1], it.id); };
-      row.appendChild(b); _RG_BOTONES.push(b);
+      b.onclick = ev => { ev.stopPropagation(); const r = it.f(); _rgSetIdx(pref, r[0], r[1], it.id); };
+      row.appendChild(b); ui.botones.push(b);
     });
     wrap.appendChild(lab); wrap.appendChild(row); pres.appendChild(wrap);
   });
 
   // Barras: una por día, alto = unidades producidas
-  const maxU = DIAS_CAL.reduce((m,x)=>Math.max(m,x.u), 0) || 1;
-  _RG_BARS = [];
-  [...brush.querySelectorAll('.rg-bar')].forEach(b=>b.remove());
-  const sel = document.getElementById('rg-sel');
+  const brush = _RG_EL(pref, 'brush');
+  const sel   = _RG_EL(pref, 'sel');
+  const maxU  = DIAS_CAL.reduce((m,x)=>Math.max(m,x.u), 0) || 1;
   DIAS_CAL.forEach(x => {
     const b = document.createElement('div');
     b.className = 'rg-bar' + (x.u ? '' : ' zero');
     b.style.height = x.u ? Math.max(6, x.u/maxU*100) + '%' : '3px';
-    brush.insertBefore(b, sel); _RG_BARS.push(b);
+    brush.insertBefore(b, sel); ui.bars.push(b);
   });
 
   // Etiquetas de mes, proporcionales a los días que abarca cada uno
-  mos.innerHTML = '';
+  const mos = _RG_EL(pref, 'months');
   let cur = -1, span = null;
   DIAS_CAL.forEach(x => {
     if (x.m !== cur) { cur = x.m; span = document.createElement('span'); span.className = 'rg-mo';
@@ -3943,14 +3946,14 @@ function construirRango() {
   });
   [...mos.children].forEach(sp => { sp.style.flex = `0 0 ${sp.dataset.n/DIAS_CAL.length*100}%`; });
 
-  if (!_RG_LISTO) { _rgEnlazarArrastre(brush); _RG_LISTO = true; }
-  pintarRango();
+  _rgEnlazarArrastre(pref, brush);
+  pintarRango(pref);
 }
 
 // Arrastre. El re-render del tablero es caro (gráficas), así que durante el
 // arrastre solo se repinta el control; el filtro se aplica al soltar.
-function _rgEnlazarArrastre(brush) {
-  const tip = document.getElementById('rg-tip');
+function _rgEnlazarArrastre(pref, brush) {
+  const tip = _RG_EL(pref, 'tip');
   let modo = null, ancla = 0;
   const idxDe = e => {
     const r = brush.getBoundingClientRect();
@@ -3959,12 +3962,12 @@ function _rgEnlazarArrastre(brush) {
   };
   brush.addEventListener('pointerdown', e => {
     e.stopPropagation();
-    const i = idxDe(e), [a,b] = _rgActualIdx();
+    const i = idxDe(e), [a,b] = _rgActualIdx(pref);
     const px = brush.getBoundingClientRect().width / DIAS_CAL.length;
     const cercaA = Math.abs(i-a)*px < 10, cercaB = Math.abs(i-b)*px < 10;
     if (cercaA && !cercaB) { modo='a'; ancla=b; }
     else if (cercaB && !cercaA) { modo='b'; ancla=a; }
-    else { modo='new'; ancla=i; _rgSetIdx(i, i, null, true); }
+    else { modo='new'; ancla=i; _rgSetIdx(pref, i, i, null, true); }
     brush.setPointerCapture(e.pointerId);
   });
   brush.addEventListener('pointermove', e => {
@@ -3977,53 +3980,55 @@ function _rgEnlazarArrastre(brush) {
       tip.classList.add('on');
     }
     if (!modo) return;
-    _rgSetIdx(Math.min(ancla,i), Math.max(ancla,i), null, true);
+    _rgSetIdx(pref, Math.min(ancla,i), Math.max(ancla,i), null, true);
   });
-  const soltar = () => { if (modo) { modo = null; applyGlobalFilter(); } };
+  const soltar = () => { if (modo) { modo = null; if (RANGOS[pref].onChange) RANGOS[pref].onChange(); } };
   brush.addEventListener('pointerup', soltar);
   brush.addEventListener('pointercancel', soltar);
   brush.addEventListener('pointerleave', () => { if (tip) tip.classList.remove('on'); });
 }
 
-function pintarRango() {
-  const btn = document.getElementById('g-rango-btn');
-  const sel = document.getElementById('rg-sel');
-  if (!DIAS_CAL.length) { if (btn) btn.textContent = 'Todo el periodo ▾'; return; }
-  const [a,b] = _rgActualIdx();
+function pintarRango(pref) {
+  const R = RANGOS[pref], ui = _RG_UI[pref];
+  const btn = _RG_EL(pref, 'btn');
+  if (!DIAS_CAL.length || !ui) { if (btn) btn.textContent = 'Todo el periodo ▾'; return; }
+  const [a,b] = _rgActualIdx(pref);
   let dias = 0, cero = 0, total = 0;
   for (let i=a; i<=b; i++) { const x = DIAS_CAL[i]; if (x.u > 0) { dias++; total += x.u; } else cero++; }
 
-  _RG_BARS.forEach((el,i) => el.classList.toggle('in', i>=a && i<=b));
+  ui.bars.forEach((el,i) => el.classList.toggle('in', i>=a && i<=b));
+  const sel = _RG_EL(pref, 'sel');
   if (sel) {
     const pa = a/DIAS_CAL.length*100, pb = (b+1)/DIAS_CAL.length*100;
     sel.style.left = pa+'%'; sel.style.width = (pb-pa)+'%';
-    sel.style.display = RANGO ? 'block' : 'none';
+    sel.style.display = R.rango ? 'block' : 'none';
   }
-  const txtRango = !RANGO ? 'Todo' : (a===b ? _rgLbl(a) : `${_rgLbl(a)} → ${_rgLbl(b)}`);
-  const set = (id,v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-  set('rg-rango', txtRango);
-  set('rg-dias', dias.toLocaleString('es-CO'));
-  set('rg-und', Math.round(total).toLocaleString('es-CO'));
-  const an = document.getElementById('rg-ancla');
+  const txtRango = !R.rango ? 'Todo' : (a===b ? _rgLbl(a) : `${_rgLbl(a)} → ${_rgLbl(b)}`);
+  const set = (parte, v) => { const e = _RG_EL(pref, parte); if (e) e.textContent = v; };
+  set('txt',  txtRango);
+  set('dias', dias.toLocaleString('es-CO'));
+  set('und',  Math.round(total).toLocaleString('es-CO'));
+  const an = _RG_EL(pref, 'ancla');
   if (an) an.textContent = ' · hasta ' + _rgLbl(b) + (b === _rgHoyIdx() ? ' (hoy)' : '');
-  _RG_BOTONES.forEach(x => x.setAttribute('aria-pressed', x.dataset.id === RANGO_PRESET ? 'true' : 'false'));
+  ui.botones.forEach(x => x.setAttribute('aria-pressed', x.dataset.id === R.preset ? 'true' : 'false'));
 
   if (btn) {
-    btn.textContent = (RANGO ? `📅 ${txtRango}` : 'Todo el periodo') + ' ▾';
-    btn.classList.toggle('active', !!RANGO);
-    btn.title = RANGO
-      ? `${txtRango} · ${dias} día(s) con producción, ${cero} sin registro. En Ventas/OTIF el corte es por mes completo (esa hoja no trae fecha de día).`
-      : 'Todo el periodo cargado';
+    btn.textContent = (R.rango ? `📅 ${txtRango}` : 'Todo el periodo') + ' ▾';
+    btn.classList.toggle('active', !!R.rango);
+    btn.title = R.rango
+      ? `${txtRango} · ${dias} día(s) con producción, ${cero} sin registro.` +
+        (pref==='g' ? ' En Ventas/OTIF el corte es por mes completo (esa hoja no trae fecha de día).' : ' Manda sobre el periodo del filtro global.')
+      : (pref==='g' ? 'Todo el periodo cargado' : 'Sigue el periodo del filtro global');
   }
 }
 
-function toggleRangoDD(e) {
+function toggleRangoDD(pref, e) {
   e.stopPropagation();
-  const dd = document.getElementById('g-rango-dd');
+  const dd = _RG_EL(pref, 'dd');
   if (!dd) return;
   dd.classList.toggle('show');
   anclarDropdown(dd);
-  if (dd.classList.contains('show')) { dd.onclick = ev => ev.stopPropagation(); pintarRango(); }
+  if (dd.classList.contains('show')) { dd.onclick = ev => ev.stopPropagation(); pintarRango(pref); }
 }
 
 function filterProd() {
@@ -4055,9 +4060,9 @@ function filterCostos() {
 function filterParo() {
   const m   = SEL_MESES_PARO.size ? SEL_MESES_PARO : SEL_MESES;
   const dias = SEL_DIAS_PARO.size ? SEL_DIAS_PARO : SEL_DIAS;
-  const propio = SEL_MESES_PARO.size || SEL_DIAS_PARO.size;   // el panel manda
+  const propio = !!RANGOS.paro.rango;   // el periodo del panel manda sobre el global
   return DATA.prod.filter(r =>
-    (propio || enRangoGlobal(r)) &&
+    (propio ? enRango('paro', r) : enRangoGlobal(r)) &&
     (mesMatch(m, r._mesTurno || r._mes)) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_PARO.size || SEL_MAQ_PARO.has(String(r._maq))) &&
@@ -4069,9 +4074,9 @@ function filterNC() {
   const m   = SEL_MESES_NC.size ? SEL_MESES_NC : SEL_MESES;
   // NC sheet has no DIA column — only use panel's own day filter (SEL_DIAS_NC)
   const dias = SEL_DIAS_NC;
-  const propio = SEL_MESES_NC.size || SEL_DIAS_NC.size;       // el panel manda
+  const propio = !!RANGOS.nc.rango;     // el periodo del panel manda sobre el global
   return DATA.nc.filter(r =>
-    (propio || enRangoGlobal(r)) &&
+    (propio ? enRango('nc', r) : enRangoGlobal(r)) &&
     (mesMatch(m, String(r['MES ']||r['MES']||'').trim())) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_NC.size || SEL_MAQ_NC.has(String(r._maq||''))) &&
