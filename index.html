@@ -82,6 +82,44 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
 .multi-sel-btn.active { border-color:#8B5CF6; color:#8B5CF6; }
 .multi-sel-dropdown { display:none; position:absolute; top:calc(100% + 4px); left:0; background:#111827; border:1px solid #374151; border-radius:8px; padding:8px 4px; z-index:200; min-width:150px; max-height:260px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.5); }
 .multi-sel-dropdown.show { display:block; }
+/* ── Escala de tiempo del filtro global ─────────────────────────────────── */
+.rg-presets { display:flex; flex-wrap:wrap; gap:9px 18px; padding:11px 13px; border-bottom:1px solid #374151; }
+.rg-group { display:flex; flex-direction:column; gap:5px; }
+.rg-group + .rg-group { border-left:1px solid #374151; padding-left:18px; }
+.rg-lbl { font-size:.55rem; text-transform:uppercase; letter-spacing:.12em; color:#6B7280; white-space:nowrap; }
+.rg-lbl .rg-ancla { color:#22D3EE; }
+.rg-chips { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+.rg-chip { background:#1F2937; border:1px solid #374151; color:#9CA3AF; border-radius:999px; padding:4px 11px;
+           font-size:.72rem; font-family:Tahoma,Arial,sans-serif; cursor:pointer; transition:.13s; }
+.rg-chip:hover { border-color:#22D3EE; color:#EEEEEE; }
+.rg-chips.num .rg-chip { min-width:34px; padding:4px 8px; text-align:center; border-radius:6px; }
+.rg-chip[aria-pressed="true"] { background:rgba(34,211,238,.16); border-color:#22D3EE; color:#22D3EE; font-weight:700; }
+.rg-brushwrap { padding:11px 13px 5px; user-select:none; touch-action:none; }
+.rg-brush { position:relative; height:58px; display:flex; align-items:flex-end; gap:1px; cursor:crosshair; }
+.rg-bar { flex:1 1 0; min-width:0; background:#2B3648; border-radius:1px 1px 0 0; }
+.rg-bar.in { background:#22D3EE; }
+.rg-bar.zero { background:#222C3C; }
+.rg-bar.zero.in { background:#3E4A5C; }
+.rg-sel { position:absolute; top:-4px; bottom:-4px; border-left:2px solid #22D3EE; border-right:2px solid #22D3EE;
+          background:rgba(34,211,238,.09); pointer-events:none; border-radius:2px; }
+.rg-sel::before, .rg-sel::after { content:""; position:absolute; top:50%; width:8px; height:22px; margin-top:-11px;
+          background:#22D3EE; border-radius:3px; box-shadow:0 0 0 2px #111827; }
+.rg-sel::before { left:-4px } .rg-sel::after { right:-4px }
+.rg-months { display:flex; gap:1px; margin-top:6px; }
+.rg-mo { flex:none; font-size:.55rem; color:#6B7280; text-transform:uppercase; letter-spacing:.06em;
+         border-left:1px solid #374151; padding-left:3px; overflow:hidden; white-space:nowrap; }
+.rg-tip { position:absolute; top:-8px; transform:translate(-50%,-100%); background:#0B1220; border:1px solid #22D3EE;
+          border-radius:6px; padding:3px 8px; font-size:.68rem; white-space:nowrap; pointer-events:none;
+          opacity:0; transition:opacity .1s; z-index:5; color:#EEEEEE; }
+.rg-tip.on { opacity:1; }
+.rg-foot { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:10px 13px;
+           border-top:1px solid #374151; background:#0F1623; }
+.rg-ro { display:flex; flex-direction:column; gap:1px; }
+.rg-ro .k { font-size:.55rem; text-transform:uppercase; letter-spacing:.1em; color:#6B7280; }
+.rg-ro .v { font-size:.95rem; font-weight:700; color:#EEEEEE; }
+.rg-ro.cy .v { color:#22D3EE } .rg-ro.gr .v { color:#10B981 }
+.rg-foot .btn-x { margin-left:auto; }
+@media (max-width:768px){ .rg-brush { height:44px } .rg-group + .rg-group { border-left:0; padding-left:0 } }
 .ms-item { display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:.74rem; color:#9CA3AF; user-select:none; }
 .ms-item:hover { background:rgba(139,92,246,.12); color:#EEEEEE; }
 .ms-item input[type=checkbox] { accent-color:#8B5CF6; width:13px; height:13px; cursor:pointer; flex-shrink:0; }
@@ -304,14 +342,21 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
       <span id="global-filter-group" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="gf-label" style="font-size:.65rem;color:#4B5563;text-transform:uppercase;letter-spacing:.06em">Filtro global:</span>
         <div class="multi-sel-wrap">
-          <button class="multi-sel-btn" id="g-mes-btn" onclick="toggleMesMultiDD('g-mes-dd', event)">Todos los meses ▾</button>
-          <div class="multi-sel-dropdown" id="g-mes-dd"></div>
+          <button class="multi-sel-btn" id="g-rango-btn" onclick="toggleRangoDD(event)" style="min-width:200px;text-align:left">Todo el periodo ▾</button>
+          <div class="multi-sel-dropdown" id="g-rango-dd" style="min-width:min(780px,92vw);padding:0;max-height:none">
+            <div class="rg-presets" id="rg-presets"></div>
+            <div class="rg-brushwrap">
+              <div class="rg-brush" id="rg-brush"><div class="rg-sel" id="rg-sel"></div><div class="rg-tip" id="rg-tip"></div></div>
+              <div class="rg-months" id="rg-months"></div>
+            </div>
+            <div class="rg-foot">
+              <div class="rg-ro cy"><span class="k">Rango</span><span class="v" id="rg-rango">Todo</span></div>
+              <div class="rg-ro"><span class="k">Días con producción</span><span class="v" id="rg-dias">—</span></div>
+              <div class="rg-ro gr"><span class="k">Unidades</span><span class="v" id="rg-und">—</span></div>
+              <button class="btn-x" onclick="setRangoGlobal(null,null,'todo')" title="Quitar el filtro de periodo">✕ Todo el periodo</button>
+            </div>
+          </div>
         </div>
-        <div class="multi-sel-wrap">
-          <button class="multi-sel-btn" id="g-dia-btn" onclick="toggleDiaDD(event)">Todos los días ▾</button>
-          <div class="multi-sel-dropdown" id="g-dia-dd"></div>
-        </div>
-        <button class="btn-x" onclick="clearDias()" title="Quitar filtro de días">✕ días</button>
         <div class="multi-sel-wrap">
           <button class="multi-sel-btn" id="g-proc-btn" onclick="toggleGProcDD(event)" style="min-width:150px;text-align:left">Todos los procesos ▾</button>
           <div class="multi-sel-dropdown" id="g-proc-dd" style="min-width:220px;max-height:280px;overflow-y:auto">
@@ -2326,31 +2371,9 @@ function loadTarifasFromSheet() {
   }
 }
 
-// ── Multi-select días (global top bar)
-function toggleDiaDD(e) {
-  e.stopPropagation();
-  const dd = document.getElementById('g-dia-dd');
-  dd.classList.toggle('show');
-  anclarDropdown(dd);
-  if (dd.classList.contains('show')) dd.onclick = e => e.stopPropagation();
-}
-function toggleDia(dia) {
-  if (SEL_DIAS.has(dia)) SEL_DIAS.delete(dia); else SEL_DIAS.add(dia);
-  updateDiaBtn();
-  applyGlobalFilter();
-}
-function clearDias() {
-  SEL_DIAS.clear();
-  document.querySelectorAll('#g-dia-dd input[type=checkbox]').forEach(cb=>cb.checked=false);
-  updateDiaBtn();
-  applyGlobalFilter();
-}
-function updateDiaBtn() {
-  const btn = document.getElementById('g-dia-btn');
-  if (!btn) return;
-  if (SEL_DIAS.size === 0) { btn.textContent='Todos los días ▾'; btn.classList.remove('active'); }
-  else { btn.textContent=`${SEL_DIAS.size} día(s) ▾`; btn.classList.add('active'); }
-}
+// El multi-select de días del filtro global se retiró: lo reemplaza la escala
+// de tiempo (ver PERIODO GLOBAL). SEL_DIAS queda siempre vacío para que los
+// tests "!dias.size" de los filtros pasen y manden el rango.
 
 // ── Filtro global de Proceso Responsable (top bar)
 function toggleGProcDD(e) {
@@ -2404,16 +2427,6 @@ function buildGProcDd(procesos) {
     </label>`).join('');
   _syncGProcAllChk();
 }
-function buildDiaDd(dias) {
-  const dd = document.getElementById('g-dia-dd');
-  if (!dd) return;
-  dd.innerHTML = dias.map(d=>`
-    <label class="ms-item">
-      <input type="checkbox" onchange="toggleDia('${d}')" ${SEL_DIAS.has(d)?'checked':''}>
-      Día ${d}
-    </label>`).join('');
-}
-
 // ── Panel paros: días independientes
 function toggleParoDiaDD(e) {
   e.stopPropagation();
@@ -3608,10 +3621,9 @@ function populateAllFilters() {
   const meses = [...new Set(DATA.prod.map(r=>r._mes).filter(v => v && !v.startsWith('#')))];
   const maqs  = [...new Set(DATA.prod.map(r=>r._maq).filter(Boolean))].sort();
   const dias  = [...new Set(DATA.prod.map(r=>r._diaTurno).filter(x=>x!=null&&x!==''))].sort((a,b)=>Number(a)-Number(b));
-  // Global top bar
-  registrarFiltroMes('g-mes-dd', 'g-mes-btn', SEL_MESES, applyGlobalFilter);
-  buildMesMultiDd('g-mes-dd', meses);
-  buildDiaDd(dias);
+  // Global top bar: los desplegables de mes y día se reemplazaron por la
+  // escala de tiempo (un rango real). SEL_MESES se deriva del rango.
+  construirRango();
   const procesos = [...new Set(DATA.prod.filter(r=>r._paro>0).map(_getProc).filter(Boolean))].sort();
   buildGProcDd(procesos);
   // OEE section
@@ -3750,10 +3762,275 @@ function updateMesMultiBtn(ddId) {
 function gMes() { return SEL_MESES; }
 function gDia() { return SEL_DIAS; } // Set
 
+// =======================================================
+// PERIODO GLOBAL — ESCALA DE TIEMPO
+// -------------------------------------------------------
+// Reemplaza los dos desplegables del filtro global (mes × día-del-mes) por un
+// RANGO de fechas real. El modelo viejo no podía expresar "del 1 al 15 de
+// agosto": marcar el día 7 sin marcar mes devolvía el 7 de los nueve meses.
+//
+// SEL_MESES NO desaparece: se DERIVA del rango. Así todo lo que ya leía "qué
+// meses hay seleccionados" —títulos, gráficas mensuales, y la herencia de los
+// filtros por pestaña (SEL_MESES_COSTOS.size ? ... : SEL_MESES)— sigue
+// funcionando sin tocarlo. SEL_DIAS queda siempre vacío: la precisión de día
+// la pone el rango sobre _fechaKey, no el cruce mes × día.
+// =======================================================
+let RANGO = null;           // {a:'YYYY-MM-DD', b:'YYYY-MM-DD'} | null = todo el periodo
+let RANGO_PRESET = 'todo';  // id del atajo activo (solo para pintarlo)
+let DIAS_CAL = [];          // universo de días: [{k,m,dia,dow,u}] incluidos los sin producción
+
+const _RG_MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+// ¿La fila cae dentro del periodo global?
+function enRangoGlobal(r) {
+  if (!RANGO) return true;
+  const k = String((r && r._fechaKey) || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(k)) return k >= RANGO.a && k <= RANGO.b;
+  // Hoja sin fecha utilizable (p. ej. Ventas): se degrada a mes completo, que
+  // es toda la precisión que esa hoja permite. Se avisa en el botón.
+  return mesMatch(SEL_MESES, String((r && (r._mesTurno || r._mes)) || ''));
+}
+// Igual, para una fecha suelta "d/m/aaaa" (maquilas traen la fecha como texto).
+function enRangoFechaTexto(f) {
+  if (!RANGO) return true;
+  const mm = String(f||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (!mm) return false;
+  let y = +mm[3]; if (y < 100) y += 2000;
+  const k = `${y}-${String(+mm[2]).padStart(2,'0')}-${String(+mm[1]).padStart(2,'0')}`;
+  return k >= RANGO.a && k <= RANGO.b;
+}
+
+// Universo de días: del primero al último con registro, SIN saltarse los días
+// vacíos — los domingos y festivos tienen que verse como hueco en la barra.
+function construirDiasCal() {
+  const und = {};
+  (DATA.prod||[]).forEach(r => {
+    const k = r._fechaKey;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(k||''))) return;
+    und[k] = (und[k]||0) + (Number(r._cant)||0);
+  });
+  const keys = Object.keys(und).sort();
+  DIAS_CAL = [];
+  if (!keys.length) return;
+  const d = new Date(keys[0] + 'T12:00:00'), fin = new Date(keys[keys.length-1] + 'T12:00:00');
+  while (d <= fin) {
+    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    DIAS_CAL.push({ k, m:d.getMonth(), dia:d.getDate(), dow:(d.getDay()+6)%7, u:und[k]||0 });
+    d.setDate(d.getDate()+1);
+  }
+}
+
+function _rgIdx(k) { for (let i=0;i<DIAS_CAL.length;i++) if (DIAS_CAL[i].k===k) return i; return -1; }
+function _rgHoyIdx() {
+  const hoy = new Date();
+  const k = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
+  const i = _rgIdx(k);
+  return i >= 0 ? i : DIAS_CAL.length - 1;   // sin registro de hoy: el último día cargado
+}
+function _rgLbl(i) { const x = DIAS_CAL[i]; return x ? `${x.dia} ${_RG_MES[x.m]}` : '—'; }
+
+// SEL_MESES derivado: los meses que toca el rango.
+function _rgSincronizarMeses() {
+  SEL_MESES.clear();
+  SEL_DIAS.clear();                       // el rango sustituye al día-del-mes
+  if (!RANGO) return;
+  DIAS_CAL.forEach(d => {
+    if (d.k >= RANGO.a && d.k <= RANGO.b) SEL_MESES.add(_MESES_ES[d.m+1]);
+  });
+}
+
+// Punto de entrada único. a/b nulos = todo el periodo.
+function setRangoGlobal(a, b, presetId, soloPintar) {
+  RANGO = (a && b) ? { a, b } : null;
+  RANGO_PRESET = presetId || null;
+  _rgSincronizarMeses();
+  pintarRango();
+  if (!soloPintar) applyGlobalFilter();
+}
+function _rgSetIdx(ia, ib, presetId, soloPintar) {
+  if (!DIAS_CAL.length) return;
+  const n = DIAS_CAL.length;
+  ia = Math.max(0, Math.min(n-1, ia));
+  ib = Math.max(0, Math.min(n-1, ib));
+  setRangoGlobal(DIAS_CAL[Math.min(ia,ib)].k, DIAS_CAL[Math.max(ia,ib)].k, presetId, soloPintar);
+}
+function _rgActualIdx() {
+  if (!RANGO) return [0, DIAS_CAL.length-1];
+  const a = _rgIdx(RANGO.a), b = _rgIdx(RANGO.b);
+  return [a<0?0:a, b<0?DIAS_CAL.length-1:b];
+}
+
+// ── Atajos ─────────────────────────────────────────────────────────────────
+// "Últimos N días" cuenta desde LA FECHA QUE SE ESTÁ REVISANDO (el final del
+// rango actual), no desde hoy: parado en el 20 de agosto, 10 son del 11 al 20.
+// Con "Hoy" se vuelve a anclar en hoy.
+function _rgGrupos() {
+  const HI = _rgHoyIdx();
+  const finActual = () => _rgActualIdx()[1];
+  const mesDe = (i, delta) => {
+    const base = DIAS_CAL[i]; if (!base) return [0,0];
+    const m = base.m + (delta||0);
+    let a=-1, b=-1;
+    DIAS_CAL.forEach((d,j)=>{ if (d.m===m){ if(a<0) a=j; b=j; } });
+    return a<0 ? [i,i] : [a,b];
+  };
+  const lunesDe = i => Math.max(0, i - (DIAS_CAL[i] ? DIAS_CAL[i].dow : 0));
+  return [
+    { lbl:'Puntual', items:[
+      { id:'hoy',  txt:'Hoy',  f:()=>[HI,HI] },
+      { id:'ayer', txt:'Ayer', f:()=>[HI-1,HI-1] }
+    ]},
+    { lbl:'Últimos … días', ancla:true, num:true,
+      items:[7,10,15,20,30,45,60,90].map(n=>({ id:n+'d', txt:String(n),
+        f:()=>{ const e=finActual(); return [e-(n-1), e]; } })) },
+    { lbl:'Calendario', items:[
+      { id:'sem',  txt:'Esta semana',   f:()=>[lunesDe(HI), HI] },
+      { id:'psem', txt:'Semana pasada', f:()=>{ const l=lunesDe(HI); return [l-7, l-1]; } },
+      { id:'mes',  txt:'Este mes',      f:()=>[mesDe(HI,0)[0], HI] },
+      { id:'pmes', txt:'Mes pasado',    f:()=>mesDe(HI,-1) },
+      { id:'ames', txt:'Antepasado',    f:()=>mesDe(HI,-2) }
+    ]}
+  ];
+}
+
+let _RG_BOTONES = [], _RG_BARS = [], _RG_LISTO = false;
+
+// Se construye una sola vez, cuando ya hay datos cargados.
+function construirRango() {
+  construirDiasCal();
+  const brush = document.getElementById('rg-brush');
+  const pres  = document.getElementById('rg-presets');
+  const mos   = document.getElementById('rg-months');
+  if (!brush || !pres || !mos || !DIAS_CAL.length) return;
+
+  // Atajos
+  pres.innerHTML = '';
+  _RG_BOTONES = [];
+  _rgGrupos().forEach(g => {
+    const wrap = document.createElement('div'); wrap.className = 'rg-group';
+    const lab  = document.createElement('span'); lab.className = 'rg-lbl'; lab.textContent = g.lbl;
+    if (g.ancla) { const an = document.createElement('span'); an.className = 'rg-ancla'; an.id = 'rg-ancla'; lab.appendChild(an); }
+    const row  = document.createElement('div'); row.className = 'rg-chips' + (g.num ? ' num' : '');
+    g.items.forEach(it => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'rg-chip'; b.textContent = it.txt; b.dataset.id = it.id;
+      if (g.num) b.title = 'Últimos ' + it.txt + ' días';
+      b.onclick = ev => { ev.stopPropagation(); const r = it.f(); _rgSetIdx(r[0], r[1], it.id); };
+      row.appendChild(b); _RG_BOTONES.push(b);
+    });
+    wrap.appendChild(lab); wrap.appendChild(row); pres.appendChild(wrap);
+  });
+
+  // Barras: una por día, alto = unidades producidas
+  const maxU = DIAS_CAL.reduce((m,x)=>Math.max(m,x.u), 0) || 1;
+  _RG_BARS = [];
+  [...brush.querySelectorAll('.rg-bar')].forEach(b=>b.remove());
+  const sel = document.getElementById('rg-sel');
+  DIAS_CAL.forEach(x => {
+    const b = document.createElement('div');
+    b.className = 'rg-bar' + (x.u ? '' : ' zero');
+    b.style.height = x.u ? Math.max(6, x.u/maxU*100) + '%' : '3px';
+    brush.insertBefore(b, sel); _RG_BARS.push(b);
+  });
+
+  // Etiquetas de mes, proporcionales a los días que abarca cada uno
+  mos.innerHTML = '';
+  let cur = -1, span = null;
+  DIAS_CAL.forEach(x => {
+    if (x.m !== cur) { cur = x.m; span = document.createElement('span'); span.className = 'rg-mo';
+      span.textContent = _RG_MES[cur]; span.dataset.n = 1; mos.appendChild(span); }
+    else span.dataset.n = +span.dataset.n + 1;
+  });
+  [...mos.children].forEach(sp => { sp.style.flex = `0 0 ${sp.dataset.n/DIAS_CAL.length*100}%`; });
+
+  if (!_RG_LISTO) { _rgEnlazarArrastre(brush); _RG_LISTO = true; }
+  pintarRango();
+}
+
+// Arrastre. El re-render del tablero es caro (gráficas), así que durante el
+// arrastre solo se repinta el control; el filtro se aplica al soltar.
+function _rgEnlazarArrastre(brush) {
+  const tip = document.getElementById('rg-tip');
+  let modo = null, ancla = 0;
+  const idxDe = e => {
+    const r = brush.getBoundingClientRect();
+    return Math.max(0, Math.min(DIAS_CAL.length-1,
+      Math.floor((e.clientX - r.left) / r.width * DIAS_CAL.length)));
+  };
+  brush.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const i = idxDe(e), [a,b] = _rgActualIdx();
+    const px = brush.getBoundingClientRect().width / DIAS_CAL.length;
+    const cercaA = Math.abs(i-a)*px < 10, cercaB = Math.abs(i-b)*px < 10;
+    if (cercaA && !cercaB) { modo='a'; ancla=b; }
+    else if (cercaB && !cercaA) { modo='b'; ancla=a; }
+    else { modo='new'; ancla=i; _rgSetIdx(i, i, null, true); }
+    brush.setPointerCapture(e.pointerId);
+  });
+  brush.addEventListener('pointermove', e => {
+    const i = idxDe(e), x = DIAS_CAL[i];
+    if (tip && x) {
+      const r = brush.getBoundingClientRect();
+      tip.innerHTML = `<b style="color:#22D3EE">${x.dia} ${_RG_MES[x.m]}</b> · ` +
+        (x.u ? `<span style="color:#10B981">${Math.round(x.u).toLocaleString('es-CO')} und</span>` : 'sin producción');
+      tip.style.left = Math.max(64, Math.min(r.width-64, e.clientX - r.left)) + 'px';
+      tip.classList.add('on');
+    }
+    if (!modo) return;
+    _rgSetIdx(Math.min(ancla,i), Math.max(ancla,i), null, true);
+  });
+  const soltar = () => { if (modo) { modo = null; applyGlobalFilter(); } };
+  brush.addEventListener('pointerup', soltar);
+  brush.addEventListener('pointercancel', soltar);
+  brush.addEventListener('pointerleave', () => { if (tip) tip.classList.remove('on'); });
+}
+
+function pintarRango() {
+  const btn = document.getElementById('g-rango-btn');
+  const sel = document.getElementById('rg-sel');
+  if (!DIAS_CAL.length) { if (btn) btn.textContent = 'Todo el periodo ▾'; return; }
+  const [a,b] = _rgActualIdx();
+  let dias = 0, cero = 0, total = 0;
+  for (let i=a; i<=b; i++) { const x = DIAS_CAL[i]; if (x.u > 0) { dias++; total += x.u; } else cero++; }
+
+  _RG_BARS.forEach((el,i) => el.classList.toggle('in', i>=a && i<=b));
+  if (sel) {
+    const pa = a/DIAS_CAL.length*100, pb = (b+1)/DIAS_CAL.length*100;
+    sel.style.left = pa+'%'; sel.style.width = (pb-pa)+'%';
+    sel.style.display = RANGO ? 'block' : 'none';
+  }
+  const txtRango = !RANGO ? 'Todo' : (a===b ? _rgLbl(a) : `${_rgLbl(a)} → ${_rgLbl(b)}`);
+  const set = (id,v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set('rg-rango', txtRango);
+  set('rg-dias', dias.toLocaleString('es-CO'));
+  set('rg-und', Math.round(total).toLocaleString('es-CO'));
+  const an = document.getElementById('rg-ancla');
+  if (an) an.textContent = ' · hasta ' + _rgLbl(b) + (b === _rgHoyIdx() ? ' (hoy)' : '');
+  _RG_BOTONES.forEach(x => x.setAttribute('aria-pressed', x.dataset.id === RANGO_PRESET ? 'true' : 'false'));
+
+  if (btn) {
+    btn.textContent = (RANGO ? `📅 ${txtRango}` : 'Todo el periodo') + ' ▾';
+    btn.classList.toggle('active', !!RANGO);
+    btn.title = RANGO
+      ? `${txtRango} · ${dias} día(s) con producción, ${cero} sin registro. En Ventas/OTIF el corte es por mes completo (esa hoja no trae fecha de día).`
+      : 'Todo el periodo cargado';
+  }
+}
+
+function toggleRangoDD(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('g-rango-dd');
+  if (!dd) return;
+  dd.classList.toggle('show');
+  anclarDropdown(dd);
+  if (dd.classList.contains('show')) { dd.onclick = ev => ev.stopPropagation(); pintarRango(); }
+}
+
 function filterProd() {
   const m = gMes(); const dias = gDia();
   const t = getVal('oee-f-turno');
   return DATA.prod.filter(r =>
+    enRangoGlobal(r) &&
     (mesMatch(m, r._mes)) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_OEE.size || SEL_MAQ_OEE.has(String(r._maq))) &&
@@ -3765,9 +4042,12 @@ function filterProd() {
 function filterCostos() {
   const m   = SEL_MESES_COSTOS.size ? SEL_MESES_COSTOS : SEL_MESES;
   const dias = SEL_DIAS_COSTOS.size ? SEL_DIAS_COSTOS : SEL_DIAS;
+  // El panel manda sobre el rango global, igual que mandaba sobre el filtro viejo.
+  const propio = SEL_MESES_COSTOS.size || SEL_DIAS_COSTOS.size;
   return DATA.prod.filter(r => {
     const mes = r._mesTurno || r._mes || '';
-    return mesMatch(m, mes) &&
+    return (propio || enRangoGlobal(r)) &&
+           mesMatch(m, mes) &&
            (!dias.size || dias.has(r._diaTurno||'')) &&
            (!SEL_MAQ_COSTOS.size || SEL_MAQ_COSTOS.has(String(r._maq)));
   });
@@ -3775,7 +4055,9 @@ function filterCostos() {
 function filterParo() {
   const m   = SEL_MESES_PARO.size ? SEL_MESES_PARO : SEL_MESES;
   const dias = SEL_DIAS_PARO.size ? SEL_DIAS_PARO : SEL_DIAS;
+  const propio = SEL_MESES_PARO.size || SEL_DIAS_PARO.size;   // el panel manda
   return DATA.prod.filter(r =>
+    (propio || enRangoGlobal(r)) &&
     (mesMatch(m, r._mesTurno || r._mes)) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_PARO.size || SEL_MAQ_PARO.has(String(r._maq))) &&
@@ -3787,7 +4069,9 @@ function filterNC() {
   const m   = SEL_MESES_NC.size ? SEL_MESES_NC : SEL_MESES;
   // NC sheet has no DIA column — only use panel's own day filter (SEL_DIAS_NC)
   const dias = SEL_DIAS_NC;
+  const propio = SEL_MESES_NC.size || SEL_DIAS_NC.size;       // el panel manda
   return DATA.nc.filter(r =>
+    (propio || enRangoGlobal(r)) &&
     (mesMatch(m, String(r['MES ']||r['MES']||'').trim())) &&
     (!dias.size || dias.has(r._diaTurno||'')) &&
     (!SEL_MAQ_NC.size || SEL_MAQ_NC.has(String(r._maq||''))) &&
@@ -3969,7 +4253,7 @@ function renderResumen() {
   (DATA.maquilas||[]).forEach(m => {
     const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
     if (!mm) return;
-    if (!mesMatch(SEL_MESES, _MES_IDX[parseInt(mm[2])])) return;
+    if (!enRangoFechaTexto(m.fecha)) return;
     const k = normRef(m.referencia);
     if (!k) return;
     const cant = parseFloat(String(m.cantidad||'').replace(/[^0-9.-]/g,''))||0;
@@ -4049,7 +4333,7 @@ function renderResumen() {
   // para que siempre muestre TODAS las máquinas independientemente del filtro activo
   const _mSel = gMes(); const _dias = gDia();
   const dAllMaqs = DATA.prod.filter(r =>
-    (mesMatch(_mSel, r._mes)) && (!_dias.size || _dias.has(r._diaTurno||''))
+    enRangoGlobal(r) && (mesMatch(_mSel, r._mes)) && (!_dias.size || _dias.has(r._diaTurno||''))
   );
   const maqs = [...new Set(dAllMaqs.map(r=>r._maq).filter(Boolean))].sort();
   const oeeByMaqVal = maqs.map(m => calcOEEFromDRC(dAllMaqs.filter(r=>r._maq==m)) ?? 0);
@@ -4437,9 +4721,8 @@ function renderResumen() {
     const _MES2 = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
     const maqData = (DATA.maquilas||[]).filter(m => {
       const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-      if (!mm) return !SEL_MESES.size;
-      if (!mesMatch(SEL_MESES, _MES2[parseInt(mm[2])])) return false;
-      return true;
+      if (!mm) return !RANGO;                    // sin fecha válida: solo si no hay periodo
+      return enRangoFechaTexto(m.fecha);
     });
     const totalMaq = maqData.reduce((s,m)=>s+_pN(m.cantidad),0);
     const byCli = {};
@@ -6682,11 +6965,8 @@ function renderMaquilas() {
   const _MES = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const data = (DATA.maquilas || []).filter(m => {
     const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-    if (!mm) return !_gm.size && !_gd.size;       // sin fecha válida: solo si no hay filtro
-    const dia = String(parseInt(mm[1])), mes = _MES[parseInt(mm[2])] || '';
-    if (!mesMatch(_gm, mes)) return false;
-    if (_gd.size && !_gd.has(dia)) return false;
-    return true;
+    if (!mm) return !RANGO;                       // sin fecha válida: solo si no hay periodo
+    return enRangoFechaTexto(m.fecha);
   });
 
   if (!data.length) {
@@ -7736,7 +8016,9 @@ async function exportPDF(shareMode = false) {
     let y = 0;
 
     const mesLabel  = SEL_MESES.size ? [...SEL_MESES].map(cap).join(', ') : 'Todos los meses';
-    const diasLabel = SEL_DIAS.size ? [...SEL_DIAS].sort((a,b)=>a-b).join(', ') : 'Todos los días';
+    const diasLabel = RANGO
+      ? `${_rgLbl(_rgActualIdx()[0])} → ${_rgLbl(_rgActualIdx()[1])}`
+      : 'Todo el periodo';
     const fechaGen  = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 
     // ── helpers fondo BLANCO ──────────────────────────────────────────────
@@ -8012,9 +8294,8 @@ async function exportPDF(shareMode = false) {
       const _MES2p = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
       const maqDataP = (DATA.maquilas||[]).filter(m => {
         const mm = String(m.fecha||'').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-        if (!mm) return !SEL_MESES.size;
-        if (!mesMatch(SEL_MESES, _MES2p[parseInt(mm[2])])) return false;
-        return true;
+        if (!mm) return !RANGO;
+        return enRangoFechaTexto(m.fecha);
       });
       if (y > pageH-50) addPage('Informe de Cierre de Mes — FVLco');
       secTitle('Unidades Maquilas');
