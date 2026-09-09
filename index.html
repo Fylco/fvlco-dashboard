@@ -1597,6 +1597,26 @@ function _esRespuestaDeSalud_(body){
    Si el proxy desplegado es viejo y no sirve datos por GET (ignora el
    parámetro y devuelve su mensaje de salud), se cae a POST, que es como
    funcionaba hasta ahora. Así el tablero sirve antes y después del pegado. */
+/* Un servidor de datos bien configurado devuelve CSV o texto plano. Si
+   contesta HTML no son datos —es la página de error de Apps Script, o el Web
+   App del formulario— y eso jamás debe llegar al parser de CSV: Papa.parse
+   "parsea" el HTML y produce filas basura que el tablero muestra como datos.
+   Pasó el 2026-09-09: el proxy devolvió su página de error, entraron 9 filas
+   de basura y el tablero se veía normal, con todo en cero, sin una sola
+   alerta. Preferimos fallar fuerte: fetchCSV reintenta 2 veces y el fallo es
+   intermitente, así que casi siempre el reintento trae el CSV bueno.
+   Se compara con el INICIO, no "contiene": un CSV legítimo puede traer
+   "<html>" dentro de una celda de OBSERVACIÓN, y rechazarlo por eso dejaría el
+   tablero caído por nada. Ningún CSV empieza con estas etiquetas. */
+function _rechazarHTML(texto, via) {
+  const cabeza = String(texto || '').replace(/^﻿/, '').trimStart().slice(0, 60).toLowerCase();
+  if (cabeza.startsWith('<!doctype html') || cabeza.startsWith('<html')) {
+    throw new Error(`el servidor de datos respondió una PÁGINA HTML en vez de CSV (vía ${via}). ` +
+      'Suele ser un fallo pasajero de Apps Script; si se repite, revisa el despliegue del proxy. ' +
+      'URL usada: ' + apiUrl());
+  }
+}
+
 async function apiCall(payload){
   let t = null;
   try{
@@ -1616,7 +1636,7 @@ async function apiCall(payload){
   }catch(e){ t = null; }                       // GET no salió: probar POST
   if(t !== null && !_esRespuestaDeSalud_(t)){
     if(t.indexOf('__FVLCO_ERR__') === 0) throw new Error(t);
-    if(t.indexOf('__FVLCO_AUTH_FAIL__') !== 0) return t;   // son los datos
+    if(t.indexOf('__FVLCO_AUTH_FAIL__') !== 0) { _rechazarHTML(t, 'GET'); return t; }  // son los datos
   }
   return apiPost(payload);                     // proxy viejo, o pide clave
 }
@@ -1649,19 +1669,7 @@ async function apiPost(payload, _intento){
     throw new Error('el proxy todavía exige clave — escríbela en el recuadro, o despliega Proxy.gs v5 para que no la pida');
   }
   if(body.indexOf('__FVLCO_ERR__') === 0){ throw new Error(body); }
-  /* Un servidor de datos bien configurado devuelve CSV o texto plano. Si
-     contesta HTML es que estamos hablando con OTRA cosa —el Apps Script del
-     formulario responde con su página—, y eso jamás debe llegar al parser de
-     CSV: Papa.parse "parsea" el HTML y produce filas basura que el tablero
-     muestra como datos. Preferimos fallar fuerte y decir con quién se habló. */
-  // Se compara con el INICIO, no "contiene": un CSV legítimo puede traer
-  // "<html>" dentro de una celda de OBSERVACIÓN, y rechazarlo por eso dejaría
-  // el tablero caído por nada. Ningún CSV empieza con estas etiquetas.
-  const cabeza = body.replace(/^﻿/, '').trimStart().slice(0, 60).toLowerCase();
-  if (cabeza.startsWith('<!doctype html') || cabeza.startsWith('<html')) {
-    throw new Error('el servidor de datos respondió una PÁGINA HTML en vez de CSV. ' +
-      'No es el proxy: es otro Apps Script. URL usada: ' + apiUrl());
-  }
+  _rechazarHTML(body, 'POST');
   return body;
 }
 
@@ -2204,10 +2212,10 @@ const PROC_POR_RAZON = {
   'DESMONTAJE MOLDE PROGRAMADO':'MOLDES', 'ESPERA DE MOLDE TALLER':'MOLDES',
   'PARO MOLDE ESTRELLADO':'MOLDES', 'ANULAR CAVIDADES':'MOLDES', 'CAVIDAD PEGADA':'MOLDES',
   'ENSAYOS MOLDE':'MOLDES',
-  // Orden y aseo quedó en Moldes por decisión de planta. Se dejan las dos
+  // Orden y aseo lo hace el operario, no el taller de moldes. Se dejan las dos
   // grafías: el sheet ya se unificó a "ORDEN Y ASEO", pero si vuelve a
-  // aparecer la vieja el mapa no se rompe.
-  'ORDEN Y ASEO':'MOLDES', 'ORDEN, ASEO':'MOLDES',
+  // aparecer la vieja (con doble espacio) el mapa no se rompe.
+  'ORDEN Y ASEO':'PRODUCCION', 'ORDEN, ASEO':'PRODUCCION',
   // Producción — operación de la máquina
   'AJUSTE TAPADORA':'PRODUCCION', 'AJUSTES TAPADORA':'PRODUCCION',
   'AJUSTE PARAMETROS INYECCION':'PRODUCCION', 'TIEMPO DE ALIMENTACION':'PRODUCCION',
