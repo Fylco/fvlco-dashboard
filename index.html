@@ -2179,7 +2179,88 @@ const _procColor = (p) => {
   const key = String(p||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
   return PROC_COLORS[key] || '#A78BFA';
 };
-const _getProc   = r => { _detectProcKeys(); return String(r[_KEY_PROC]||'').trim(); };
+// ── PROCESO RESPONSABLE DEL PARO ─────────────────────────────────────────
+// La columna PROCESO RESPONSABLE PARO del sheet trae dato en 2 de 1.719 filas
+// con paro. No es un olvido: el responsable no se captura, se DEDUCE de la
+// razón del paro. Este mapa es esa deducción, revisada con producción sobre
+// las 43 razones reales del sheet (2026-09-09).
+// La columna sigue mandando cuando trae dato; el mapa solo actúa si está vacía.
+const PROC_LABEL = {
+  MANTENIMIENTO:'Mantenimiento', MOLDES:'Moldes / Taller', PRODUCCION:'Producción',
+  PLANEACION:'Planeación', MATERIA_PRIMA:'Materia Prima', TALENTO_HUMANO:'Talento Humano',
+  CALIDAD:'Calidad', EXTERNO:'Externo',
+  // '' a propósito: "sin responsable" es la AUSENCIA de uno. Así estas filas
+  // siguen pasando cualquier filtro de proceso, como pasaba antes del mapa.
+  SIN_RESPONSABLE:''
+};
+const PROC_POR_RAZON = {
+  // Mantenimiento — falla del equipo
+  'DAÑO ELECTRICO MAQUINA':'MANTENIMIENTO', 'DAÑO MECANICO MAQUINA':'MANTENIMIENTO',
+  'DAÑO MECANICO TAPADORA':'MANTENIMIENTO', 'DAÑO ELECTRICO TAPADORA':'MANTENIMIENTO',
+  'DAÑO SISTEMA DE LUBRICACION MAQUINA':'MANTENIMIENTO', 'DAÑO CHILLER':'MANTENIMIENTO',
+  'DAÑO COMPRESOR':'MANTENIMIENTO', 'MANTENIMIENTO PREVENTIVO PROGRAMADO':'MANTENIMIENTO',
+  // Moldes / Taller
+  'DAÑO MOLDE':'MOLDES', 'AJUSTE MOLDE':'MOLDES', 'MONTAJE MOLDE PROGRAMADO':'MOLDES',
+  'DESMONTAJE MOLDE PROGRAMADO':'MOLDES', 'ESPERA DE MOLDE TALLER':'MOLDES',
+  'PARO MOLDE ESTRELLADO':'MOLDES', 'ANULAR CAVIDADES':'MOLDES', 'CAVIDAD PEGADA':'MOLDES',
+  'ENSAYOS MOLDE':'MOLDES',
+  // Orden y aseo quedó en Moldes por decisión de planta. Se dejan las dos
+  // grafías: el sheet ya se unificó a "ORDEN Y ASEO", pero si vuelve a
+  // aparecer la vieja el mapa no se rompe.
+  'ORDEN Y ASEO':'MOLDES', 'ORDEN, ASEO':'MOLDES',
+  // Producción — operación de la máquina
+  'AJUSTE TAPADORA':'PRODUCCION', 'AJUSTES TAPADORA':'PRODUCCION',
+  'AJUSTE PARAMETROS INYECCION':'PRODUCCION', 'TIEMPO DE ALIMENTACION':'PRODUCCION',
+  'CALENTAMIENTO MAQUINA':'PRODUCCION', 'CAMBIO COLOR':'PRODUCCION', 'PURGA':'PRODUCCION',
+  'INICIO PLANTA':'PRODUCCION', 'BOQUILLA MAQUINA TAPADA':'PRODUCCION',
+  'PARO CALENTAMIENTO ACEITE INYECTORA':'PRODUCCION',
+  // Planeación — la máquina no estaba programada para producir
+  'PARO PROGRAMADO':'PLANEACION', 'MAQUINA CERRADA':'PLANEACION', 'REEMPLAZO MAQUINAS':'PLANEACION',
+  // Materia prima
+  'FALTANTE M.P.':'MATERIA_PRIMA', 'M.P DEFECTUOSA':'MATERIA_PRIMA',
+  'ENSAYOS MATERIA PRIMA':'MATERIA_PRIMA', 'CONTAMINACION':'MATERIA_PRIMA',
+  // Talento humano
+  'AUSENTISMO':'TALENTO_HUMANO', 'CAPACITACION':'TALENTO_HUMANO',
+  // Calidad
+  'LIBERACION / APROBACION CALIDAD':'CALIDAD', 'ENSAYOS POMOS':'CALIDAD', 'ANULAR POMOS':'CALIDAD',
+  // Externo
+  'APAGON':'EXTERNO',
+  // Sin responsable asignable
+  '(SIN RAZON)':'SIN_RESPONSABLE', 'PARO NO PROGRAMADO':'SIN_RESPONSABLE'
+};
+// Normaliza la razón antes de buscarla: el sheet trae espacios dobles
+// ("ORDEN,  ASEO", "BOQUILLA  MAQUINA TAPADA") y mayúsculas irregulares. Se
+// respeta la Ñ — quitar tildes convertiría DAÑO en DANO y perdería la llave.
+const _normRazon = v => String(v||'').trim().toUpperCase().replace(/\s+/g,' ');
+function _procDeRazon(r) {
+  const rz = _normRazon(r['RAZON PARO'] || r['RAZÓN PARO']) || '(SIN RAZON)';
+  const k  = PROC_POR_RAZON[rz];
+  return k ? (PROC_LABEL[k] || '') : '';
+}
+// Lo digitado en la columna se lleva a la MISMA etiqueta que produce el mapa.
+// Si no, las 2 filas que traen "PRODUCCION" (mayúsculas, sin tilde) salen como
+// una categoría aparte de "Producción" y el Pareto muestra el proceso partido
+// en dos. Aquí sí se quitan tildes: ninguna etiqueta de proceso lleva Ñ.
+const _sinTildes = v => String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+const _PROC_CANON = (() => {
+  const m = {};
+  Object.values(PROC_LABEL).filter(Boolean).forEach(lab => {
+    m[_sinTildes(lab).toUpperCase().replace(/\s+/g,' ')] = lab;
+  });
+  m['MOLDES'] = PROC_LABEL.MOLDES;   // el sheet puede traerlo sin "/ Taller"
+  m['TALLER'] = PROC_LABEL.MOLDES;
+  return m;
+})();
+// Un proceso que nadie previó se respeta tal cual: mejor una categoría nueva
+// visible que un dato digitado que el tablero se traga en silencio.
+const _canonProc = v => _PROC_CANON[_sinTildes(v).trim().toUpperCase().replace(/\s+/g,' ')] || String(v||'').trim();
+
+const _getProc   = r => {
+  _detectProcKeys();
+  // Lo digitado gana; si la columna está vacía, se deduce de la razón.
+  const digitado = String(r[_KEY_PROC]||'').trim();
+  return digitado ? _canonProc(digitado) : _procDeRazon(r);
+};
 const _getMotivo = r => { _detectProcKeys(); return String(r[_KEY_MOT_INY]||r[_KEY_MOT_TAP]||'').trim(); };
 
 // Costo de un paro en COP: (minutos / 60) × tarifa horaria de la máquina
