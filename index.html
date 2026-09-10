@@ -6919,20 +6919,18 @@ async function _enviarConShare(datos) {
   finally { clearTimeout(_shareEnVueloT); _shareEnVuelo = false; }
 }
 
-/* POR QUÉ HAY DOS CAMINOS DISTINTOS
-   El botón Compartir usaba la Web Share API, que está pensada para el celular:
-   entrega el archivo al sistema y el sistema ofrece WhatsApp. En Android o
-   iPhone eso funciona en un toque.
-   En Windows, Chrome también la implementa, pero abre el cuadro de compartir de
-   WINDOWS, que solo lista apps registradas como destino. WhatsApp Desktop
-   normalmente no lo está, así que no hay nada útil que elegir — y de ahí venían
-   los errores.
-   En PC NO existe forma de adjuntar un archivo a WhatsApp desde una página web:
-   el esquema wa.me / web.whatsapp.com solo acepta TEXTO, nunca ficheros. Es un
-   límite de WhatsApp, no del tablero. Así que el único camino real es dejar la
-   imagen en el PORTAPAPELES y que el usuario la pegue con Ctrl+V en el chat. */
-const _esMovil = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-
+/* CAMINO DE RESPALDO, NO REEMPLAZO.
+   El botón Compartir usa SIEMPRE la Web Share API primero: es la que entrega el
+   archivo al sistema y en el celular —y en los PC donde WhatsApp está registrado
+   como destino de compartir— llega a WhatsApp en un toque. Eso es lo que la
+   planta usa a diario y no se toca.
+   Esto es lo que se hace CUANDO ESA VÍA FALLA. En PC no existe forma de adjuntar
+   un archivo a WhatsApp desde una página web: wa.me y web.whatsapp.com solo
+   aceptan TEXTO, nunca ficheros (límite de WhatsApp, no del tablero). Así que el
+   respaldo es dejar la imagen en el PORTAPAPELES para pegarla con Ctrl+V, y si
+   el navegador no lo permite, descargarla.
+   Se intentó enrutar el PC directo por aquí (913f3c2) y fue un error: le quitó a
+   producción el camino que sí le funcionaba. Revertido. */
 async function _compartirEnPC(file, texto) {
   let copiada = false;
   try {
@@ -7049,9 +7047,8 @@ async function shareReportImage(opts) {
 
   // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
   //    previo, para no perder el gesto del clic actual (camino del 2º toque).
-  //    Solo aplica en el celular: en PC no se usa la Web Share API.
   const cached = _shareCache[opts.elId];
-  if (_esMovil() && cached && cached.key === key && cached.file &&
+  if (cached && cached.key === key && cached.file &&
       navigator.canShare && navigator.canShare({ files:[cached.file] })) {
     const prevC = btn ? btn.innerHTML : '';
     if (btn) btn.disabled = true;                    // sin esto se podía tocar 3 veces
@@ -7064,9 +7061,8 @@ async function shareReportImage(opts) {
         alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a tocar Compartir.');
         return;
       }
-      // Compartir no sirvió pero la imagen SÍ está lista: se descarga.
-      _descargarImagen(cached.file);
-      alert('No se pudo abrir el menú de compartir, así que se descargó la imagen. Adjúntala al grupo de WhatsApp.');
+      // Compartir no sirvió pero la imagen SÍ está lista: camino de respaldo.
+      await _compartirEnPC(cached.file, opts.text);
       return;
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = prevC; }
@@ -7079,10 +7075,7 @@ async function shareReportImage(opts) {
     const file = await _generarImagenReporte(opts);
     if (!file) return;
     _shareCache[opts.elId] = { key, file };   // para poder compartir en el 2º toque
-    if (!_esMovil()) {
-      // PC: el cuadro de compartir de Windows no lleva a WhatsApp. Portapapeles.
-      await _compartirEnPC(file, opts.text);
-    } else if (navigator.canShare && navigator.canShare({ files:[file] })) {
+    if (navigator.canShare && navigator.canShare({ files:[file] })) {
       try {
         // Camino feliz (móvil rápido): comparte directo en el 1er toque
         await _enviarConShare(shareData(file));
@@ -7095,9 +7088,9 @@ async function shareReportImage(opts) {
         } else if (_esShareOcupado(err)) {
           alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a tocar Compartir.');
         } else {
-          // La imagen está lista: mejor descargarla que dejar al usuario sin nada.
-          _descargarImagen(file);
-          alert('No se pudo abrir el menú de compartir, así que se descargó la imagen. Adjúntala al grupo de WhatsApp.');
+          // La imagen está lista: se ofrece el camino del portapapeles antes de
+          // dejar al usuario sin nada.
+          await _compartirEnPC(file, opts.text);
         }
       }
     } else {
