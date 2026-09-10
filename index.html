@@ -6925,6 +6925,36 @@ function saludoPorHora() {
 // Inventario Logística Diario: los dos capturan su propio contenedor a ancho
 // fijo y lo mandan por Web Share API.
 //   opts = { elId, btnId, forceClass, key, fname, title, text, width }
+/* GUARDIA DE UN SOLO ENVÍO A LA VEZ.
+   navigator.share() rechaza con "An earlier share has not yet completed" si se
+   la llama mientras otro envío sigue abierto. En el PC pasa así: el 1er toque
+   tarda en generar la imagen, expira el gesto del clic y sale el aviso de
+   "toca Compartir una vez más"; el 2º toque abre el cuadro de Windows y su
+   promesa queda PENDIENTE hasta que el usuario elija o lo cierre; y como ese
+   camino no desactivaba el botón, un 3er toque se lanzaba encima → error.
+   Esto es lo ÚNICO que se añade sobre el código del 2026-09-09: no cambia el
+   flujo, solo impide que un envío se lance encima de otro. Todo lo demás que
+   intenté encima (portapapeles, abrir WhatsApp Web, enrutar el PC) se revirtió
+   porque le quitaba a producción el camino que ya usaba.
+   La liberación por tiempo existe porque en Windows la promesa de share()
+   puede no resolverse nunca si se cierra el cuadro sin elegir destino: sin
+   ella el botón quedaría muerto hasta recargar la página. */
+let _shareEnVuelo = false, _shareEnVueloT = null;
+const _esShareOcupado = e => /earlier share|not yet completed/i.test(String(e && e.message));
+
+async function _enviarConShare(datos) {
+  if (_shareEnVuelo) {
+    const e = new Error('An earlier share has not yet completed');
+    e.name = 'InvalidStateError';
+    throw e;
+  }
+  _shareEnVuelo = true;
+  clearTimeout(_shareEnVueloT);
+  _shareEnVueloT = setTimeout(() => { _shareEnVuelo = false; }, 60000);
+  try { await navigator.share(datos); }
+  finally { clearTimeout(_shareEnVueloT); _shareEnVuelo = false; }
+}
+
 async function shareReportImage(opts) {
   const el  = document.getElementById(opts.elId);
   const btn = document.getElementById(opts.btnId);
@@ -6938,12 +6968,20 @@ async function shareReportImage(opts) {
   const cached = _shareCache[opts.elId];
   if (cached && cached.key === key && cached.file &&
       navigator.canShare && navigator.canShare({ files:[cached.file] })) {
+    const prevC = btn ? btn.innerHTML : '';
+    if (btn) btn.disabled = true;      // sin esto un 3er toque se lanzaba encima
     try {
-      await navigator.share(shareData(cached.file));
+      await _enviarConShare(shareData(cached.file));
       return;
     } catch(err) {
       if (err && err.name === 'AbortError') return;   // el usuario canceló
+      if (_esShareOcupado(err)) {
+        alert('Ya hay un envío de WhatsApp abierto sin terminar. Termínalo o ciérralo, y vuelve a tocar Compartir.');
+        return;
+      }
       // si vuelve a fallar, seguimos y regeneramos abajo
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = prevC; }
     }
   }
 
@@ -6983,13 +7021,15 @@ async function shareReportImage(opts) {
     if (navigator.canShare && navigator.canShare({ files:[file] })) {
       try {
         // Camino feliz (móvil rápido): comparte directo en el 1er toque
-        await navigator.share(shareData(file));
+        await _enviarConShare(shareData(file));
       } catch(err) {
         if (err && err.name === 'AbortError') { /* cancelado, no hacer nada */ }
         else if (isGestureErr(err)) {
           // El render tardó y expiró el gesto, pero la imagen YA quedó lista:
           // avisar para que un 2º toque la comparte al instante (rama de arriba).
           alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
+        } else if (_esShareOcupado(err)) {
+          alert('Ya hay un envío de WhatsApp abierto sin terminar. Termínalo o ciérralo, y vuelve a tocar Compartir.');
         } else throw err;
       }
     } else {
