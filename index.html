@@ -548,7 +548,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="5">Turno 2 — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-clear" onclick="rcGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
-        <button id="rc-share-btn" onclick="shareCompactImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
+        <button id="rc-dl-btn" onclick="descargarCompactImage()" title="Bajar la imagen al equipo, sin pasar por el menú de compartir" style="background:#1F2937;border:1px solid #374151;color:#D1D5DB;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
+          <i class="fa-solid fa-download"></i> Descargar imagen
+        </button>
+        <button id="rc-share-btn" onclick="shareCompactImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px">
           <i class="fa-brands fa-whatsapp"></i> Compartir
         </button>
       </div>
@@ -574,7 +577,10 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="">Todas las máquinas</option>
         </select>
         <button class="btn-clear" onclick="ilGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
-        <button id="il-share-btn" onclick="shareInvLogImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
+        <button id="il-dl-btn" onclick="descargarInvLogImage()" title="Bajar la imagen al equipo, sin pasar por el menú de compartir" style="background:#1F2937;border:1px solid #374151;color:#D1D5DB;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
+          <i class="fa-solid fa-download"></i> Descargar imagen
+        </button>
+        <button id="il-share-btn" onclick="shareInvLogImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px">
           <i class="fa-brands fa-whatsapp"></i> Compartir
         </button>
       </div>
@@ -6874,45 +6880,6 @@ function rcGoLatest() {
   sel.selectedIndex = sel.options.length - 1;  // último día = más reciente
   renderReporteCompacto();
 }
-// Descarga un PANTALLAZO PNG del reporte compacto en alta resolución.
-// Captura solo #rc-content (la barra lateral NO se incluye).
-async function exportCompactImage() {
-  const el = document.getElementById('rc-content');
-  const btn = document.getElementById('rc-pdf-btn');
-  if (!el) return;
-  const prev = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
-  try {
-    // Mismo formato ancho que "Compartir" (RC_W=1900 + windowWidth) para que
-    // no salga estirado ni dependa del ancho del navegador. scale alto = mejor
-    // resolución.
-    const RC_W = 1900;
-    const stage = document.createElement('div');
-    stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
-    const cloneEl = el.cloneNode(true);
-    cloneEl.classList.add('rc-share-force');
-    stage.appendChild(cloneEl);
-    document.body.appendChild(stage);
-    let canvas;
-    try {
-      canvas = await html2canvas(cloneEl, {
-        backgroundColor:'#FFFFFF', scale:4, useCORS:true,
-        width: RC_W, windowWidth: RC_W
-      });
-    } finally { stage.remove(); }
-    const sel = document.getElementById('rc-f-dia');
-    const fecha = (sel && sel.value) ? sel.value : 'reporte';
-    const link = document.createElement('a');
-    link.download = `Reporte_Compacto_${fecha}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  } catch(err) {
-    alert('Error generando la imagen: '+err.message);
-    console.error(err);
-  }
-  if (btn) { btn.disabled = false; btn.innerHTML = prev; }
-}
-
 // Imagen ya generada por reporte: { elId: {key, file} }. La clave identifica el
 // día/turno capturado; si cambia, la imagen vieja ya no vale.
 const _shareCache = {};
@@ -6959,6 +6926,61 @@ function _descargarImagen(file) {
   const a = document.createElement('a');
   a.href = url; a.download = file.name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/* Genera la imagen del reporte. Es el MISMO camino para compartir y para
+   descargar, así que lo que se baja es idéntico a lo que se envía — antes había
+   una función aparte (exportCompactImage) que duplicaba este render y que además
+   había quedado sin botón, inalcanzable.
+   Se captura SIEMPRE el formato clásico de tabla ancha, aunque la pantalla sea
+   móvil: se clona fuera de pantalla y la clase *-share-force desactiva el layout
+   de tarjetas del media query.
+   RC_W = ancho fijo de la imagen. A 1280 el Reporte Compacto salía como tira
+   vertical (alto/ancho ≈3.1) y en WhatsApp se veía "estirado"; a 1900 sus
+   columnas y los textos largos (motivos de paro) tienen espacio y queda apaisado
+   (~1.3–1.5). Es un parámetro porque un reporte con MENOS columnas se estira al
+   contrario: el Inventario Logística, con 5 columnas, a 1900 quedaba en ~3.2:1
+   con media imagen en blanco.
+   width + windowWidth fijan el viewport de maquetación a RC_W: la imagen sale
+   IDÉNTICA desde el celular o el PC. Sin windowWidth, html2canvas usa el ancho
+   real del navegador y dispara los @media móviles, así que el mismo reporte
+   cambiaba de aspecto según el dispositivo. */
+async function _generarImagenReporte(opts) {
+  const el = document.getElementById(opts.elId);
+  if (!el) return null;
+  const RC_W = opts.width || 1900;
+  const stage = document.createElement('div');
+  stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
+  const cloneEl = el.cloneNode(true);
+  cloneEl.classList.add(opts.forceClass);
+  stage.appendChild(cloneEl);
+  document.body.appendChild(stage);
+  let canvas;
+  try {
+    canvas = await html2canvas(cloneEl, {
+      backgroundColor:'#FFFFFF', scale:2, useCORS:true,
+      width: RC_W, windowWidth: RC_W
+    });
+  } finally { stage.remove(); }
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  return new File([blob], opts.fname, { type:'image/png' });
+}
+
+// Descarga directa, sin pasar por el menú de compartir. En PC es el camino
+// corto: el cuadro de compartir de Windows estorba más de lo que ayuda.
+async function descargarReporteImagen(opts) {
+  const btn = document.getElementById(opts.btnId);
+  const prev = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
+  try {
+    const file = await _generarImagenReporte(opts);
+    if (file) _descargarImagen(file);
+  } catch(err) {
+    alert('No se pudo generar la imagen: ' + ((err && err.message) || err));
+    console.error(err);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+  }
 }
 
 // Los tres botones de PDF (Informe de Cierre, Análisis de Paros, Tiempos de
@@ -7018,35 +7040,8 @@ async function shareReportImage(opts) {
   const prev = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
   try {
-    // Capturar SIEMPRE el formato clásico de tabla ancha (aunque la pantalla
-    // sea móvil): se clona fuera de pantalla y la clase *-share-force
-    // desactiva el layout de tarjetas del media query.
-    // RC_W = ancho fijo de la imagen. A 1280 el Reporte Compacto salía como
-    // tira vertical (alto/ancho ≈3.1) y en WhatsApp se veía "estirado"; a 1900
-    // sus columnas y los textos largos (motivos de paro) tienen espacio y queda
-    // apaisado (~1.3–1.5). Es un parámetro porque un reporte con MENOS columnas
-    // se estira al contrario: el Inventario Logística, con 5 columnas, a 1900
-    // quedaba en ~3.2:1 con media imagen en blanco.
-    const RC_W = opts.width || 1900;
-    const stage = document.createElement('div');
-    stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
-    const cloneEl = el.cloneNode(true);
-    cloneEl.classList.add(opts.forceClass);
-    stage.appendChild(cloneEl);
-    document.body.appendChild(stage);
-    let canvas;
-    try {
-      // width + windowWidth fijan el viewport de maquetación a RC_W: la imagen
-      // sale IDÉNTICA desde el celular o el PC. Sin windowWidth, html2canvas
-      // usa el ancho real del navegador y dispara los @media móviles, así que
-      // el mismo reporte cambiaba de aspecto según el dispositivo.
-      canvas = await html2canvas(cloneEl, {
-        backgroundColor:'#FFFFFF', scale:2, useCORS:true,
-        width: RC_W, windowWidth: RC_W
-      });
-    } finally { stage.remove(); }
-    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    const file = new File([blob], opts.fname, { type:'image/png' });
+    const file = await _generarImagenReporte(opts);
+    if (!file) return;
     _shareCache[opts.elId] = { key, file };   // para poder compartir en el 2º toque
     if (navigator.canShare && navigator.canShare({ files:[file] })) {
       try {
@@ -7091,33 +7086,47 @@ async function shareReportImage(opts) {
 // del render, el navegador rechaza con "Must be handling a user gesture".
 // Solución: shareReportImage cachea la imagen ya generada; si el gesto expiró,
 // un 2º toque comparte al instante (sin await previo, con el gesto fresco).
-async function shareCompactImage() {
+// Las opciones de cada reporte se definen UNA vez: compartir y descargar deben
+// producir exactamente la misma imagen, con el mismo nombre de archivo.
+function _optsCompacto() {
   const sel   = document.getElementById('rc-f-dia');
   const fecha = (sel && sel.value) ? sel.value : 'reporte';
   const turno = (document.getElementById('rc-f-turno')?.value || '');
-  return shareReportImage({
-    elId:'rc-content', btnId:'rc-share-btn', forceClass:'rc-share-force',
+  return {
+    elId:'rc-content', forceClass:'rc-share-force',
     key:`${fecha}|${turno}`,
     fname:`Reporte_Compacto_${fecha}.png`,
     title:'Reporte de Producción FVLco',
     text:`${saludoPorHora()}, aquí el Reporte de Producción FVLco — ${fecha}`
-  });
+  };
+}
+async function shareCompactImage() {
+  return shareReportImage({ ..._optsCompacto(), btnId:'rc-share-btn' });
+}
+async function descargarCompactImage() {
+  return descargarReporteImagen({ ..._optsCompacto(), btnId:'rc-dl-btn' });
 }
 
-// Comparte el INVENTARIO LOGÍSTICA DIARIO por el mismo camino.
-async function shareInvLogImage() {
+// INVENTARIO LOGÍSTICA DIARIO, por el mismo camino.
+function _optsInvLog() {
   const sel   = document.getElementById('il-f-dia');
   const fecha = (sel && sel.value) ? sel.value : 'reporte';
   const turno = (document.getElementById('il-f-turno')?.value || '');
   const maq   = (document.getElementById('il-f-maq')?.value   || '');
-  return shareReportImage({
-    elId:'il-content', btnId:'il-share-btn', forceClass:'il-share-force',
+  return {
+    elId:'il-content', forceClass:'il-share-force',
     width:1100,   // 5 columnas: a 1900 sobraba la mitad del ancho
     key:`${fecha}|${turno}|${maq}`,
     fname:`Inventario_Logistica_${fecha}.png`,
     title:'Inventario Logística Diario — FVLco',
     text:`${saludoPorHora()}, aquí el Inventario Logística Diario FVLco — ${fecha}`
-  });
+  };
+}
+async function shareInvLogImage() {
+  return shareReportImage({ ..._optsInvLog(), btnId:'il-share-btn' });
+}
+async function descargarInvLogImage() {
+  return descargarReporteImagen({ ..._optsInvLog(), btnId:'il-dl-btn' });
 }
 
 // =======================================================
