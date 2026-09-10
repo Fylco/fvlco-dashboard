@@ -548,10 +548,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="5">Turno 2 — 6:00 PM a 6:00 AM</option>
         </select>
         <button class="btn-clear" onclick="rcGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
-        <button id="rc-dl-btn" onclick="descargarCompactImage()" title="Bajar la imagen al equipo, sin pasar por el menú de compartir" style="background:#1F2937;border:1px solid #374151;color:#D1D5DB;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
-          <i class="fa-solid fa-download"></i> Descargar imagen
-        </button>
-        <button id="rc-share-btn" onclick="shareCompactImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px">
+        <button id="rc-share-btn" onclick="shareCompactImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
           <i class="fa-brands fa-whatsapp"></i> Compartir
         </button>
       </div>
@@ -577,10 +574,7 @@ body { background: #0B0F19; color: #EEEEEE; margin: 0; }
           <option value="">Todas las máquinas</option>
         </select>
         <button class="btn-clear" onclick="ilGoLatest()" title="Ir al último día" style="padding:6px 12px">Hoy / último</button>
-        <button id="il-dl-btn" onclick="descargarInvLogImage()" title="Bajar la imagen al equipo, sin pasar por el menú de compartir" style="background:#1F2937;border:1px solid #374151;color:#D1D5DB;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
-          <i class="fa-solid fa-download"></i> Descargar imagen
-        </button>
-        <button id="il-share-btn" onclick="shareInvLogImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px">
+        <button id="il-share-btn" onclick="shareInvLogImage()" style="background:#25D366;border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:6px;margin-left:auto">
           <i class="fa-brands fa-whatsapp"></i> Compartir
         </button>
       </div>
@@ -7020,36 +7014,6 @@ function saludoPorHora() {
 // Inventario Logística Diario: los dos capturan su propio contenedor a ancho
 // fijo y lo mandan por Web Share API.
 //   opts = { elId, btnId, forceClass, key, fname, title, text, width }
-/* GUARDIA DE UN SOLO ENVÍO A LA VEZ.
-   navigator.share() rechaza con "An earlier share has not yet completed" si se
-   la llama mientras otro envío sigue abierto. En el PC pasa así: el 1er toque
-   tarda en generar la imagen, expira el gesto del clic y sale el aviso de
-   "toca Compartir una vez más"; el 2º toque abre el cuadro de Windows y su
-   promesa queda PENDIENTE hasta que el usuario elija o lo cierre; y como ese
-   camino no desactivaba el botón, un 3er toque se lanzaba encima → error.
-   Esto es lo ÚNICO que se añade sobre el código del 2026-09-09: no cambia el
-   flujo, solo impide que un envío se lance encima de otro. Todo lo demás que
-   intenté encima (portapapeles, abrir WhatsApp Web, enrutar el PC) se revirtió
-   porque le quitaba a producción el camino que ya usaba.
-   La liberación por tiempo existe porque en Windows la promesa de share()
-   puede no resolverse nunca si se cierra el cuadro sin elegir destino: sin
-   ella el botón quedaría muerto hasta recargar la página. */
-let _shareEnVuelo = false, _shareEnVueloT = null;
-const _esShareOcupado = e => /earlier share|not yet completed/i.test(String(e && e.message));
-
-async function _enviarConShare(datos) {
-  if (_shareEnVuelo) {
-    const e = new Error('An earlier share has not yet completed');
-    e.name = 'InvalidStateError';
-    throw e;
-  }
-  _shareEnVuelo = true;
-  clearTimeout(_shareEnVueloT);
-  _shareEnVueloT = setTimeout(() => { _shareEnVuelo = false; }, 60000);
-  try { await navigator.share(datos); }
-  finally { clearTimeout(_shareEnVueloT); _shareEnVuelo = false; }
-}
-
 async function shareReportImage(opts) {
   const el  = document.getElementById(opts.elId);
   const btn = document.getElementById(opts.btnId);
@@ -7063,20 +7027,12 @@ async function shareReportImage(opts) {
   const cached = _shareCache[opts.elId];
   if (cached && cached.key === key && cached.file &&
       navigator.canShare && navigator.canShare({ files:[cached.file] })) {
-    const prevC = btn ? btn.innerHTML : '';
-    if (btn) btn.disabled = true;      // sin esto un 3er toque se lanzaba encima
     try {
-      await _enviarConShare(shareData(cached.file));
+      await navigator.share(shareData(cached.file));
       return;
     } catch(err) {
       if (err && err.name === 'AbortError') return;   // el usuario canceló
-      if (_esShareOcupado(err)) {
-        alert('Ya hay un envío de WhatsApp abierto sin terminar. Termínalo o ciérralo, y vuelve a tocar Compartir.');
-        return;
-      }
       // si vuelve a fallar, seguimos y regeneramos abajo
-    } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = prevC; }
     }
   }
 
@@ -7116,15 +7072,13 @@ async function shareReportImage(opts) {
     if (navigator.canShare && navigator.canShare({ files:[file] })) {
       try {
         // Camino feliz (móvil rápido): comparte directo en el 1er toque
-        await _enviarConShare(shareData(file));
+        await navigator.share(shareData(file));
       } catch(err) {
         if (err && err.name === 'AbortError') { /* cancelado, no hacer nada */ }
         else if (isGestureErr(err)) {
           // El render tardó y expiró el gesto, pero la imagen YA quedó lista:
           // avisar para que un 2º toque la comparte al instante (rama de arriba).
           alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
-        } else if (_esShareOcupado(err)) {
-          alert('Ya hay un envío de WhatsApp abierto sin terminar. Termínalo o ciérralo, y vuelve a tocar Compartir.');
         } else throw err;
       }
     } else {
@@ -7178,75 +7132,6 @@ async function shareInvLogImage() {
     fname:`Inventario_Logistica_${fecha}.png`,
     title:'Inventario Logística Diario — FVLco',
     text:`${saludoPorHora()}, aquí el Inventario Logística Diario FVLco — ${fecha}`
-  });
-}
-
-
-/* ── Descargar imagen ─────────────────────────────────────────────────────
-   Botón aparte, pedido por producción. NO toca el botón Compartir: ese quedó
-   exactamente como estaba el 2026-09-09 (commit 55f0ccd) por petición expresa
-   —"que este botón esté tal cual como estaba el día de ayer, no de otra
-   forma"—. Todo lo que intenté encima (portapapeles, abrir WhatsApp Web,
-   enrutar el PC por otro camino) le quitó el flujo que ya usaba a diario. */
-function _descargarImagen(file) {
-  const url = URL.createObjectURL(file);
-  const a = document.createElement('a');
-  a.href = url; a.download = file.name; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-// Genera la imagen del reporte con el mismo formato que usa Compartir, para que
-// lo que se baja sea idéntico a lo que se envía.
-async function _generarImagenReporte(opts) {
-  const el = document.getElementById(opts.elId);
-  if (!el) return null;
-  const RC_W = opts.width || 1900;
-  const stage = document.createElement('div');
-  stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
-  const cloneEl = el.cloneNode(true);
-  cloneEl.classList.add(opts.forceClass);
-  stage.appendChild(cloneEl);
-  document.body.appendChild(stage);
-  let canvas;
-  try {
-    canvas = await html2canvas(cloneEl, {
-      backgroundColor:'#FFFFFF', scale:2, useCORS:true,
-      width: RC_W, windowWidth: RC_W
-    });
-  } finally { stage.remove(); }
-  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-  return new File([blob], opts.fname, { type:'image/png' });
-}
-
-async function descargarReporteImagen(opts) {
-  const btn = document.getElementById(opts.btnId);
-  const prev = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
-  try {
-    const file = await _generarImagenReporte(opts);
-    if (file) _descargarImagen(file);
-  } catch(err) {
-    alert('No se pudo generar la imagen: ' + ((err && err.message) || err));
-    console.error(err);
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = prev; }
-  }
-}
-
-async function descargarCompactImage() {
-  const sel   = document.getElementById('rc-f-dia');
-  const fecha = (sel && sel.value) ? sel.value : 'reporte';
-  return descargarReporteImagen({
-    elId:'rc-content', btnId:'rc-dl-btn', forceClass:'rc-share-force',
-    fname:`Reporte_Compacto_${fecha}.png`
-  });
-}
-async function descargarInvLogImage() {
-  const sel   = document.getElementById('il-f-dia');
-  const fecha = (sel && sel.value) ? sel.value : 'reporte';
-  return descargarReporteImagen({
-    elId:'il-content', btnId:'il-dl-btn', forceClass:'il-share-force',
-    width:1100, fname:`Inventario_Logistica_${fecha}.png`
   });
 }
 
