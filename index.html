@@ -2942,6 +2942,55 @@ function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); delete CHART
 // =======================================================
 // DATA LOADING
 // =======================================================
+/* CACHÉ LOCAL DE LOS CSV — para no volver a pedir 3,4 MB en cada apertura.
+   Medido el 2026-09-10 en producción: UNA apertura del tablero son 7 peticiones
+   al proxy, 21 s de ejecución en Apps Script, 3,7 MB y 48 s de reloj. La hoja de
+   producción sola son 8,3 s y 3.417 KB: el 91 % de los bytes.
+   Apps Script tiene cuota de ejecución DIARIA (90 min en cuenta normal, 6 h en
+   Workspace) y, cuando se agota, no devuelve un error legible: devuelve su
+   página de error HTML. A 21 s por apertura eso son ~260 aperturas al día en el
+   peor caso, que alcanza para el uso normal de la planta pero no deja margen.
+   Con la caché, abrir el tablero dos veces en la misma media hora cuesta CERO
+   proxy. El botón Actualizar siempre pide datos frescos, así que nadie queda
+   atrapado con cifras viejas sin poder refrescarlas.
+   Va en IndexedDB y no en localStorage: 3,4 MB no caben con holgura en los ~5 MB
+   de localStorage y escribirlos sería una operación sincrónica que congela la
+   página. */
+const _CSV_TTL_MS = 10 * 60 * 1000;      // 10 min
+let _FORZAR_RED = false;                 // lo activa Actualizar
+
+function _idbCsv() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open('fvlco-csv', 1);
+    q.onupgradeneeded = () => { if (!q.result.objectStoreNames.contains('csv')) q.result.createObjectStore('csv'); };
+    q.onsuccess = () => res(q.result);
+    q.onerror   = () => rej(q.error);
+  });
+}
+// Toda la caché es best-effort: si el navegador la niega (modo privado, cuota,
+// permisos), se devuelve null y el tablero pide por red como siempre.
+async function _csvCacheGet(k) {
+  try {
+    const db = await _idbCsv();
+    return await new Promise(res => {
+      const r = db.transaction('csv').objectStore('csv').get(k);
+      r.onsuccess = () => res(r.result || null);
+      r.onerror   = () => res(null);
+    });
+  } catch(e) { return null; }
+}
+async function _csvCachePut(k, txt) {
+  try {
+    const db = await _idbCsv();
+    db.transaction('csv', 'readwrite').objectStore('csv').put({ t: Date.now(), txt }, k);
+  } catch(e) { /* sin caché, se sigue sin ella */ }
+}
+// La clave ignora el rompe-caché _t, que cambia en cada llamada por diseño.
+const _csvKey = url => String(url).replace(/[?&]_t=[^&]*/g, '');
+
+// Edad del dato que se está mostrando, para poder decírselo al usuario.
+let _CSV_EDAD_MS = 0;
+
 /* Esperas ENTRE REINTENTOS: 2 s y 5 s.
    Antes eran 0,5 s y 1 s. Contra un fallo de red suelto alcanzaba, pero el
    fallo real es el límite de concurrencia de Apps Script: los tres intentos
@@ -2952,17 +3001,49 @@ const _ESPERA_REINTENTO = [2000, 5000];
 
 async function fetchCSV(url, retries = _ESPERA_REINTENTO.length, opts) {
   const header = !opts || opts.header !== false;
+  const parsear = txt => Papa.parse(txt, { header, skipEmptyLines: header });
+  const clave = _csvKey(url);
+
+  // 1) Copia local fresca → cero proxy. Actualizar salta este paso.
+  if (!_FORZAR_RED) {
+    const hit = await _csvCacheGet(clave);
+    if (hit && (Date.now() - hit.t) < _CSV_TTL_MS) {
+      _CSV_EDAD_MS = Math.max(_CSV_EDAD_MS, Date.now() - hit.t);
+      return parsear(hit.txt);
+    }
+  }
+
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const bust = `&_t=${Date.now()}_${attempt}`;
       const res = await pfetch(url + bust);
       if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
-      return Papa.parse(await res.text(), { header, skipEmptyLines: header });
+      const txt = await res.text();
+      _csvCachePut(clave, txt);            // sin await: no frena la carga
+      return parsear(txt);
     } catch (e) {
       lastErr = e;
+      /* Con el proxy caído, insistir los 3 intentos en CADA una de las 7 hojas
+         son ~50 s de espera antes de servir la copia local. Si ya hay copia, con
+         dos intentos basta: se sirve lo guardado y el tablero abre en segundos.
+         Si NO hay copia, sí se agotan los reintentos — ahí esperar es la única
+         opción de traer algo. */
+      if (attempt >= 1 && await _csvCacheGet(clave)) break;
       if (attempt < retries) await new Promise(r => setTimeout(r, _ESPERA_REINTENTO[attempt] || 5000));
     }
+  }
+
+  /* 2) Red agotada: antes de rendirse, servir la copia local aunque esté vieja.
+        Un tablero con datos de hace una hora y un aviso es mucho más útil que
+        un banner rojo y nada — y esto es justo lo que salva el caso de que Apps
+        Script se caiga en plena jornada. */
+  const viejo = await _csvCacheGet(clave);
+  if (viejo) {
+    _CSV_EDAD_MS = Math.max(_CSV_EDAD_MS, Date.now() - viejo.t);
+    console.warn('[FVLco] Proxy caído; se usa la copia local de', clave, 'de hace',
+                 Math.round((Date.now() - viejo.t) / 60000), 'min');
+    return parsear(viejo.txt);
   }
   throw lastErr;
 }
@@ -3631,8 +3712,13 @@ async function loadAll() {
     await loadMaquilas();   // hoja distinta; ya maneja su propio error
 
     setProgress(100, 'Listo');
+    // Si algo salió de la copia local, se dice: nadie debe creer que está
+    // viendo el minuto actual cuando no lo está.
+    const _edadMin = Math.round(_CSV_EDAD_MS / 60000);
     document.getElementById('last-update').textContent =
-      `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`;
+      `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`
+      + (_edadMin >= 1 ? ` · copia local de hace ${_edadMin} min` : '');
+    _CSV_EDAD_MS = 0;
 
     populateAllFilters();
     loadTarifasFromSheet();
@@ -3651,7 +3737,11 @@ async function loadAll() {
 async function reloadAll() {
   document.getElementById('overlay').style.display='flex';
   setProgress(0, 'Recargando...');
-  await loadAll();
+  // Actualizar SIEMPRE va a la red: es la salida para no quedar atrapado con
+  // datos de la caché.
+  _FORZAR_RED = true;
+  try { await loadAll(); }
+  finally { _FORZAR_RED = false; }
 }
 
 // Refresco silencioso (sin overlay) para el auto-refresh
@@ -3679,8 +3769,13 @@ async function silentRefresh() {
     if (SHEETS.planesAccion) await loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; });
     await loadBdProductos();
     await loadMaquilas();
+    // Si algo salió de la copia local, se dice: nadie debe creer que está
+    // viendo el minuto actual cuando no lo está.
+    const _edadMin = Math.round(_CSV_EDAD_MS / 60000);
     document.getElementById('last-update').textContent =
-      `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`;
+      `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`
+      + (_edadMin >= 1 ? ` · copia local de hace ${_edadMin} min` : '');
+    _CSV_EDAD_MS = 0;
     populateAllFilters();
     buildCavMap();
     buildCavTeorMap();
