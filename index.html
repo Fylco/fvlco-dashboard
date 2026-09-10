@@ -6927,6 +6927,57 @@ function saludoPorHora() {
   return 'Buenas noches';
 }
 
+/* navigator.share() RECHAZA con "An earlier share has not yet completed" si se
+   la llama mientras otro envío sigue abierto. Y nuestro propio aviso de "toca
+   Compartir una vez más" invitaba justo a eso: el camino del 2º toque llamaba a
+   share() de nuevo sin comprobar nada y sin desactivar el botón (reportado en
+   PC, 2026-09-10). Este flag serializa los envíos.
+   Se libera por TIEMPO además de por el finally porque en escritorio la promesa
+   de share() puede no resolverse nunca si el usuario descarta el cuadro de
+   Windows sin elegir destino: sin esa liberación el botón quedaría muerto hasta
+   recargar la página. */
+let _shareEnVuelo = false, _shareEnVueloT = null;
+const _esShareOcupado = e => /earlier share|not yet completed/i.test(String(e && e.message));
+
+async function _enviarConShare(datos) {
+  if (_shareEnVuelo) {
+    const e = new Error('An earlier share has not yet completed');
+    e.name = 'InvalidStateError';
+    throw e;
+  }
+  _shareEnVuelo = true;
+  clearTimeout(_shareEnVueloT);
+  _shareEnVueloT = setTimeout(() => { _shareEnVuelo = false; }, 60000);
+  try { await navigator.share(datos); }
+  finally { clearTimeout(_shareEnVueloT); _shareEnVuelo = false; }
+}
+
+// Respaldo cuando compartir no sale: la imagen ya existe, así que se descarga
+// en vez de dejar al usuario sin nada.
+function _descargarImagen(file) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = file.name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+// Los tres botones de PDF (Informe de Cierre, Análisis de Paros, Tiempos de
+// Paro) pasan por el mismo guardia: llamaban a navigator.share() directo y
+// tenían el mismo fallo de "envío anterior sin terminar".
+async function _compartirPdf(file, title, text) {
+  try {
+    await _enviarConShare({ files:[file], title, text });
+  } catch(err) {
+    if (err && err.name === 'AbortError') return;          // el usuario canceló
+    if (_esShareOcupado(err)) {
+      alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a intentar.');
+      return;
+    }
+    _descargarImagen(file);                                // el PDF ya existe
+    alert('No se pudo abrir el menú de compartir, así que se descargó el archivo. Adjúntalo al grupo de WhatsApp.');
+  }
+}
+
 // Compartidor genérico de reportes en imagen. Lo usan el Reporte Compacto y el
 // Inventario Logística Diario: los dos capturan su propio contenedor a ancho
 // fijo y lo mandan por Web Share API.
@@ -6944,12 +6995,23 @@ async function shareReportImage(opts) {
   const cached = _shareCache[opts.elId];
   if (cached && cached.key === key && cached.file &&
       navigator.canShare && navigator.canShare({ files:[cached.file] })) {
+    const prevC = btn ? btn.innerHTML : '';
+    if (btn) btn.disabled = true;                    // sin esto se podía tocar 3 veces
     try {
-      await navigator.share(shareData(cached.file));
+      await _enviarConShare(shareData(cached.file));
       return;
     } catch(err) {
-      if (err && err.name === 'AbortError') return;   // el usuario canceló
-      // si vuelve a fallar, seguimos y regeneramos abajo
+      if (err && err.name === 'AbortError') return;  // el usuario canceló
+      if (_esShareOcupado(err)) {
+        alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a tocar Compartir.');
+        return;
+      }
+      // Compartir no sirvió pero la imagen SÍ está lista: se descarga.
+      _descargarImagen(cached.file);
+      alert('No se pudo abrir el menú de compartir, así que se descargó la imagen. Adjúntala al grupo de WhatsApp.');
+      return;
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = prevC; }
     }
   }
 
@@ -6989,14 +7051,20 @@ async function shareReportImage(opts) {
     if (navigator.canShare && navigator.canShare({ files:[file] })) {
       try {
         // Camino feliz (móvil rápido): comparte directo en el 1er toque
-        await navigator.share(shareData(file));
+        await _enviarConShare(shareData(file));
       } catch(err) {
         if (err && err.name === 'AbortError') { /* cancelado, no hacer nada */ }
         else if (isGestureErr(err)) {
           // El render tardó y expiró el gesto, pero la imagen YA quedó lista:
           // avisar para que un 2º toque la comparte al instante (rama de arriba).
           alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
-        } else throw err;
+        } else if (_esShareOcupado(err)) {
+          alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a tocar Compartir.');
+        } else {
+          // La imagen está lista: mejor descargarla que dejar al usuario sin nada.
+          _descargarImagen(file);
+          alert('No se pudo abrir el menú de compartir, así que se descargó la imagen. Adjúntala al grupo de WhatsApp.');
+        }
       }
     } else {
       // PC / sin soporte de compartir archivos: descargar como respaldo
@@ -8475,7 +8543,7 @@ async function exportPDF(shareMode = false) {
       const blob = pdf.output('blob');
       const file = new File([blob], filename, { type:'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files:[file] })) {
-        await navigator.share({ files:[file], title:'Informe FVLco', text:'Informe de producción FVLco' });
+        await _compartirPdf(file, 'Informe FVLco', 'Informe de producción FVLco');
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
@@ -8764,7 +8832,7 @@ async function exportPDFAnalisisParos(shareMode = false) {
       const blob = pdf.output('blob');
       const file = new File([blob], filename, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Análisis de Paros FVLco', text: 'Análisis de tiempos de paro FVLco' });
+        await _compartirPdf(file, 'Análisis de Paros FVLco', 'Análisis de tiempos de paro FVLco');
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
@@ -9026,7 +9094,7 @@ async function exportPDFParos(shareMode = false) {
       const blob = pdf.output('blob');
       const file = new File([blob], filename, { type:'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files:[file] })) {
-        await navigator.share({ files:[file], title:'Informe Tiempos de Paro FVLco', text:'Informe de tiempos de paro FVLco' });
+        await _compartirPdf(file, 'Informe Tiempos de Paro FVLco', 'Informe de tiempos de paro FVLco');
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
