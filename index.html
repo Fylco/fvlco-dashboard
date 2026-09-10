@@ -6919,6 +6919,41 @@ async function _enviarConShare(datos) {
   finally { clearTimeout(_shareEnVueloT); _shareEnVuelo = false; }
 }
 
+/* POR QUÉ HAY DOS CAMINOS DISTINTOS
+   El botón Compartir usaba la Web Share API, que está pensada para el celular:
+   entrega el archivo al sistema y el sistema ofrece WhatsApp. En Android o
+   iPhone eso funciona en un toque.
+   En Windows, Chrome también la implementa, pero abre el cuadro de compartir de
+   WINDOWS, que solo lista apps registradas como destino. WhatsApp Desktop
+   normalmente no lo está, así que no hay nada útil que elegir — y de ahí venían
+   los errores.
+   En PC NO existe forma de adjuntar un archivo a WhatsApp desde una página web:
+   el esquema wa.me / web.whatsapp.com solo acepta TEXTO, nunca ficheros. Es un
+   límite de WhatsApp, no del tablero. Así que el único camino real es dejar la
+   imagen en el PORTAPAPELES y que el usuario la pegue con Ctrl+V en el chat. */
+const _esMovil = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+async function _compartirEnPC(file, texto) {
+  let copiada = false;
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([ new ClipboardItem({ 'image/png': file }) ]);
+      copiada = true;
+    }
+  } catch(e) { copiada = false; }          // sin permiso de portapapeles
+  if (!copiada) _descargarImagen(file);    // entonces al menos que la tenga en disco
+
+  // window.open puede quedar bloqueado si el render tardó y expiró la activación
+  // del clic; si pasa, se le dice al usuario en vez de dejarlo esperando.
+  const wa = window.open('https://web.whatsapp.com/send?text=' + encodeURIComponent(texto), '_blank');
+  const dondePegar = wa
+    ? 'En la pestaña de WhatsApp que se abrió, elige el grupo'
+    : 'Abre WhatsApp Web (el navegador bloqueó la pestaña automática), elige el grupo';
+  alert(copiada
+    ? `✅ Imagen copiada al portapapeles.\n\n${dondePegar} y pégala con Ctrl+V.`
+    : `✅ Imagen descargada (el navegador no permitió copiarla al portapapeles).\n\n${dondePegar} y adjunta el archivo descargado.`);
+}
+
 // Respaldo cuando compartir no sale: la imagen ya existe, así que se descarga
 // en vez de dejar al usuario sin nada.
 function _descargarImagen(file) {
@@ -7014,8 +7049,9 @@ async function shareReportImage(opts) {
 
   // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
   //    previo, para no perder el gesto del clic actual (camino del 2º toque).
+  //    Solo aplica en el celular: en PC no se usa la Web Share API.
   const cached = _shareCache[opts.elId];
-  if (cached && cached.key === key && cached.file &&
+  if (_esMovil() && cached && cached.key === key && cached.file &&
       navigator.canShare && navigator.canShare({ files:[cached.file] })) {
     const prevC = btn ? btn.innerHTML : '';
     if (btn) btn.disabled = true;                    // sin esto se podía tocar 3 veces
@@ -7043,7 +7079,10 @@ async function shareReportImage(opts) {
     const file = await _generarImagenReporte(opts);
     if (!file) return;
     _shareCache[opts.elId] = { key, file };   // para poder compartir en el 2º toque
-    if (navigator.canShare && navigator.canShare({ files:[file] })) {
+    if (!_esMovil()) {
+      // PC: el cuadro de compartir de Windows no lleva a WhatsApp. Portapapeles.
+      await _compartirEnPC(file, opts.text);
+    } else if (navigator.canShare && navigator.canShare({ files:[file] })) {
       try {
         // Camino feliz (móvil rápido): comparte directo en el 1er toque
         await _enviarConShare(shareData(file));
@@ -7062,10 +7101,9 @@ async function shareReportImage(opts) {
         }
       }
     } else {
-      // PC / sin soporte de compartir archivos: descargar como respaldo
-      const link = document.createElement('a');
-      link.download = opts.fname; link.href = canvas.toDataURL('image/png'); link.click();
-      alert('Este dispositivo no permite compartir directamente. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.\n\nTip: desde el celular el botón Compartir abre WhatsApp automáticamente.');
+      // Móvil sin soporte de compartir archivos (raro): descargar como respaldo
+      _descargarImagen(file);
+      alert('Este dispositivo no permite compartir archivos. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.');
     }
   } catch(err) {
     if (!err || err.name !== 'AbortError') {
