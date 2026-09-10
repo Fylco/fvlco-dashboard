@@ -2207,11 +2207,14 @@ const PROC_POR_RAZON = {
   'DAÑO MECANICO TAPADORA':'MANTENIMIENTO', 'DAÑO ELECTRICO TAPADORA':'MANTENIMIENTO',
   'DAÑO SISTEMA DE LUBRICACION MAQUINA':'MANTENIMIENTO', 'DAÑO CHILLER':'MANTENIMIENTO',
   'DAÑO COMPRESOR':'MANTENIMIENTO', 'MANTENIMIENTO PREVENTIVO PROGRAMADO':'MANTENIMIENTO',
-  // Moldes / Taller
-  'DAÑO MOLDE':'MOLDES', 'AJUSTE MOLDE':'MOLDES', 'MONTAJE MOLDE PROGRAMADO':'MOLDES',
-  'DESMONTAJE MOLDE PROGRAMADO':'MOLDES', 'ESPERA DE MOLDE TALLER':'MOLDES',
+  // Moldes / Taller — el molde falló o el taller no lo entregó
+  'DAÑO MOLDE':'MOLDES', 'AJUSTE MOLDE':'MOLDES', 'ESPERA DE MOLDE TALLER':'MOLDES',
   'PARO MOLDE ESTRELLADO':'MOLDES', 'ANULAR CAVIDADES':'MOLDES', 'CAVIDAD PEGADA':'MOLDES',
   'ENSAYOS MOLDE':'MOLDES',
+  // Montaje y desmontaje PROGRAMADOS son de Producción, no del taller: el paro
+  // no lo causa el molde, lo causa la decisión de cambiarlo, y quien programa
+  // la planta es Producción (decisión de producción, 2026-09-10).
+  'MONTAJE MOLDE PROGRAMADO':'PRODUCCION', 'DESMONTAJE MOLDE PROGRAMADO':'PRODUCCION',
   // Orden y aseo lo hace el operario, no el taller de moldes. Se dejan las dos
   // grafías: el sheet ya se unificó a "ORDEN Y ASEO", pero si vuelve a
   // aparecer la vieja (con doble espacio) el mapa no se rompe.
@@ -2222,8 +2225,12 @@ const PROC_POR_RAZON = {
   'CALENTAMIENTO MAQUINA':'PRODUCCION', 'CAMBIO COLOR':'PRODUCCION', 'PURGA':'PRODUCCION',
   'INICIO PLANTA':'PRODUCCION', 'BOQUILLA MAQUINA TAPADA':'PRODUCCION',
   'PARO CALENTAMIENTO ACEITE INYECTORA':'PRODUCCION',
-  // Planeación — la máquina no estaba programada para producir
-  'PARO PROGRAMADO':'PLANEACION', 'MAQUINA CERRADA':'PLANEACION', 'REEMPLAZO MAQUINAS':'PLANEACION',
+  // PARO PROGRAMADO es de Producción por la misma razón que los montajes: quien
+  // programa la planta es Producción, así que el paro que ella misma planea es
+  // suyo (decisión de producción, 2026-09-10).
+  'PARO PROGRAMADO':'PRODUCCION',
+  // Planeación — la máquina no estaba asignada a producir
+  'MAQUINA CERRADA':'PLANEACION', 'REEMPLAZO MAQUINAS':'PLANEACION',
   // Materia prima
   'FALTANTE M.P.':'MATERIA_PRIMA', 'M.P DEFECTUOSA':'MATERIA_PRIMA',
   'ENSAYOS MATERIA PRIMA':'MATERIA_PRIMA', 'CONTAMINACION':'MATERIA_PRIMA',
