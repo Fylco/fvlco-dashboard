@@ -1623,7 +1623,27 @@ function _rechazarHTML(texto, via) {
   }
 }
 
-async function apiCall(payload){
+/* UNA PETICIÓN AL PROXY A LA VEZ.
+   Apps Script limita las ejecuciones simultáneas por usuario y, cuando se pasa,
+   NO devuelve un error legible: devuelve su página de error HTML. Ese es el
+   fallo que sacaba el banner rojo (2026-09-10). El tablero pedía varias hojas
+   casi a la vez —loadPlan usa Promise.all, y las recargas se solapan con la
+   carga inicial—, así que se lo provocaba solo.
+   Serializar aquí, y no en cada sitio que llama, es lo que garantiza que no
+   quede ningún camino suelto. Cuesta unos segundos en la carga completa y a
+   cambio quita de raíz toda una clase de fallo. */
+let _colaProxy = Promise.resolve();
+function _enCola(fn) {
+  const turno = _colaProxy.then(fn, fn);
+  // La cola NO debe romperse si un pedido falla: se encadena el resultado
+  // "apagado" para que el siguiente arranque igual.
+  _colaProxy = turno.then(() => {}, () => {});
+  return turno;
+}
+
+async function apiCall(payload){ return _enCola(() => _apiCallDirecto(payload)); }
+
+async function _apiCallDirecto(payload){
   let t = null;
   try{
     /* Rompe-caché OBLIGATORIO. Google cachea las respuestas GET de un Web App
@@ -2922,18 +2942,26 @@ function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); delete CHART
 // =======================================================
 // DATA LOADING
 // =======================================================
-async function fetchCSV(url, retries = 2) {
+/* Esperas ENTRE REINTENTOS: 2 s y 5 s.
+   Antes eran 0,5 s y 1 s. Contra un fallo de red suelto alcanzaba, pero el
+   fallo real es el límite de concurrencia de Apps Script: los tres intentos
+   caían dentro de la misma ventana de dos segundos y fallaban los tres, y el
+   usuario veía el banner rojo aunque el proxy estuviera sano un segundo
+   después (2026-09-10, hoja de Maquilas). */
+const _ESPERA_REINTENTO = [2000, 5000];
+
+async function fetchCSV(url, retries = _ESPERA_REINTENTO.length, opts) {
+  const header = !opts || opts.header !== false;
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const bust = `&_t=${Date.now()}_${attempt}`;
       const res = await pfetch(url + bust);
       if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
-      return Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
+      return Papa.parse(await res.text(), { header, skipEmptyLines: header });
     } catch (e) {
       lastErr = e;
-      // Reintento ante fallos transitorios de Google (ej. HTTP 400 esporádico)
-      if (attempt < retries) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+      if (attempt < retries) await new Promise(r => setTimeout(r, _ESPERA_REINTENTO[attempt] || 5000));
     }
   }
   throw lastErr;
@@ -2945,10 +2973,8 @@ let _bdProdLoaded = false;
 async function loadBdProductos() {
   if (_bdProdLoaded) return;
   try {
-    const res = await pfetch(BD_PRODUCTOS_CSV + `&_t=${Date.now()}`);
-    if (!res.ok) { registrarFalla('BD Productos (ciclo estándar)', `HTTP ${res.status}`); return; }
-    const txt = await res.text();
-    const rows = Papa.parse(txt, { header: false, skipEmptyLines: true }).data;
+    // Por fetchCSV: mismo motivo que Maquilas — antes no tenía reintentos.
+    const rows = (await fetchCSV(BD_PRODUCTOS_CSV, undefined, { header:false })).data;
     const map = {};
     rows.slice(1).forEach(vals => {          // slice(1) salta la fila de encabezados
       const desc  = String(vals[1] || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');  // col B (índice 1)
@@ -2965,10 +2991,11 @@ async function loadBdProductos() {
 // Cada bloque: Fecha / Referencia / Cantidad. Se parsea sin header.
 async function loadMaquilas() {
   try {
-    const res = await pfetch(MAQUILAS_CSV + `&_t=${Date.now()}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const rows = Papa.parse(await res.text(), { header: false, skipEmptyLines: false }).data;
-    DATA.maquilas = parseMaquilas(rows);
+    // Por fetchCSV y no por pfetch: así hereda los reintentos. Llamaba al proxy
+    // directo y con UNA sola respuesta HTML se rendía — era la hoja que más
+    // aparecía en el banner rojo.
+    const parsed = await fetchCSV(MAQUILAS_CSV, undefined, { header:false });
+    DATA.maquilas = parseMaquilas(parsed.data);
     limpiarFalla('Maquilas');
   } catch (e) {
     registrarFalla('Maquilas', e.message);
@@ -6941,15 +6968,14 @@ async function _compartirEnPC(file, texto) {
   } catch(e) { copiada = false; }          // sin permiso de portapapeles
   if (!copiada) _descargarImagen(file);    // entonces al menos que la tenga en disco
 
-  // window.open puede quedar bloqueado si el render tardó y expiró la activación
-  // del clic; si pasa, se le dice al usuario en vez de dejarlo esperando.
-  const wa = window.open('https://web.whatsapp.com/send?text=' + encodeURIComponent(texto), '_blank');
-  const dondePegar = wa
-    ? 'En la pestaña de WhatsApp que se abrió, elige el grupo'
-    : 'Abre WhatsApp Web (el navegador bloqueó la pestaña automática), elige el grupo';
+  // NO se abre WhatsApp. Se intentó abrir web.whatsapp.com y produjo justo la
+  // queja de producción: "me abre una aplicación HTML si la aplicación la tengo
+  // en el escritorio del PC". El tablero no sabe —ni tiene por qué— si usas
+  // WhatsApp Desktop, WhatsApp Web o el celular. Se deja la imagen lista y el
+  // usuario la pega donde ya la tiene abierta.
   alert(copiada
-    ? `✅ Imagen copiada al portapapeles.\n\n${dondePegar} y pégala con Ctrl+V.`
-    : `✅ Imagen descargada (el navegador no permitió copiarla al portapapeles).\n\n${dondePegar} y adjunta el archivo descargado.`);
+    ? '✅ Imagen copiada.\n\nAbre tu WhatsApp, elige el grupo y pégala con Ctrl+V.'
+    : '✅ Imagen descargada (el navegador no permitió copiarla).\n\nAdjúntala en tu WhatsApp al grupo.');
 }
 
 // Respaldo cuando compartir no sale: la imagen ya existe, así que se descarga
