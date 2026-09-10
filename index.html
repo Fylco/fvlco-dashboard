@@ -6921,65 +6921,138 @@ function saludoPorHora() {
   return 'Buenas noches';
 }
 
-/* navigator.share() RECHAZA con "An earlier share has not yet completed" si se
-   la llama mientras otro envío sigue abierto. Y nuestro propio aviso de "toca
-   Compartir una vez más" invitaba justo a eso: el camino del 2º toque llamaba a
-   share() de nuevo sin comprobar nada y sin desactivar el botón (reportado en
-   PC, 2026-09-10). Este flag serializa los envíos.
-   Se libera por TIEMPO además de por el finally porque en escritorio la promesa
-   de share() puede no resolverse nunca si el usuario descarta el cuadro de
-   Windows sin elegir destino: sin esa liberación el botón quedaría muerto hasta
-   recargar la página. */
-let _shareEnVuelo = false, _shareEnVueloT = null;
-const _esShareOcupado = e => /earlier share|not yet completed/i.test(String(e && e.message));
+// Compartidor genérico de reportes en imagen. Lo usan el Reporte Compacto y el
+// Inventario Logística Diario: los dos capturan su propio contenedor a ancho
+// fijo y lo mandan por Web Share API.
+//   opts = { elId, btnId, forceClass, key, fname, title, text, width }
+async function shareReportImage(opts) {
+  const el  = document.getElementById(opts.elId);
+  const btn = document.getElementById(opts.btnId);
+  if (!el) return;
+  const key = opts.key;
+  const shareData = f => ({ files:[f], title:opts.title, text:opts.text });
+  const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
 
-async function _enviarConShare(datos) {
-  if (_shareEnVuelo) {
-    const e = new Error('An earlier share has not yet completed');
-    e.name = 'InvalidStateError';
-    throw e;
-  }
-  _shareEnVuelo = true;
-  clearTimeout(_shareEnVueloT);
-  _shareEnVueloT = setTimeout(() => { _shareEnVuelo = false; }, 60000);
-  try { await navigator.share(datos); }
-  finally { clearTimeout(_shareEnVueloT); _shareEnVuelo = false; }
-}
-
-/* CAMINO DE RESPALDO, NO REEMPLAZO.
-   El botón Compartir usa SIEMPRE la Web Share API primero: es la que entrega el
-   archivo al sistema y en el celular —y en los PC donde WhatsApp está registrado
-   como destino de compartir— llega a WhatsApp en un toque. Eso es lo que la
-   planta usa a diario y no se toca.
-   Esto es lo que se hace CUANDO ESA VÍA FALLA. En PC no existe forma de adjuntar
-   un archivo a WhatsApp desde una página web: wa.me y web.whatsapp.com solo
-   aceptan TEXTO, nunca ficheros (límite de WhatsApp, no del tablero). Así que el
-   respaldo es dejar la imagen en el PORTAPAPELES para pegarla con Ctrl+V, y si
-   el navegador no lo permite, descargarla.
-   Se intentó enrutar el PC directo por aquí (913f3c2) y fue un error: le quitó a
-   producción el camino que sí le funcionaba. Revertido. */
-async function _compartirEnPC(file, texto) {
-  let copiada = false;
-  try {
-    if (navigator.clipboard && window.ClipboardItem) {
-      await navigator.clipboard.write([ new ClipboardItem({ 'image/png': file }) ]);
-      copiada = true;
+  // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
+  //    previo, para no perder el gesto del clic actual (camino del 2º toque).
+  const cached = _shareCache[opts.elId];
+  if (cached && cached.key === key && cached.file &&
+      navigator.canShare && navigator.canShare({ files:[cached.file] })) {
+    try {
+      await navigator.share(shareData(cached.file));
+      return;
+    } catch(err) {
+      if (err && err.name === 'AbortError') return;   // el usuario canceló
+      // si vuelve a fallar, seguimos y regeneramos abajo
     }
-  } catch(e) { copiada = false; }          // sin permiso de portapapeles
-  if (!copiada) _descargarImagen(file);    // entonces al menos que la tenga en disco
+  }
 
-  // NO se abre WhatsApp. Se intentó abrir web.whatsapp.com y produjo justo la
-  // queja de producción: "me abre una aplicación HTML si la aplicación la tengo
-  // en el escritorio del PC". El tablero no sabe —ni tiene por qué— si usas
-  // WhatsApp Desktop, WhatsApp Web o el celular. Se deja la imagen lista y el
-  // usuario la pega donde ya la tiene abierta.
-  alert(copiada
-    ? '✅ Imagen copiada.\n\nAbre tu WhatsApp, elige el grupo y pégala con Ctrl+V.'
-    : '✅ Imagen descargada (el navegador no permitió copiarla).\n\nAdjúntala en tu WhatsApp al grupo.');
+  const prev = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
+  try {
+    // Capturar SIEMPRE el formato clásico de tabla ancha (aunque la pantalla
+    // sea móvil): se clona fuera de pantalla y la clase *-share-force
+    // desactiva el layout de tarjetas del media query.
+    // RC_W = ancho fijo de la imagen. A 1280 el Reporte Compacto salía como
+    // tira vertical (alto/ancho ≈3.1) y en WhatsApp se veía "estirado"; a 1900
+    // sus columnas y los textos largos (motivos de paro) tienen espacio y queda
+    // apaisado (~1.3–1.5). Es un parámetro porque un reporte con MENOS columnas
+    // se estira al contrario: el Inventario Logística, con 5 columnas, a 1900
+    // quedaba en ~3.2:1 con media imagen en blanco.
+    const RC_W = opts.width || 1900;
+    const stage = document.createElement('div');
+    stage.style.cssText = `position:absolute;left:-12000px;top:0;width:${RC_W}px;background:#FFFFFF`;
+    const cloneEl = el.cloneNode(true);
+    cloneEl.classList.add(opts.forceClass);
+    stage.appendChild(cloneEl);
+    document.body.appendChild(stage);
+    let canvas;
+    try {
+      // width + windowWidth fijan el viewport de maquetación a RC_W: la imagen
+      // sale IDÉNTICA desde el celular o el PC. Sin windowWidth, html2canvas
+      // usa el ancho real del navegador y dispara los @media móviles, así que
+      // el mismo reporte cambiaba de aspecto según el dispositivo.
+      canvas = await html2canvas(cloneEl, {
+        backgroundColor:'#FFFFFF', scale:2, useCORS:true,
+        width: RC_W, windowWidth: RC_W
+      });
+    } finally { stage.remove(); }
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file = new File([blob], opts.fname, { type:'image/png' });
+    _shareCache[opts.elId] = { key, file };   // para poder compartir en el 2º toque
+    if (navigator.canShare && navigator.canShare({ files:[file] })) {
+      try {
+        // Camino feliz (móvil rápido): comparte directo en el 1er toque
+        await navigator.share(shareData(file));
+      } catch(err) {
+        if (err && err.name === 'AbortError') { /* cancelado, no hacer nada */ }
+        else if (isGestureErr(err)) {
+          // El render tardó y expiró el gesto, pero la imagen YA quedó lista:
+          // avisar para que un 2º toque la comparte al instante (rama de arriba).
+          alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
+        } else throw err;
+      }
+    } else {
+      // PC / sin soporte de compartir archivos: descargar como respaldo
+      const link = document.createElement('a');
+      link.download = opts.fname; link.href = canvas.toDataURL('image/png'); link.click();
+      alert('Este dispositivo no permite compartir directamente. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.\n\nTip: desde el celular el botón Compartir abre WhatsApp automáticamente.');
+    }
+  } catch(err) {
+    if (!err || err.name !== 'AbortError') {
+      alert('No se pudo compartir: ' + ((err && err.message) || err));
+      console.error(err);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+  }
 }
 
-// Respaldo cuando compartir no sale: la imagen ya existe, así que se descarga
-// en vez de dejar al usuario sin nada.
+// Comparte el REPORTE COMPACTO como imagen PNG (Web Share API → WhatsApp en
+// celular). En PC / navegador sin soporte, descarga la imagen como respaldo.
+//
+// IMPORTANTE (bug corregido): navigator.share() SOLO funciona mientras está
+// vigente el "gesto de usuario" (transient activation, ~5s en Chrome). Generar
+// la imagen con html2canvas tarda más que eso, así que si compartimos DESPUÉS
+// del render, el navegador rechaza con "Must be handling a user gesture".
+// Solución: shareReportImage cachea la imagen ya generada; si el gesto expiró,
+// un 2º toque comparte al instante (sin await previo, con el gesto fresco).
+async function shareCompactImage() {
+  const sel   = document.getElementById('rc-f-dia');
+  const fecha = (sel && sel.value) ? sel.value : 'reporte';
+  const turno = (document.getElementById('rc-f-turno')?.value || '');
+  return shareReportImage({
+    elId:'rc-content', btnId:'rc-share-btn', forceClass:'rc-share-force',
+    key:`${fecha}|${turno}`,
+    fname:`Reporte_Compacto_${fecha}.png`,
+    title:'Reporte de Producción FVLco',
+    text:`${saludoPorHora()}, aquí el Reporte de Producción FVLco — ${fecha}`
+  });
+}
+
+// Comparte el INVENTARIO LOGÍSTICA DIARIO por el mismo camino.
+async function shareInvLogImage() {
+  const sel   = document.getElementById('il-f-dia');
+  const fecha = (sel && sel.value) ? sel.value : 'reporte';
+  const turno = (document.getElementById('il-f-turno')?.value || '');
+  const maq   = (document.getElementById('il-f-maq')?.value   || '');
+  return shareReportImage({
+    elId:'il-content', btnId:'il-share-btn', forceClass:'il-share-force',
+    width:1100,   // 5 columnas: a 1900 sobraba la mitad del ancho
+    key:`${fecha}|${turno}|${maq}`,
+    fname:`Inventario_Logistica_${fecha}.png`,
+    title:'Inventario Logística Diario — FVLco',
+    text:`${saludoPorHora()}, aquí el Inventario Logística Diario FVLco — ${fecha}`
+  });
+}
+
+
+/* ── Descargar imagen ─────────────────────────────────────────────────────
+   Botón aparte, pedido por producción. NO toca el botón Compartir: ese quedó
+   exactamente como estaba el 2026-09-09 (commit 55f0ccd) por petición expresa
+   —"que este botón esté tal cual como estaba el día de ayer, no de otra
+   forma"—. Todo lo que intenté encima (portapapeles, abrir WhatsApp Web,
+   enrutar el PC por otro camino) le quitó el flujo que ya usaba a diario. */
 function _descargarImagen(file) {
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
@@ -6987,23 +7060,8 @@ function _descargarImagen(file) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-/* Genera la imagen del reporte. Es el MISMO camino para compartir y para
-   descargar, así que lo que se baja es idéntico a lo que se envía — antes había
-   una función aparte (exportCompactImage) que duplicaba este render y que además
-   había quedado sin botón, inalcanzable.
-   Se captura SIEMPRE el formato clásico de tabla ancha, aunque la pantalla sea
-   móvil: se clona fuera de pantalla y la clase *-share-force desactiva el layout
-   de tarjetas del media query.
-   RC_W = ancho fijo de la imagen. A 1280 el Reporte Compacto salía como tira
-   vertical (alto/ancho ≈3.1) y en WhatsApp se veía "estirado"; a 1900 sus
-   columnas y los textos largos (motivos de paro) tienen espacio y queda apaisado
-   (~1.3–1.5). Es un parámetro porque un reporte con MENOS columnas se estira al
-   contrario: el Inventario Logística, con 5 columnas, a 1900 quedaba en ~3.2:1
-   con media imagen en blanco.
-   width + windowWidth fijan el viewport de maquetación a RC_W: la imagen sale
-   IDÉNTICA desde el celular o el PC. Sin windowWidth, html2canvas usa el ancho
-   real del navegador y dispara los @media móviles, así que el mismo reporte
-   cambiaba de aspecto según el dispositivo. */
+// Genera la imagen del reporte con el mismo formato que usa Compartir, para que
+// lo que se baja sea idéntico a lo que se envía.
 async function _generarImagenReporte(opts) {
   const el = document.getElementById(opts.elId);
   if (!el) return null;
@@ -7025,8 +7083,6 @@ async function _generarImagenReporte(opts) {
   return new File([blob], opts.fname, { type:'image/png' });
 }
 
-// Descarga directa, sin pasar por el menú de compartir. En PC es el camino
-// corto: el cuadro de compartir de Windows estorba más de lo que ayuda.
 async function descargarReporteImagen(opts) {
   const btn = document.getElementById(opts.btnId);
   const prev = btn ? btn.innerHTML : '';
@@ -7042,148 +7098,21 @@ async function descargarReporteImagen(opts) {
   }
 }
 
-// Los tres botones de PDF (Informe de Cierre, Análisis de Paros, Tiempos de
-// Paro) pasan por el mismo guardia: llamaban a navigator.share() directo y
-// tenían el mismo fallo de "envío anterior sin terminar".
-async function _compartirPdf(file, title, text) {
-  try {
-    await _enviarConShare({ files:[file], title, text });
-  } catch(err) {
-    if (err && err.name === 'AbortError') return;          // el usuario canceló
-    if (_esShareOcupado(err)) {
-      alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a intentar.');
-      return;
-    }
-    _descargarImagen(file);                                // el PDF ya existe
-    alert('No se pudo abrir el menú de compartir, así que se descargó el archivo. Adjúntalo al grupo de WhatsApp.');
-  }
-}
-
-// Compartidor genérico de reportes en imagen. Lo usan el Reporte Compacto y el
-// Inventario Logística Diario: los dos capturan su propio contenedor a ancho
-// fijo y lo mandan por Web Share API.
-//   opts = { elId, btnId, forceClass, key, fname, title, text, width }
-async function shareReportImage(opts) {
-  const el  = document.getElementById(opts.elId);
-  const btn = document.getElementById(opts.btnId);
-  if (!el) return;
-  const key = opts.key;
-  const shareData = f => ({ files:[f], title:opts.title, text:opts.text });
-  const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
-
-  // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
-  //    previo, para no perder el gesto del clic actual (camino del 2º toque).
-  const cached = _shareCache[opts.elId];
-  if (cached && cached.key === key && cached.file &&
-      navigator.canShare && navigator.canShare({ files:[cached.file] })) {
-    const prevC = btn ? btn.innerHTML : '';
-    if (btn) btn.disabled = true;                    // sin esto se podía tocar 3 veces
-    try {
-      await _enviarConShare(shareData(cached.file));
-      return;
-    } catch(err) {
-      if (err && err.name === 'AbortError') return;  // el usuario canceló
-      if (_esShareOcupado(err)) {
-        alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a tocar Compartir.');
-        return;
-      }
-      // Compartir no sirvió pero la imagen SÍ está lista: camino de respaldo.
-      await _compartirEnPC(cached.file, opts.text);
-      return;
-    } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = prevC; }
-    }
-  }
-
-  const prev = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
-  try {
-    const file = await _generarImagenReporte(opts);
-    if (!file) return;
-    _shareCache[opts.elId] = { key, file };   // para poder compartir en el 2º toque
-    if (navigator.canShare && navigator.canShare({ files:[file] })) {
-      try {
-        // Camino feliz (móvil rápido): comparte directo en el 1er toque
-        await _enviarConShare(shareData(file));
-      } catch(err) {
-        if (err && err.name === 'AbortError') { /* cancelado, no hacer nada */ }
-        else if (isGestureErr(err)) {
-          // El render tardó y expiró el gesto, pero la imagen YA quedó lista:
-          // avisar para que un 2º toque la comparte al instante (rama de arriba).
-          alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
-        } else if (_esShareOcupado(err)) {
-          alert('Hay un cuadro de compartir abierto sin terminar. Ciérralo o elige un destino, y vuelve a tocar Compartir.');
-        } else {
-          // La imagen está lista: se ofrece el camino del portapapeles antes de
-          // dejar al usuario sin nada.
-          await _compartirEnPC(file, opts.text);
-        }
-      }
-    } else {
-      // Móvil sin soporte de compartir archivos (raro): descargar como respaldo
-      _descargarImagen(file);
-      alert('Este dispositivo no permite compartir archivos. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.');
-    }
-  } catch(err) {
-    if (!err || err.name !== 'AbortError') {
-      alert('No se pudo compartir: ' + ((err && err.message) || err));
-      console.error(err);
-    }
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = prev; }
-  }
-}
-
-// Comparte el REPORTE COMPACTO como imagen PNG (Web Share API → WhatsApp en
-// celular). En PC / navegador sin soporte, descarga la imagen como respaldo.
-//
-// IMPORTANTE (bug corregido): navigator.share() SOLO funciona mientras está
-// vigente el "gesto de usuario" (transient activation, ~5s en Chrome). Generar
-// la imagen con html2canvas tarda más que eso, así que si compartimos DESPUÉS
-// del render, el navegador rechaza con "Must be handling a user gesture".
-// Solución: shareReportImage cachea la imagen ya generada; si el gesto expiró,
-// un 2º toque comparte al instante (sin await previo, con el gesto fresco).
-// Las opciones de cada reporte se definen UNA vez: compartir y descargar deben
-// producir exactamente la misma imagen, con el mismo nombre de archivo.
-function _optsCompacto() {
+async function descargarCompactImage() {
   const sel   = document.getElementById('rc-f-dia');
   const fecha = (sel && sel.value) ? sel.value : 'reporte';
-  const turno = (document.getElementById('rc-f-turno')?.value || '');
-  return {
-    elId:'rc-content', forceClass:'rc-share-force',
-    key:`${fecha}|${turno}`,
-    fname:`Reporte_Compacto_${fecha}.png`,
-    title:'Reporte de Producción FVLco',
-    text:`${saludoPorHora()}, aquí el Reporte de Producción FVLco — ${fecha}`
-  };
-}
-async function shareCompactImage() {
-  return shareReportImage({ ..._optsCompacto(), btnId:'rc-share-btn' });
-}
-async function descargarCompactImage() {
-  return descargarReporteImagen({ ..._optsCompacto(), btnId:'rc-dl-btn' });
-}
-
-// INVENTARIO LOGÍSTICA DIARIO, por el mismo camino.
-function _optsInvLog() {
-  const sel   = document.getElementById('il-f-dia');
-  const fecha = (sel && sel.value) ? sel.value : 'reporte';
-  const turno = (document.getElementById('il-f-turno')?.value || '');
-  const maq   = (document.getElementById('il-f-maq')?.value   || '');
-  return {
-    elId:'il-content', forceClass:'il-share-force',
-    width:1100,   // 5 columnas: a 1900 sobraba la mitad del ancho
-    key:`${fecha}|${turno}|${maq}`,
-    fname:`Inventario_Logistica_${fecha}.png`,
-    title:'Inventario Logística Diario — FVLco',
-    text:`${saludoPorHora()}, aquí el Inventario Logística Diario FVLco — ${fecha}`
-  };
-}
-async function shareInvLogImage() {
-  return shareReportImage({ ..._optsInvLog(), btnId:'il-share-btn' });
+  return descargarReporteImagen({
+    elId:'rc-content', btnId:'rc-dl-btn', forceClass:'rc-share-force',
+    fname:`Reporte_Compacto_${fecha}.png`
+  });
 }
 async function descargarInvLogImage() {
-  return descargarReporteImagen({ ..._optsInvLog(), btnId:'il-dl-btn' });
+  const sel   = document.getElementById('il-f-dia');
+  const fecha = (sel && sel.value) ? sel.value : 'reporte';
+  return descargarReporteImagen({
+    elId:'il-content', btnId:'il-dl-btn', forceClass:'il-share-force',
+    width:1100, fname:`Inventario_Logistica_${fecha}.png`
+  });
 }
 
 // =======================================================
@@ -8609,7 +8538,7 @@ async function exportPDF(shareMode = false) {
       const blob = pdf.output('blob');
       const file = new File([blob], filename, { type:'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files:[file] })) {
-        await _compartirPdf(file, 'Informe FVLco', 'Informe de producción FVLco');
+        await navigator.share({ files:[file], title:'Informe FVLco', text:'Informe de producción FVLco' });
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
@@ -8898,7 +8827,7 @@ async function exportPDFAnalisisParos(shareMode = false) {
       const blob = pdf.output('blob');
       const file = new File([blob], filename, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await _compartirPdf(file, 'Análisis de Paros FVLco', 'Análisis de tiempos de paro FVLco');
+        await navigator.share({ files: [file], title: 'Análisis de Paros FVLco', text: 'Análisis de tiempos de paro FVLco' });
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
@@ -9160,7 +9089,7 @@ async function exportPDFParos(shareMode = false) {
       const blob = pdf.output('blob');
       const file = new File([blob], filename, { type:'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files:[file] })) {
-        await _compartirPdf(file, 'Informe Tiempos de Paro FVLco', 'Informe de tiempos de paro FVLco');
+        await navigator.share({ files:[file], title:'Informe Tiempos de Paro FVLco', text:'Informe de tiempos de paro FVLco' });
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
