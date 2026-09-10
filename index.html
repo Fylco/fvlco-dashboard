@@ -6998,6 +6998,33 @@ function rcGoLatest() {
 }
 // Imagen ya generada por reporte: { elId: {key, file} }. La clave identifica el
 // día/turno capturado; si cambia, la imagen vieja ya no vale.
+/* ── QUE PUEDE HACER ESTE EQUIPO ──────────────────────────────────────
+   Medido en el Chrome de la planta (Windows): navigator.share NI SIQUIERA
+   EXISTE. O sea que el camino de "compartir" nunca se ejecutaba en PC y
+   siempre caia al respaldo de descargar — de ahi el "no me deja
+   compartir", que era literal: no lo intentaba.
+
+   En PC la via buena es el PORTAPAPELES: copiar la imagen y pegarla con
+   Ctrl+V en WhatsApp Web. Un paso en vez de tres (descargar, buscar el
+   archivo, adjuntar).
+
+   El formato NO es el mismo en las dos vias:
+     movil  -> JPEG, mas liviano para subir con el wifi de planta
+     PC     -> PNG obligatorio: ClipboardItem.supports('image/jpeg') da
+               FALSE en Chrome; el portapapeles solo acepta PNG.
+   Por eso el formato se decide aqui y no en el momento de enviar. */
+function _puedeCompartirArchivos() {
+  try {
+    if (!navigator.canShare) return false;
+    const f = new File([new Blob([''], {type:'image/png'})], 'x.png', {type:'image/png'});
+    return navigator.canShare({ files:[f] });
+  } catch (e) { return false; }
+}
+function _puedeCopiarImagen() {
+  return !!(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined');
+}
+const _VIA_COMPARTIR = _puedeCompartirArchivos() ? 'share' : (_puedeCopiarImagen() ? 'clipboard' : 'descarga');
+
 const _shareCache = {};
 // Precalentado EN VUELO: { elId: {key, promise} }. Si el usuario toca Compartir
 // mientras se está generando, se espera esa promesa en vez de arrancar un
@@ -7063,29 +7090,29 @@ async function shareReportImage(opts) {
   const btn = document.getElementById(opts.btnId);
   if (!el) return;
   const key = opts.key;
-  const shareData = f => ({ files:[f], title:opts.title, text:opts.text });
-  const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
 
-  // 1) Imagen de ESTE día/turno ya lista → compartir de inmediato, SIN await
-  //    previo, para no perder el gesto del clic actual (camino del 2º toque).
+  /* 1) Imagen de ESTE día/turno ya lista → entregar de inmediato.
+     Va por _entregarImagen y NO por navigator.share directo: antes esta
+     rama exigía navigator.canShare, que en Windows ni existe, así que en
+     PC la caché caliente se ignoraba y se regeneraba la imagen en cada
+     clic — el trabajo que el precalentado ya había hecho, tirado.
+     Sin await previo: _entregarImagen llega a navigator.share (o a
+     clipboard.write) dentro del mismo turno del clic, con el gesto vivo. */
   const cached = _shareCache[opts.elId];
-  if (cached && cached.key === key && cached.file &&
-      navigator.canShare && navigator.canShare({ files:[cached.file] })) {
+  if (cached && cached.key === key && cached.file) {
     try {
-      await navigator.share(shareData(cached.file));
+      await _entregarImagen(cached.file, opts, btn);
       return;
     } catch(err) {
       if (err && err.name === 'AbortError') return;   // el usuario canceló
-      // si vuelve a fallar, seguimos y regeneramos abajo
+      // si falló por otra cosa, seguimos y regeneramos abajo
+      console.warn('La imagen en caché no se pudo entregar, se regenera:', err);
     }
   }
 
   // 2) Se está precalentando justo ahora: esperar ESA imagen en vez de
   //    arrancar un segundo render del mismo reporte.
   const enVuelo = _sharePrep[opts.elId];
-  if (enVuelo && enVuelo.key === key) {
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
-  }
 
   const prev = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
@@ -7094,26 +7121,7 @@ async function shareReportImage(opts) {
       ? await enVuelo.promise
       : await _generarImagenReporte(opts);
 
-    if (navigator.canShare && navigator.canShare({ files:[file] })) {
-      try {
-        // Camino feliz (móvil rápido): comparte directo en el 1er toque
-        await navigator.share(shareData(file));
-      } catch(err) {
-        if (err && err.name === 'AbortError') { /* cancelado, no hacer nada */ }
-        else if (isGestureErr(err)) {
-          // El render tardó y expiró el gesto, pero la imagen YA quedó lista:
-          // avisar para que un 2º toque la comparte al instante (rama de arriba).
-          alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
-        } else throw err;
-      }
-    } else {
-      // PC / sin soporte de compartir archivos: descargar como respaldo
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.download = opts.fname; link.href = url; link.click();
-      setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
-      alert('Este dispositivo no permite compartir directamente. Se descargó la imagen — adjúntala manualmente al grupo de WhatsApp.\n\nTip: desde el celular el botón Compartir abre WhatsApp automáticamente.');
-    }
+    await _entregarImagen(file, opts, btn);
   } catch(err) {
     if (!err || err.name !== 'AbortError') {
       alert('No se pudo compartir: ' + ((err && err.message) || err));
@@ -7122,6 +7130,63 @@ async function shareReportImage(opts) {
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = prev; }
   }
+}
+
+/* Entrega la imagen por la mejor vía que tenga el equipo. */
+async function _entregarImagen(file, opts, btn) {
+  const shareData = { files:[file], title:opts.title, text:opts.text };
+  const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
+
+  // ── MÓVIL: hoja de compartir del sistema (abre WhatsApp) ──
+  if (_VIA_COMPARTIR === 'share' && navigator.canShare && navigator.canShare({ files:[file] })) {
+    try {
+      await navigator.share(shareData);
+    } catch(err) {
+      if (err && err.name === 'AbortError') return;             // el usuario canceló
+      if (isGestureErr(err)) {
+        alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
+        return;
+      }
+      throw err;
+    }
+    return;
+  }
+
+  // ── PC: al portapapeles, para pegar con Ctrl+V en WhatsApp Web ──
+  if (_VIA_COMPARTIR === 'clipboard') {
+    try {
+      await navigator.clipboard.write([ new ClipboardItem({ [file.type]: file }) ]);
+      _avisarEnBoton(btn, '✓ Copiada — pégala con Ctrl+V', 6000);
+      return;
+    } catch(err) {
+      /* Puede fallar si la pestaña perdió el foco o el navegador no dio
+         permiso. No se deja al usuario sin nada: se descarga. */
+      console.warn('No se pudo copiar al portapapeles, se descarga:', err);
+    }
+  }
+
+  // ── Último recurso: descargar el archivo ──
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.download = file.name; link.href = url; link.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
+  _avisarEnBoton(btn, '⬇ Descargada — adjúntala al chat', 6000);
+}
+
+/* Aviso en el propio botón en vez de un alert(): el usuario acaba de
+   hacer clic ahí, o sea que está mirando ese punto exacto, y un alert
+   obliga a un clic extra para nada. */
+function _avisarEnBoton(btn, texto, ms) {
+  if (!btn) { alert(texto); return; }
+  const prev = btn.dataset.labelOriginal || btn.innerHTML;
+  btn.dataset.labelOriginal = prev;
+  btn.innerHTML = texto;
+  btn.style.background = '#128C7E';
+  clearTimeout(btn._avisoTimer);
+  btn._avisoTimer = setTimeout(function () {
+    btn.innerHTML = btn.dataset.labelOriginal;
+    btn.style.background = '#25D366';
+  }, ms || 5000);
 }
 
 /* Genera la imagen del reporte y la deja en la caché. La devuelve como
@@ -7165,16 +7230,22 @@ function _generarImagenReporte(opts) {
       });
     } finally { stage.remove(); }
 
-    /* JPEG y no PNG, también por peso y no por tiempo: el encode pasó
-       de 1164 ms a 1073 ms (nada), pero el archivo de 720 KB a 213 KB.
-       WhatsApp lo vuelve JPEG al enviarlo de todas formas, así que no
-       se pierde calidad que el destinatario fuera a ver. Sobre fondo
-       blanco con texto oscuro, 0.92 no deja artefactos visibles. */
+    /* El formato depende de la via, no del gusto:
+         share (móvil) -> JPEG 0.92. No por velocidad (el encode pasó de
+           1164 ms a 1073 ms, o sea nada) sino por peso: 720 KB -> 213 KB,
+           que sí importa subiendo con el wifi de planta. WhatsApp lo
+           reencoda a JPEG de todas formas.
+         clipboard (PC) -> PNG OBLIGATORIO. ClipboardItem.supports
+           ('image/jpeg') da false en Chrome: si se copia un JPEG, el
+           pegado en WhatsApp Web no trae nada. */
+    const esJpeg = (_VIA_COMPARTIR === 'share');
+    const tipo   = esJpeg ? 'image/jpeg' : 'image/png';
     const blob = await new Promise(function (res, rej) {
       canvas.toBlob(function (b) { b ? res(b) : rej(new Error('No se pudo generar la imagen.')); },
-                    'image/jpeg', 0.92);
+                    tipo, esJpeg ? 0.92 : undefined);
     });
-    const file = new File([blob], opts.fname, { type:'image/jpeg' });
+    const nombre = opts.fname.replace(/\.(jpg|jpeg|png)$/i, esJpeg ? '.jpg' : '.png');
+    const file = new File([blob], nombre, { type: tipo });
     _shareCache[opts.elId] = { key: opts.key, file };
     return file;
   })();
