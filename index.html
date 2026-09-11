@@ -7162,9 +7162,8 @@ async function shareReportImage(opts) {
       throw e;
     }
 
-    // El cuadro de compartir de Windows puede dejar la promesa colgada si se
-    // cierra sin elegir destino: tambien con limite.
-    await _conLimite(_entregarImagen(file, opts, btn), 90000, 'entregar la imagen');
+    // _entregarImagen ya no espera al cuadro de Windows, asi que vuelve rapido.
+    await _entregarImagen(file, opts, btn);
   } catch(err) {
     if (!err || err.name !== 'AbortError') {
       alert('No se pudo compartir: ' + ((err && err.message) || err));
@@ -7176,32 +7175,85 @@ async function shareReportImage(opts) {
 }
 
 /* Entrega la imagen por la mejor vía que tenga el equipo. */
+/* POR QUE EL BOTON NO ESPERA A navigator.share()
+
+   Evidencia de produccion (2026-09-11): al segundo clic sale "An earlier share
+   has not yet completed". Ese error SOLO puede salir si navigator.share() se
+   esta ejecutando de verdad, asi que en ese PC la Web Share API SI existe —
+   durante dos dias se trabajo sobre la suposicion contraria, que era falsa.
+
+   La secuencia real era:
+     1. Primer clic -> navigator.share() abre el cuadro de Windows.
+     2. Ese cuadro queda PENDIENTE. Si el usuario lo cierra sin elegir destino,
+        o no llega a aparecer, la promesa NO SE RESUELVE NUNCA.
+     3. Como el boton esperaba esa promesa, se quedaba en "Preparando..." para
+        siempre. Eso es el "se queda pensando".
+     4. El segundo clic llamaba a share() otra vez -> el error de la captura.
+
+   Arreglo: se dispara el compartir y NO se espera su promesa para soltar el
+   boton. El cuadro de Windows sigue abriendose igual; lo unico que cambia es
+   que el tablero deja de quedarse colgado de algo que puede no volver nunca.
+   Y mientras haya un envio abierto, un segundo clic no llama a share() otra
+   vez: avisa. */
+let _envioAbierto = false, _envioT = null;
+
+function _marcarEnvioAbierto() {
+  _envioAbierto = true;
+  clearTimeout(_envioT);
+  // Red de seguridad: si la promesa nunca vuelve, a los 45 s se considera
+  // cerrado para que el boton no quede inutil hasta recargar la pagina.
+  _envioT = setTimeout(function () { _envioAbierto = false; }, 45000);
+}
+function _marcarEnvioCerrado() {
+  clearTimeout(_envioT);
+  _envioAbierto = false;
+}
+
 async function _entregarImagen(file, opts, btn) {
   const shareData = { files:[file], title:opts.title, text:opts.text };
   const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
+  const puedeCompartir = typeof navigator.share === 'function' &&
+        (!navigator.canShare || navigator.canShare({ files:[file] }));
 
-  // ── MÓVIL: hoja de compartir del sistema (abre WhatsApp) ──
-  if (_VIA_COMPARTIR === 'share' && navigator.canShare && navigator.canShare({ files:[file] })) {
-    try {
-      await navigator.share(shareData);
-    } catch(err) {
-      if (err && err.name === 'AbortError') return;             // el usuario canceló
-      if (isGestureErr(err)) {
-        alert('✅ Imagen lista. Toca "Compartir" una vez más para enviarla por WhatsApp.');
-        return;
-      }
-      throw err;
+  if (puedeCompartir) {
+    if (_envioAbierto) {
+      _avisarEnBoton(btn, '⚠ Ya hay un envío abierto', 5000);
+      return;
     }
+    _marcarEnvioAbierto();
+
+    // NO se espera la promesa: se le cuelgan manejadores y se sigue. El boton
+    // vuelve a la normalidad enseguida, pase lo que pase con el cuadro.
+    navigator.share(shareData).then(
+      function () { _marcarEnvioCerrado(); _avisarEnBoton(btn, '✓ Enviado', 4000); },
+      function (err) {
+        _marcarEnvioCerrado();
+        if (err && err.name === 'AbortError') return;          // lo cerro el usuario
+        if (isGestureErr(err)) {
+          _avisarEnBoton(btn, '↺ Toca Compartir otra vez', 7000);
+          return;
+        }
+        /* Compartir no salio y la imagen YA existe: se descarga, que es el
+           camino que produccion usaba antes y que siempre funciona. */
+        _descargarArchivo(file);
+        _avisarEnBoton(btn, '⬇ Descargada — adjúntala al chat', 7000);
+      }
+    );
     return;
   }
 
-  // ── PC: descargar el archivo para adjuntarlo en WhatsApp ──
+  // Sin Web Share: descargar para adjuntar a mano.
+  _descargarArchivo(file);
+  _avisarEnBoton(btn, '⬇ Descargada — adjúntala al chat', 6000);
+}
+
+function _descargarArchivo(file) {
   const url = URL.createObjectURL(file);
   const link = document.createElement('a');
   link.download = file.name; link.href = url; link.click();
   setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
-  _avisarEnBoton(btn, '⬇ Descargada — adjúntala al chat', 6000);
 }
+
 
 /* Aviso en el propio botón en vez de un alert(): el usuario acaba de
    hacer clic ahí, o sea que está mirando ese punto exacto, y un alert
