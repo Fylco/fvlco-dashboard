@@ -7035,7 +7035,6 @@ function _esCelular() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 function _puedeCompartirArchivos() {
-  if (!_esCelular()) return false;          // escritorio -> descarga, siempre
   try {
     if (!navigator.canShare) return false;
     const f = new File([new Blob([''], {type:'image/png'})], 'x.png', {type:'image/png'});
@@ -7049,7 +7048,9 @@ function _puedeCompartirArchivos() {
    El camino de MÓVIL (hoja de compartir del sistema, que sí abre WhatsApp)
    queda intacto: allí sí funciona en un toque.
    NO volver a poner el portapapeles sin que producción lo pida. */
-const _VIA_COMPARTIR = _puedeCompartirArchivos() ? 'share' : 'descarga';
+/* Se evalua EN EL CLIC, no al cargar la pagina: el estado de la Web Share
+   API puede diferir del momento de carga, y ademas asi se puede probar. */
+function _viaCompartir() { return _puedeCompartirArchivos() ? 'share' : 'descarga'; }
 
 const _shareCache = {};
 // Precalentado EN VUELO: { elId: {key, promise} }. Si el usuario toca Compartir
@@ -7234,8 +7235,7 @@ function _marcarEnvioCerrado() {
 async function _entregarImagen(file, opts, btn) {
   const shareData = { files:[file], title:opts.title, text:opts.text };
   const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
-  // Misma regla que _VIA_COMPARTIR: en escritorio NUNCA se llama a share().
-  const puedeCompartir = _VIA_COMPARTIR === 'share' && typeof navigator.share === 'function';
+  const puedeCompartir = _viaCompartir() === 'share' && typeof navigator.share === 'function';
 
   if (puedeCompartir) {
     if (_envioAbierto) {
@@ -7244,12 +7244,25 @@ async function _entregarImagen(file, opts, btn) {
     }
     _marcarEnvioAbierto();
 
+    /* RED DE SEGURIDAD. En el PC de produccion navigator.share puede no abrir
+       nada y no responder nunca (comprobado el 2026-09-11). Si a los 10 s no ha
+       pasado nada, se descarga el archivo para que el usuario NO quede sin nada.
+       Si el cuadro de Windows si se abrio, el archivo descargado sobra y se
+       ignora: molesta menos que quedarse esperando. */
+    let resuelto = false;
+    const red = setTimeout(function () {
+      if (resuelto) return;
+      _descargarArchivo(file);
+      _avisarEnBoton(btn, '⬇ Descargada — adjúntala al chat', 7000);
+    }, 10000);
+    const cerrar = function () { resuelto = true; clearTimeout(red); _marcarEnvioCerrado(); };
+
     // NO se espera la promesa: se le cuelgan manejadores y se sigue. El boton
     // vuelve a la normalidad enseguida, pase lo que pase con el cuadro.
     navigator.share(shareData).then(
-      function () { _marcarEnvioCerrado(); _avisarEnBoton(btn, '✓ Enviado', 4000); },
+      function () { cerrar(); _avisarEnBoton(btn, '✓ Enviado', 4000); },
       function (err) {
-        _marcarEnvioCerrado();
+        cerrar();
         if (err && err.name === 'AbortError') return;          // lo cerro el usuario
         if (isGestureErr(err)) {
           _avisarEnBoton(btn, '↺ Toca Compartir otra vez', 7000);
@@ -7342,7 +7355,7 @@ function _generarImagenReporte(opts) {
          clipboard (PC) -> PNG OBLIGATORIO. ClipboardItem.supports
            ('image/jpeg') da false en Chrome: si se copia un JPEG, el
            pegado en WhatsApp Web no trae nada. */
-    const esJpeg = (_VIA_COMPARTIR === 'share');
+    const esJpeg = (_viaCompartir() === 'share');
     const tipo   = esJpeg ? 'image/jpeg' : 'image/png';
     const blob = await new Promise(function (res, rej) {
       canvas.toBlob(function (b) { b ? res(b) : rej(new Error('No se pudo generar la imagen.')); },
