@@ -7020,10 +7020,14 @@ function _puedeCompartirArchivos() {
     return navigator.canShare({ files:[f] });
   } catch (e) { return false; }
 }
-function _puedeCopiarImagen() {
-  return !!(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined');
-}
-const _VIA_COMPARTIR = _puedeCompartirArchivos() ? 'share' : (_puedeCopiarImagen() ? 'clipboard' : 'descarga');
+/* En PC el botón DESCARGA el archivo, no lo copia al portapapeles.
+   Es lo que hacía el lunes 7-sep y es el flujo que producción usa: baja el
+   PNG y lo adjunta en su WhatsApp Desktop. El portapapeles se probó y no le
+   sirve — pidió expresamente "que esté el botón como estaba el día lunes 7".
+   El camino de MÓVIL (hoja de compartir del sistema, que sí abre WhatsApp)
+   queda intacto: allí sí funciona en un toque.
+   NO volver a poner el portapapeles sin que producción lo pida. */
+const _VIA_COMPARTIR = _puedeCompartirArchivos() ? 'share' : 'descarga';
 
 const _shareCache = {};
 // Precalentado EN VUELO: { elId: {key, promise} }. Si el usuario toca Compartir
@@ -7152,20 +7156,7 @@ async function _entregarImagen(file, opts, btn) {
     return;
   }
 
-  // ── PC: al portapapeles, para pegar con Ctrl+V en WhatsApp Web ──
-  if (_VIA_COMPARTIR === 'clipboard') {
-    try {
-      await navigator.clipboard.write([ new ClipboardItem({ [file.type]: file }) ]);
-      _avisarEnBoton(btn, '✓ Copiada — pégala con Ctrl+V', 6000);
-      return;
-    } catch(err) {
-      /* Puede fallar si la pestaña perdió el foco o el navegador no dio
-         permiso. No se deja al usuario sin nada: se descarga. */
-      console.warn('No se pudo copiar al portapapeles, se descarga:', err);
-    }
-  }
-
-  // ── Último recurso: descargar el archivo ──
+  // ── PC: descargar el archivo para adjuntarlo en WhatsApp ──
   const url = URL.createObjectURL(file);
   const link = document.createElement('a');
   link.download = file.name; link.href = url; link.click();
