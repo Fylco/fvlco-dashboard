@@ -7013,7 +7013,29 @@ function rcGoLatest() {
      PC     -> PNG obligatorio: ClipboardItem.supports('image/jpeg') da
                FALSE en Chrome; el portapapeles solo acepta PNG.
    Por eso el formato se decide aqui y no en el momento de enviar. */
+/* SOLO se usa la hoja de compartir del sistema en CELULAR.
+
+   En el PC de produccion (Windows + Chrome) navigator.share EXISTE y
+   navigator.canShare devuelve true, pero al llamarla NO ABRE NINGUN CUADRO y su
+   promesa NO SE RESUELVE NUNCA: ni exito, ni error, ni dialogo. Un agujero
+   negro. Reportado el 2026-09-11: "se queda cargando, vuelve a aparecer el
+   boton y no hace nada".
+
+   Por eso NO basta con preguntarle al navegador si puede compartir: dice que si
+   y es mentira. En escritorio se descarga el archivo directamente, que es lo que
+   producion ya hacia y le funciona: un clic, baja el PNG, lo adjunta en su
+   WhatsApp Desktop.
+
+   En Android/iPhone la hoja del sistema SI funciona y abre WhatsApp en un toque;
+   ahi se mantiene.
+
+   NO cambiar esto por "el navegador dice que puede": ya se probo y costo dos
+   dias de produccion. */
+function _esCelular() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
 function _puedeCompartirArchivos() {
+  if (!_esCelular()) return false;          // escritorio -> descarga, siempre
   try {
     if (!navigator.canShare) return false;
     const f = new File([new Blob([''], {type:'image/png'})], 'x.png', {type:'image/png'});
@@ -7212,8 +7234,8 @@ function _marcarEnvioCerrado() {
 async function _entregarImagen(file, opts, btn) {
   const shareData = { files:[file], title:opts.title, text:opts.text };
   const isGestureErr = e => /gesture|activation|activaci/i.test(String(e && e.message));
-  const puedeCompartir = typeof navigator.share === 'function' &&
-        (!navigator.canShare || navigator.canShare({ files:[file] }));
+  // Misma regla que _VIA_COMPARTIR: en escritorio NUNCA se llama a share().
+  const puedeCompartir = _VIA_COMPARTIR === 'share' && typeof navigator.share === 'function';
 
   if (puedeCompartir) {
     if (_envioAbierto) {
