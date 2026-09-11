@@ -7089,6 +7089,24 @@ function saludoPorHora() {
 // Inventario Logística Diario: los dos capturan su propio contenedor a ancho
 // fijo y lo mandan por Web Share API.
 //   opts = { elId, btnId, forceClass, key, fname, title, text, width }
+/* NINGUNA espera puede ser infinita.
+   Produccion reporto el boton clavado en "Preparando..." para siempre: sin
+   cuadro de Windows, sin descarga y sin error. Eso solo puede pasar si la
+   promesa que se espera nunca se resuelve — html2canvas atascado, un
+   precalentado que quedo colgado, o canvas.toBlob que no llama de vuelta.
+   Con el limite, el peor caso es un aviso y el boton libre, nunca un tablero
+   que se queda pensando. Ademas el mensaje dice en que paso se quedo, que es
+   lo que hace falta para diagnosticar sin tener el equipo delante. */
+function _conLimite(promesa, ms, paso) {
+  let t;
+  const reloj = new Promise(function (_, rej) {
+    t = setTimeout(function () {
+      rej(new Error("Se agoto el tiempo al " + paso + " (" + Math.round(ms/1000) + " s)."));
+    }, ms);
+  });
+  return Promise.race([promesa, reloj]).finally(function () { clearTimeout(t); });
+}
+
 async function shareReportImage(opts) {
   const el  = document.getElementById(opts.elId);
   const btn = document.getElementById(opts.btnId);
@@ -7118,14 +7136,35 @@ async function shareReportImage(opts) {
   //    arrancar un segundo render del mismo reporte.
   const enVuelo = _sharePrep[opts.elId];
 
-  const prev = btn ? btn.innerHTML : '';
+  /* La etiqueta original se guarda UNA vez, la primera, y de ahi en adelante
+     siempre se restaura esa. Antes se leia btn.innerHTML justo antes de poner
+     el spinner: si dos clics se solapaban, el segundo guardaba "Preparando..."
+     como si fuera la etiqueta buena y la dejaba puesta PARA SIEMPRE. El boton
+     seguia funcionando, pero se veia clavado — es el "se queda pensando" que
+     reporto produccion (2026-09-11).
+     Se usa la MISMA clave que _avisarEnBoton (labelOriginal): con dos memorias
+     distintas, la que capturara despues guardaria el aviso de la otra. */
+  if (btn && !btn.dataset.labelOriginal) btn.dataset.labelOriginal = btn.innerHTML;
+  const prev = btn ? btn.dataset.labelOriginal : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando...'; }
   try {
-    const file = (enVuelo && enVuelo.key === key)
-      ? await enVuelo.promise
-      : await _generarImagenReporte(opts);
+    // 30 s es muy holgado: generar el Reporte Compacto toma 5-8 s. Si se pasa
+    // de ahi es que algo se atasco, no que va lento.
+    let file;
+    try {
+      file = await _conLimite(
+        (enVuelo && enVuelo.key === key) ? enVuelo.promise : _generarImagenReporte(opts),
+        30000, 'generar la imagen');
+    } catch (e) {
+      // Si lo que se colgo fue el precalentado, se descarta para que el
+      // siguiente clic arranque limpio en vez de volver a esperar lo mismo.
+      delete _sharePrep[opts.elId];
+      throw e;
+    }
 
-    await _entregarImagen(file, opts, btn);
+    // El cuadro de compartir de Windows puede dejar la promesa colgada si se
+    // cierra sin elegir destino: tambien con limite.
+    await _conLimite(_entregarImagen(file, opts, btn), 90000, 'entregar la imagen');
   } catch(err) {
     if (!err || err.name !== 'AbortError') {
       alert('No se pudo compartir: ' + ((err && err.message) || err));
