@@ -7347,15 +7347,16 @@ function _generarImagenReporte(opts) {
       });
     } finally { stage.remove(); }
 
-    /* El formato depende de la via, no del gusto:
-         share (móvil) -> JPEG 0.92. No por velocidad (el encode pasó de
-           1164 ms a 1073 ms, o sea nada) sino por peso: 720 KB -> 213 KB,
-           que sí importa subiendo con el wifi de planta. WhatsApp lo
-           reencoda a JPEG de todas formas.
-         clipboard (PC) -> PNG OBLIGATORIO. ClipboardItem.supports
-           ('image/jpeg') da false en Chrome: si se copia un JPEG, el
-           pegado en WhatsApp Web no trae nada. */
-    const esJpeg = (_viaCompartir() === 'share');
+  /* JPEG 0.92 SIEMPRE, en celular y en PC.
+     Antes el PC sacaba PNG, pero esa regla existia solo por el portapapeles
+     (ClipboardItem.supports('image/jpeg') da false en Chrome) y el
+     portapapeles ya no se usa. El resultado era que el mismo reporte bajaba
+     distinto segun el equipo: .jpg de 213 KB en el celular y .png de 720 KB
+     en el PC. Produccion lo pidio igual en los dos: "desde el celular se
+     descarga bien, necesito que se descargue tal cual desde el pc".
+     JPEG ademas pesa un tercio, que importa subiendo con el wifi de planta, y
+     WhatsApp lo reencoda a JPEG de todas formas. */
+    const esJpeg = true;
     const tipo   = esJpeg ? 'image/jpeg' : 'image/png';
     const blob = await new Promise(function (res, rej) {
       canvas.toBlob(function (b) { b ? res(b) : rej(new Error('No se pudo generar la imagen.')); },
