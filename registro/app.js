@@ -2198,7 +2198,8 @@ function molInit(){
    suelto con 0 kg no prueba nada. Sin ese aviso la tabla invitaría a
    acusar a alguien por algo que los datos no soportan.
 ═══════════════════════════════════════════════════════ */
-var REV = { bolsas:[], tomado:null, nuevas:0, cargando:false, guardando:false };
+var REV = { bolsas:[], tomado:null, nuevas:0, cargando:false, guardando:false,
+            sug:{ referencias:[], fabricantes:[], familias:[] } };
 
 /* ── Sub-pestañas ─────────────────────────────────────── */
 function supVista(v){
@@ -2228,6 +2229,12 @@ function revCargar(){
     REV.tomado  = new Date();
     REV.umbralKg  = r.umbralKg;
     REV.umbralPct = r.umbralPct;
+    /* Para el conteo inicial: las bolsas de virgen se crean desde cero
+       y el supervisor tiene que ELEGIR la referencia, no escribirla de
+       memoria. Un typo crea una bolsa duplicada — ya pasó con
+       TRANSPARENTE / TRASPARENTE en el molido. */
+    REV.sug = r.sugerencias || { referencias:[], fabricantes:[], familias:[] };
+    revLlenarSugerencias();
     revPintarMeta(r);
     revPintar();
     revPintarPendientes(r.pendientes);
@@ -2250,7 +2257,32 @@ function revPintarMeta(r){
   }
   h += '<br>Un ajuste mayor a <b>'+r.umbralKg+' kg</b> o al <b>'+r.umbralPct+
        '%</b> del saldo no se aplica solo: queda por confirmar.';
+  var nRef = ((r.sugerencias||{}).referencias||[]).length;
+  if(nRef){
+    h += '<br>Al agregar una bolsa, el campo de referencia sugiere <b>'+nRef+
+         '</b> material(es) que la planta ya usa — <b>elígelo de la lista</b>, '+
+         'no lo escribas: un error de dedo crea una bolsa duplicada.';
+  }
   $('rvMeta').innerHTML = h;
+}
+
+/* Las listas viven UNA vez en el documento y los campos de cada bolsa
+   nueva las referencian con list=. Si se pintaran por fila, agregar
+   diez bolsas duplicaría diez veces la misma lista de 75 referencias. */
+function revLlenarSugerencias(){
+  var s = REV.sug || {};
+  [['dl-rev-ref', s.referencias], ['dl-rev-fab', s.fabricantes]].forEach(function(par){
+    var dl = $(par[0]);
+    if(!dl) {
+      dl = document.createElement('datalist');
+      dl.id = par[0];
+      document.body.appendChild(dl);
+    }
+    dl.innerHTML = '';
+    (par[1]||[]).forEach(function(v){
+      var o = document.createElement('option'); o.value = v; dl.appendChild(o);
+    });
+  });
 }
 
 /* Quién revisa: sugiere los operarios que ya conoce la app, pero es
@@ -2326,8 +2358,8 @@ function revCamposNueva(i){
       ['HDPE','LLDPE','PP','MASTERBATCH'].map(function(f){
         return '<option value="'+f+'">'+f+'</option>'; }).join('')+
     '</select>'+
-    '<input id="rvRe'+i+'" placeholder="Referencia" autocomplete="off">'+
-    '<input id="rvFb'+i+'" placeholder="Fabricante" autocomplete="off">'+
+    '<input id="rvRe'+i+'" placeholder="Referencia" autocomplete="off" list="dl-rev-ref">'+
+    '<input id="rvFb'+i+'" placeholder="Fabricante" autocomplete="off" list="dl-rev-fab">'+
     '<input id="rvCo'+i+'" placeholder="Color (solo molido)" autocomplete="off" style="grid-column:1/-1;display:none">'+
   '</div>';
 }
