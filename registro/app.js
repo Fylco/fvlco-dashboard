@@ -1461,7 +1461,7 @@ function supRender(){
          +        (av ? '<span class="av">'+av+'</span>' : '')
          +      '</div>'
          +      '<div class="sup-acc">'
-         +        '<button class="sup-lot" onclick="supEditar('+p.fila+')">✏ LOTES</button>'
+         +        '<button class="sup-lot" onclick="supEditar('+p.fila+')">✏ EDITAR</button>'
          +        '<button class="sup-fin" onclick="supFin('+p.fila+',\''+supEsc(p.orden).replace(/'/g,'')+'\')">✔ FIN<br>PRODUCCIÓN</button>'
          +      '</div>'
          +    '</div>'
@@ -1488,6 +1488,21 @@ function supProgFila(fila){
   return out;
 }
 
+/** Opciones del desplegable de máquina.
+    La máquina que YA tiene la orden se agrega si no está en el catálogo de
+    LISTAS: si no, abrir el formulario y guardar la cambiaría en silencio a
+    la primera de la lista. */
+function supEdMaqOpts(actual){
+  var act=String(actual==null?'':actual).trim();
+  var lista=((SUP.datos||{}).maquinas||[]).slice();
+  if(act && lista.indexOf(act)<0) lista.unshift(act);
+  var html='<option value="">— Máquina —</option>';
+  lista.forEach(function(m){
+    html += '<option value="'+supEsc(m)+'"'+(String(m)===act?' selected':'')+'>'+supEsc(m)+'</option>';
+  });
+  return html;
+}
+
 function supEditHtml(p){
   var f=p.fila;
   return '<div class="sup-edit" id="supEd-'+f+'">'
@@ -1502,8 +1517,11 @@ function supEditHtml(p){
     +    '<span style="text-transform:none;color:#9aa0a6">→ col. O</span></label>'
     +    '<input id="supEdLoteProd-'+f+'" type="text" autocomplete="off" placeholder="ej. 821-0" value="'+supEsc(p.loteProd)+'"></div>'
     +  '</div>'
+    +  '<div class="fld"><label>Máquina <span class="req">*</span> '
+    +  '<span style="text-transform:none;color:#9aa0a6">→ col. P · el molde se cambió de máquina</span></label>'
+    +  '<select id="supEdMaq-'+f+'">'+supEdMaqOpts(p.maquina)+'</select></div>'
     +  '<div class="sup-edit-acc">'
-    +    '<button type="button" class="btn btn-sup" id="supEdBtn-'+f+'" onclick="supGuardarLotes('+f+')">💾 GUARDAR LOTES</button>'
+    +    '<button type="button" class="btn btn-sup" id="supEdBtn-'+f+'" onclick="supGuardarLotes('+f+')">💾 GUARDAR</button>'
     +    '<button type="button" class="sup-lnk" onclick="supEdCancelar('+f+')">cancelar</button>'
     +  '</div>'
     + '</div>';
@@ -1516,7 +1534,11 @@ function supEdRestaurar(fila){
   var m=$('supEdMp-'+fila);       if(m) m.value = p.mp       || '';
   var n=$('supEdLoteMp-'+fila);   if(n) n.value = p.loteMp   || '';
   var o=$('supEdLoteProd-'+fila); if(o) o.value = p.loteProd || '';
-  cls('supEdMp-'+fila, 'err-f', false);
+  // El desplegable se rearma: la máquina de la orden puede no estar en el
+  // catálogo, y asignar .value a secas dejaría el select en blanco.
+  var q=$('supEdMaq-'+fila);      if(q) q.innerHTML = supEdMaqOpts(p.maquina);
+  cls('supEdMp-'+fila,  'err-f', false);
+  cls('supEdMaq-'+fila, 'err-f', false);
 }
 
 function supEdCerrar(fila){
@@ -1552,7 +1574,7 @@ function supEditar(fila){
   if(e){ e.focus(); e.select(); }
 }
 
-/** Guarda M, N y O. La confirmación muestra SOLO lo que cambió, en
+/** Guarda M, N, O y P. La confirmación muestra SOLO lo que cambió, en
     formato "antes → después", para que sobrescribir nunca sea silencioso.
     OJO: mostrarConfirm inyecta HTML sin escapar → supEsc() en cada celda. */
 function supGuardarLotes(fila){
@@ -1561,16 +1583,21 @@ function supGuardarLotes(fila){
 
   var nuevo = { mp:       val('supEdMp-'+fila),
                 loteMp:   val('supEdLoteMp-'+fila),
-                loteProd: val('supEdLoteProd-'+fila) };
+                loteProd: val('supEdLoteProd-'+fila),
+                maquina:  val('supEdMaq-'+fila) };
   var d = supDiffLotes(p, nuevo);
 
+  var idMp='supEdMp-'+fila, idMaq='supEdMaq-'+fila;
   if(d.error){
-    cls('supEdMp-'+fila, 'err-f', true);
+    var idErr = (d.campoError==='maquina') ? idMaq : idMp;
+    cls(idMp, 'err-f', idErr===idMp);
+    cls(idMaq,'err-f', idErr===idMaq);
     toast('❌ '+d.error, 'err');
-    var e=$('supEdMp-'+fila); if(e) e.focus();
+    var e=$(idErr); if(e) e.focus();
     return;
   }
-  cls('supEdMp-'+fila, 'err-f', false);
+  cls(idMp, 'err-f', false);
+  cls(idMaq,'err-f', false);
 
   if(!d.hayCambios){ toast('No cambiaste nada','warn'); supEdCerrar(fila); return; }
 
@@ -1581,11 +1608,22 @@ function supGuardarLotes(fila){
   });
   filas.push(['Fila', String(fila)]);
 
+  // Cambiar de máquina no es un dato más: la orden desaparece del
+  // desplegable de una máquina y aparece en el de la otra. Se dice, no se
+  // deduce. Lo ya reportado no se toca — el acumulado va por orden+lote.
+  var cm = supCambioMaquina(d.cambios);
+  if(cm){
+    filas.push(['⚠️ OJO', 'El operario de la máquina ' + supEsc(cm.antes || '—')
+                + ' deja de ver esta orden; pasa a la ' + supEsc(cm.despues)
+                + '. Lo ya reportado se conserva.']);
+  }
+
   mostrarConfirm(filas, function(){
     var restaurar = supEsperando($('supEdBtn-'+fila), 'GUARDANDO');
     supPost('supActualizarLotes', {
       fila: fila, orden: p.orden,
-      mp: nuevo.mp, loteMp: nuevo.loteMp, loteProd: nuevo.loteProd
+      mp: nuevo.mp, loteMp: nuevo.loteMp, loteProd: nuevo.loteProd,
+      maquina: nuevo.maquina
     }).then(function(r){
       mostrarExito(r.message);
       supEdCerrar(fila);
