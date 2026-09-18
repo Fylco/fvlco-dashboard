@@ -19,7 +19,7 @@
    - El id lo genera el cliente para que un reenvío no duplique la factura.
    ═══════════════════════════════════════════════════════════════ */
 
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbzFgLys0lxVkZMH77-1w7y80XQ0_lXODPnzHIvfMWrXyf8z9eY7M7xjC-7c17GiNLY3GQ/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
 var CAT = { proveedores: [], fabricantes: [], referencias: [], familias: [] };
 var ENVIANDO = false;
