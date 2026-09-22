@@ -3356,6 +3356,23 @@ function buildNcByOrdenByDay(ncRows) {
   return map;
 }
 
+// NC agrupado por (orden) y (fecha YYYY-MM-DD). Igual que buildNcByOrden pero
+// sin perder CUÁNDO se registró cada NC, para poder acotarlo al período que el
+// usuario tiene filtrado. Ver la ventana de fechas en calcCalidad.
+function buildNcByOrdenFecha(ncRows) {
+  const map = {};   // { 1317: { '2026-09-21': 4271, ... }, ... }
+  ncRows.forEach(r => {
+    const orden = r['ORDEN'];
+    const nc    = pNum(r['CANTIDAD NC']);
+    if (!orden || !(nc > 0)) return;
+    const k = String(r._fechaKey || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+    if (!map[orden]) map[orden] = {};
+    map[orden][k] = (map[orden][k] || 0) + nc;
+  });
+  return map;
+}
+
 // ── Cobertura de datos por año-mes ──────────────────────────────────────
 // En los primeros meses de captura NO se registraban los paros (ene-feb 2026:
 // 100 y 20 min en TODO el mes) y los No Conformes solo existen desde abril
@@ -3427,15 +3444,58 @@ function coverageNote(rows) {
     <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px"></i>Cobertura de datos — ${parts.join(' · ')}. El OEE de esos meses no es comparable.</div>`;
 }
 
+// Ventana de fechas de las filas ya filtradas, UNA POR MES:
+//   { '2026-09': ['2026-09-21','2026-09-21'] }
+// Se usa para acotar el NC de cada orden al período que se está viendo. Es por
+// mes y no un rango único para que un filtro de meses salteados (mayo + julio)
+// no arrastre el NC de los meses de en medio, que no tienen producción en el
+// filtro. Dentro de cada mes es un rango contiguo: así un NC anotado un día sin
+// producción (domingo, revisión posterior) sigue contando.
+function _ventanaNC(rows) {
+  const w = {};
+  rows.forEach(r => {
+    const k = String(r._fechaKey || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+    const ym = k.slice(0,7), v = w[ym];
+    if (!v) w[ym] = [k, k];
+    else { if (k < v[0]) v[0] = k; if (k > v[1]) v[1] = k; }
+  });
+  return Object.keys(w).length ? w : null;
+}
+
+// NC de una orden DENTRO de la ventana filtrada. Sin ventana utilizable (filas
+// sin fecha bien formada) cae al acumulado de siempre.
+function _ncDeOrden(orden, vent) {
+  if (!vent) return DATA.ncByOrden[orden] || 0;
+  const idx = (DATA.ncByOrdenFecha || {})[orden];
+  if (!idx) return 0;
+  let s = 0;
+  for (const k in idx) {
+    const r = vent[k.slice(0,7)];
+    if (r && k >= r[0] && k <= r[1]) s += idx[k];
+  }
+  return s;
+}
+
 // % Calidad = (Σ prod_orden - NC_orden) / Σ prod_orden × 100
 // Agrupa por orden para evitar doble conteo de NC al haber múltiples filas por orden.
+//
+// El NC de la orden se acota a la VENTANA de fechas de las filas filtradas.
+// Antes se cruzaba contra DATA.ncByOrden, que es el NC acumulado de TODA la
+// vida de la orden: en una orden larga ese acumulado supera la producción de un
+// solo día, el Math.min lo topaba en el 100% de lo producido y la Calidad salía
+// 0% — y con ella el OEE. Le pegaba sobre todo a la TAPADORA, que corre semanas
+// con la misma orden (máq 6 / orden 1317 el 21-sep: 144.926 NC acumulados de la
+// orden contra 42.900 unidades del día → Calidad 0% en la tarjeta, mientras la
+// tabla de OEE por Máquina del mismo reporte mostraba 90,04%).
 function calcCalidad(rows) {
   rows = rows.filter(_covNCRow);   // meses sin registro de NC no pueden afirmar 100%
   const ordenes = [...new Set(rows.map(r => r._orden).filter(Boolean))];
+  const vent = _ventanaNC(rows);
   let tp=0, tn=0;
   ordenes.forEach(o => {
     const prod = rows.filter(r=>r._orden==o).reduce((s,r)=>s+r._cant,0);
-    const nc   = Math.min(DATA.ncByOrden[o]||0, prod);
+    const nc   = Math.min(_ncDeOrden(o, vent), prod);
     tp += prod; tn += nc;
   });
   if (tp <= 0) return null;
@@ -3683,6 +3743,7 @@ async function loadAll() {
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
     DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay  = buildNcByOrdenByDay(DATA.nc || []);
+    DATA.ncByOrdenFecha  = buildNcByOrdenFecha(DATA.nc || []);
     buildCoverage();
 
     setProgress(46, 'Cargando Plan Referencias...');
@@ -3756,6 +3817,7 @@ async function silentRefresh() {
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
+    DATA.ncByOrdenFecha = buildNcByOrdenFecha(DATA.nc || []);
     buildCoverage();
     await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
     await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
