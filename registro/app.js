@@ -11,6 +11,9 @@ var GD = {
   // Materiales del molino: los mantiene el usuario en LISTAS col A. Las
   // opciones de OPDEF.MOLINO quedan solo como respaldo.
   materialesMolino:[],
+  // Tratamientos de calidad (LISTAS col. R) y su significado (col. S), en el
+  // MISMO orden. Los usa la pestaña CALIDAD.
+  motivosCalidad:[], descCalidad:[],
   turnos:[], tapadoras:['5','6'], turnoSugerido:1, turnosValidos:[1],
   materialActivo:false, molidoOrigenActivo:false
 };
@@ -400,6 +403,8 @@ function onData(data){
   GD.descParoIny    = data.descParoIny    || [];
   GD.descParoTap    = data.descParoTap    || [];
   GD.materialesMolino = data.materialesMolino || [];
+  GD.motivosCalidad = data.motivosCalidad || [];
+  GD.descCalidad    = data.descCalidad    || [];
   GD.causasIny      = data.causasIny      || [];
   GD.causasTap      = data.causasTap      || [];
   GD.turnos         = (data.config && data.config.turnos)    || [];
@@ -498,8 +503,9 @@ function construirOperarios(sel){
    BOTONES DE OPERACIONES ESPECIALES
 ═══════════════════════════════════════════════════════ */
 function selOp(name){
-  // Si estábamos en el panel de supervisor, salir de él primero
+  // Si estábamos en el panel de supervisor o en el de calidad, salir primero
   if(SUP.activo) supCerrarPanel();
+  if(CAL.activo) calCerrarPanel();
   var maqSel=$('maquina');
   if(!name){
     // Volver: seleccionar primera máquina real disponible
@@ -1363,6 +1369,7 @@ function supAbrirPanel(){
   SUP.activo = true;
   show('colsN', false);
   $('opPanel').className='op-panel';
+  calCerrarPanel();
   cls('supPanel','show',true);
   document.querySelectorAll('.opb[data-op]').forEach(function(b){ b.classList.remove('act'); });
   $('btnSup').classList.add('act');
@@ -1989,6 +1996,348 @@ function supInit(){
   e=$('supOrden');     if(e) e.addEventListener('change', supOrdenChange);
   e=$('supPw');        if(e) e.addEventListener('keydown', function(ev){
     if(ev.key==='Enter'){ ev.preventDefault(); supEntrar(); }
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   CALIDAD — producto RETENIDO en revisión posterior
+   ─────────────────────────────────────────────────────
+   Calidad revisa DESPUÉS de producido y cuenta UNIDADES. La tarjeta
+   CALIDAD del formulario es otra cosa: tiempo real, en la máquina, por
+   peso. Por eso son dos hojas, dos claves y dos pantallas.
+
+   Clave propia (FVLCO_CALIDAD_PW) validada en el backend (Calidad.gs).
+   Vive solo en memoria durante la sesión — nunca en disco ni acá.
+
+   NO usa la cola offline a propósito, igual que SUP: un retenido guardado
+   en el equipo y enviado tres días después descuadraría el indicador de un
+   día ya cerrado y revisado.
+═══════════════════════════════════════════════════════ */
+var CAL = { pw:null, activo:false, descMapa:{} };
+
+/* ── Acceso ───────────────────────────────────────────── */
+function abrirCalidad(){
+  if(CAL.pw){ calAbrirPanel(); return; }
+  $('calPw').value='';
+  show('calPwErr', false);
+  cls('mCal','show',true);
+  // Probar ANTES de que escriba: si no hay conexión, que lo sepa ya y no lo
+  // descubra por un "clave incorrecta" que no era la clave.
+  calProbarConexion();
+  setTimeout(function(){ var e=$('calPw'); if(e) e.focus(); }, 120);
+}
+
+function cerrarCalModal(){
+  cls('mCal','show',false);
+  $('calPw').value='';
+  $('calPw').type='password';
+  $('calPwEye').classList.remove('on');
+}
+
+/* Un espacio de más metido por el teclado del celular es invisible con
+   type=password y parece "clave incorrecta". */
+function calVerClave(){
+  var i=$('calPw'), b=$('calPwEye');
+  var ver = i.type==='password';
+  i.type = ver ? 'text' : 'password';
+  b.classList[ver?'add':'remove']('on');
+  i.focus();
+}
+
+/* Mismo diagnóstico de conexión del supervisor, pintado en los chips de
+   calidad. ?action=version no escribe nada y no necesita clave. */
+function calPintarConx(r){
+  ['calConx','calConx2'].forEach(function(id){
+    var e=$(id); if(!e) return;
+    e.className = 'conx ' + (r.estado||'') + (id==='calConx' ? ' conx-modal' : ' conx-panel');
+    var t=e.querySelector('.cx-t'); if(t) t.textContent = r.txt||'';
+  });
+}
+
+function calProbarConexion(){
+  calPintarConx({ estado:'probando', txt:'Probando conexión…' });
+  if(!navigator.onLine){
+    var r0={ ok:false, estado:'mal', txt:'Sin red — este equipo no está conectado' };
+    calPintarConx(r0); return Promise.resolve(r0);
+  }
+  var t0=Date.now();
+  return fetchTimeout(GAS_URL+'?action=version&_='+t0, { cache:'no-store' }, SUP_TIMEOUT_PING_)
+    .then(function(res){ if(!res.ok) throw new Error('HTTP '+res.status); return res.json(); })
+    .then(function(j){
+      var ms=Date.now()-t0, lento = ms >= SUP_LENTO_MS_;
+      var r={ ok:true, ms:ms, estado: lento?'lento':'ok',
+              txt: (lento ? 'Conexión LENTA · ' : 'Conectado · ') + supMs(ms) };
+      calPintarConx(r); return r;
+    })
+    .catch(function(err){
+      var ms=Date.now()-t0;
+      var r={ ok:false, ms:ms, estado:'mal', txt: supTxtFalla(err, ms) };
+      calPintarConx(r); return r;
+    });
+}
+
+function calPost(accion, datos){
+  if(!CAL.pw) return Promise.reject(new Error('Sesión de calidad cerrada. Vuelve a entrar.'));
+  if(!navigator.onLine){
+    calPintarConx({ estado:'mal', txt:'Sin red — este equipo no está conectado' });
+    return Promise.reject(new Error('Sin red — el registro de calidad necesita internet. Revisa el wifi y vuelve a intentar.'));
+  }
+  var t0=Date.now();
+  return fetchTimeout(GAS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify({ accion:accion, datos: merge(datos||{}, { pw:CAL.pw }) })
+  }, SUP_TIMEOUT_MS_).then(function(res){
+    if(!res.ok) throw new Error('El servidor respondió HTTP '+res.status+'. Reintenta en un minuto.');
+    return res.json();
+  }, function(err){
+    calPintarConx({ estado:'mal', txt: supTxtFalla(err, Date.now()-t0) });
+    if(err && err.name==='AbortError'){
+      throw new Error('El servidor de Google no respondió en '+Math.round(SUP_TIMEOUT_MS_/1000)+
+                      ' s. Casi siempre es el internet de la planta — toca "probar" y reintenta.');
+    }
+    throw new Error('No se pudo conectar con el servidor. Revisa el internet y toca "probar".');
+  }).then(function(r){
+    var ms=Date.now()-t0, lento = ms >= SUP_LENTO_MS_;
+    calPintarConx({ estado: lento?'lento':'ok',
+                    txt: (lento ? 'Conexión LENTA · ' : 'Conectado · ')+supMs(ms) });
+    return r;
+  }).then(function(r){
+    if(!r || r.status==='error'){
+      var m = (r && r.message) || 'Error desconocido';
+      if(m === 'CLAVE_INCORRECTA'){ CAL.pw = null; throw new Error('Clave incorrecta'); }
+      // El backend no conoce las acciones cal*: este equipo guardó una versión
+      // vieja de la app. No es problema de clave — hay que recargar.
+      if(/no reconocida/i.test(m)){
+        CAL.pw = null;
+        throw new Error('Este equipo tiene guardada una versión vieja de la app. Cierra la página y vuelve a abrirla (en PC: Ctrl+Shift+R).');
+      }
+      throw new Error(m);
+    }
+    return r;
+  });
+}
+
+function calEntrar(){
+  var pw = $('calPw').value.trim();
+  if(!pw){ show('calPwErr', true); $('calPwErr').textContent='Escribe la clave.'; return; }
+  var restaurar = supEsperando($('calBtnEntrar'), 'VALIDANDO');
+  show('calPwErr', false);
+  CAL.pw = pw;
+  calPost('calLogin', {}).then(function(){
+    cerrarCalModal();
+    calAbrirPanel();
+  }).catch(function(err){
+    CAL.pw = null;
+    show('calPwErr', true);
+    $('calPwErr').textContent = err.message;
+  }).then(restaurar);
+}
+
+/* ── Panel ────────────────────────────────────────────── */
+function calAbrirPanel(){
+  CAL.activo = true;
+  show('colsN', false);
+  $('opPanel').className='op-panel';
+  supCerrarPanel();
+  cls('calPanel','show',true);
+  document.querySelectorAll('.opb[data-op]').forEach(function(b){ b.classList.remove('act'); });
+  $('btnCalPanel').classList.add('act');
+  show('btnVolver', true);
+  var lbl=$('eoLabel');
+  if(lbl){ lbl.textContent='CALIDAD'; cls('eoLabel','on',true); cls('eoLabel','off',false); }
+  calLlenarCatalogos();
+  calFechasPorDefecto();
+}
+
+/* Solo cierra la vista; la sesión (CAL.pw) sigue viva hasta recargar. */
+function calCerrarPanel(){
+  CAL.activo = false;
+  cls('calPanel','show',false);
+  $('btnCalPanel').classList.remove('act');
+}
+
+/* ── Catálogos ────────────────────────────────────────── */
+function calLlenarCatalogos(){
+  // Órdenes: TODAS las activas, sin filtrar por máquina. La retención puede
+  // ser de cualquier máquina y la persona de calidad no está parada en una.
+  var sel=$('calOrden'), prev=sel.value;
+  sel.innerHTML='<option value="">— Seleccione orden —</option>';
+  (GD.ordenes||[]).forEach(function(o){
+    var op=document.createElement('option');
+    op.value=o.id;
+    op.textContent=o.id+(o.productName ? ' · '+o.productName : '')+(o.cliente ? ' · '+o.cliente : '');
+    sel.appendChild(op);
+  });
+  if(prev) sel.value=prev;
+
+  var ms=$('calMaq'), prevM=ms.value;
+  ms.innerHTML='<option value="">— Máquina —</option>';
+  (GD.maquinasIny||[]).concat(GD.maquinasTap||[]).forEach(function(m){
+    var op=document.createElement('option'); op.value=m; op.textContent=m; ms.appendChild(op);
+  });
+  if(prevM) ms.value=prevM;
+
+  // Turno SIN la regla de que cubra la hora: el retenido se reporta días
+  // después y esa validación no aplica acá.
+  var ts=$('calTurno'), prevT=ts.value;
+  ts.innerHTML='<option value="">— Turno —</option>';
+  [1,2,3,4,5].forEach(function(t){
+    var op=document.createElement('option'); op.value=t; op.textContent='Turno '+t; ts.appendChild(op);
+  });
+  if(prevT) ts.value=prevT;
+
+  var os=$('calOperario'), prevO=os.value;
+  os.innerHTML='<option value="">— Operario —</option>';
+  (GD.operarios||[]).forEach(function(o){
+    var op=document.createElement('option');
+    op.value=o.id+' · '+o.name; op.textContent=o.id+' · '+o.name; os.appendChild(op);
+  });
+  if(prevO) os.value=prevO;
+
+  var mo=$('calMotivo'), prevMo=mo.value;
+  mo.innerHTML='<option value="">— Motivo —</option>';
+  CAL.descMapa={};
+  (GD.motivosCalidad||[]).forEach(function(m, i){
+    var op=document.createElement('option'); op.value=m; op.textContent=m; mo.appendChild(op);
+    CAL.descMapa[m] = (GD.descCalidad||[])[i] || '';
+  });
+  if(prevMo) mo.value=prevMo;
+  calMotivoChange();
+}
+
+/* Por defecto: producido AYER, revisado HOY. Es el caso más común y deja
+   las dos fechas editables para los demás. */
+function calFechasPorDefecto(){
+  if(!$('calFProd').value){
+    var ayer=new Date(); ayer.setDate(ayer.getDate()-1);
+    $('calFProd').value = calISO(ayer);
+  }
+  if(!$('calFRev').value) $('calFRev').value = calISO(new Date());
+  calFProdChange();
+}
+
+function calISO(d){
+  return d.getFullYear()+'-'+fmt2(d.getMonth()+1)+'-'+fmt2(d.getDate());
+}
+
+/* ── Reacciones ───────────────────────────────────────── */
+function calOrdenNLChange(){
+  var manual = $('calOrdenNL').checked;
+  show('calOrden', !manual);
+  show('calOrdenM', manual);
+  if(manual) $('calOrdenM').focus();
+  calOrdenChange();
+}
+
+/* Prellena producto/cliente/color/máquina desde la orden, SIN pisar lo que
+   ya escribieron: si la orden se cerró y lo llenaron a mano, ese dato manda.
+   Solo rellena lo que está vacío. */
+function calOrdenChange(){
+  var id = $('calOrdenNL').checked ? val('calOrdenM') : val('calOrden');
+  var o = null;
+  (GD.ordenes||[]).forEach(function(x){ if(String(x.id)===String(id)) o=x; });
+
+  if(o){
+    if(!val('calProducto')) $('calProducto').value = o.productName || '';
+    if(!val('calCliente'))  $('calCliente').value  = o.cliente || '';
+    if(!val('calColor'))    $('calColor').value    = o.color || '';
+    if(!val('calMaq') && o.maquina) $('calMaq').value = String(o.maquina);
+    cls('calAviso','show', false);
+  } else if(id){
+    // No bloquea: una orden cerrada ya no está en la lista y ese es
+    // justamente el caso que el modo manual existe para atender. Pero sí se
+    // avisa, porque si además no existe en producción el retenido no va a
+    // poder restar de nada.
+    $('calAviso').innerHTML = 'La orden <b>'+supEsc(id)+'</b> no está en la lista de activas. '
+      + 'Si ya se cerró, sigue: llena producto, cliente, color y máquina a mano.';
+    cls('calAviso','show', true);
+  } else {
+    cls('calAviso','show', false);
+  }
+}
+
+function calFProdChange(){
+  var v = val('calFProd');
+  var viejo = v && retenidoAntiguo(v, calISO(new Date()));
+  if(viejo){
+    $('calFProdAviso').innerHTML = 'Esa producción es de hace más de <b>30 días</b>. '
+      + 'Si es correcto, sigue — solo confirma que el año esté bien.';
+  }
+  cls('calFProdAviso','show', !!viejo);
+}
+
+/* La descripción del tratamiento, al pie y sombreada. Mismo bloque que el
+   paro: se elige por el nombre corto y esto confirma que es el correcto. */
+function calMotivoChange(){
+  var m = val('calMotivo');
+  var d = m ? (CAL.descMapa[m] || '') : '';
+  $('calDescX').textContent = d;
+  cls('calDesc','show', !!d);
+}
+
+/* ── Guardar ──────────────────────────────────────────── */
+function calDatosForm(){
+  return {
+    orden:       $('calOrdenNL').checked ? val('calOrdenM') : val('calOrden'),
+    maquina:     val('calMaq'),
+    turno:       val('calTurno'),
+    operario:    val('calOperario'),
+    producto:    val('calProducto'),
+    color:       val('calColor'),
+    cantidad:    val('calCant'),
+    fechaProd:   val('calFProd'),
+    fechaRev:    val('calFRev'),
+    motivo:      val('calMotivo'),
+    observacion: val('calObs')
+  };
+}
+
+function calMostrarErrores(errs){
+  if(!errs.length){ cls('calErr','show', false); return; }
+  var li='';
+  errs.forEach(function(e){ li += '<li>'+supEsc(e)+'</li>'; });
+  $('calErr').innerHTML = 'Falta corregir:<ul>'+li+'</ul>';
+  cls('calErr','show', true);
+}
+
+function calGuardar(){
+  var d = calDatosForm();
+  // La MISMA función que valida el backend (registro/retenidos.js). Acá es
+  // para no hacer viajar basura; el que manda sigue siendo el servidor.
+  var errs = validarRetenido(d, calISO(new Date()));
+  calMostrarErrores(errs);
+  if(errs.length){ toast('❌ Revisa los campos marcados','err'); return; }
+
+  var restaurar = supEsperando($('calBtnGuardar'), 'GUARDANDO');
+  calPost('calRegistrar', d).then(function(r){
+    toast('✅ '+(r.message||'Retenido registrado'),'ok');
+    // Se limpia lo que cambia entre registros; orden, máquina, turno,
+    // operario y fechas se conservan porque una revisión normal reporta
+    // varias cantidades de la misma tanda.
+    $('calCant').value='';
+    $('calObs').value='';
+    $('calCant').focus();
+  }).catch(function(err){
+    calMostrarErrores([err.message]);
+    toast('❌ '+err.message,'err');
+  }).then(restaurar);
+}
+
+function calInit(){
+  var e;
+  e=$('calBtnEntrar');  if(e) e.addEventListener('click', calEntrar);
+  e=$('calBtnProbar');  if(e) e.addEventListener('click', calProbarConexion);
+  e=$('calBtnProbar2'); if(e) e.addEventListener('click', calProbarConexion);
+  e=$('calBtnGuardar'); if(e) e.addEventListener('click', calGuardar);
+  e=$('calOrden');      if(e) e.addEventListener('change', calOrdenChange);
+  e=$('calOrdenM');     if(e) e.addEventListener('change', calOrdenChange);
+  e=$('calOrdenNL');    if(e) e.addEventListener('change', calOrdenNLChange);
+  e=$('calMotivo');     if(e) e.addEventListener('change', calMotivoChange);
+  e=$('calFProd');      if(e) e.addEventListener('change', calFProdChange);
+  e=$('calPw');         if(e) e.addEventListener('keydown', function(ev){
+    if(ev.key==='Enter'){ ev.preventDefault(); calEntrar(); }
   });
 }
 
@@ -2749,6 +3098,7 @@ function revInit(){
 window.addEventListener('DOMContentLoaded', function(){
   init();
   supInit();
+  calInit();
   revInit();
   molInit();
 });
