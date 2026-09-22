@@ -13,6 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="turnos.js"></script>
+<script src="registro/retenidos.js"></script>
 <script src="capacidad.js"></script>
 <script src="programacion.js"></script>
 <script src="analisis-paros.js"></script>
@@ -1531,6 +1532,11 @@ const SHEETS = {
      así que mandar los dos dejaría ganar al gid desviado. */
   produccion:   _hoja(HOJA_PRODUCCION),   // por NOMBRE, no por gid (gid viejo: 503325164)
   noConformes:  _exp('579426498'),
+  // Producto RETENIDO por Calidad en revisión posterior. Por NOMBRE y no por
+  // gid: la hoja la autocrea el backend en el primer registro, así que su gid
+  // no existe hasta entonces y no se puede escribir aquí. Si la hoja todavía
+  // no existe, loadOptional lo absorbe y el tablero sigue igual que hoy.
+  calidadRet:   _hoja('CALIDAD RETENIDOS'),
   planRef:      _exp('9934746'),
   accid:        _exp('904371036'),
   ventas:       _exp('2006233736'),
@@ -3710,6 +3716,29 @@ function validarProduccion(parsed, filas) {
   return { filas: filas.length, ultima };
 }
 
+// Producto retenido por Calidad → filas NC sintéticas dentro de DATA.nc.
+//
+// Se fusiona aquí, ANTES de buildNcByOrden/buildNcByOrdenByDay/
+// buildNcByOrdenFecha/buildCoverage, para no tocar calcCalidad ni ninguna de
+// las OCHO lecturas de DATA.nc que hay en este archivo. Duplicar la fórmula de
+// Calidad en ocho sitios es el error más caro que se puede cometer acá.
+//
+// La conversión (incluida la regla de que la fecha que pesa es la de
+// PRODUCCIÓN) vive en registro/retenidos.js, probada en Node.
+function mergeRetenidos(nc, retenidos) {
+  const base = nc || [];
+  const filas = retenidosAFilasNC(retenidos || []);
+  if (!filas.length) return base;
+  const sinteticas = filas.map(f => {
+    const n = normalizeProd(f);
+    n._origen = 'RETENIDO';   // marcador de trazabilidad; ningún cálculo lo mira
+    return n;
+  });
+  console.info(`Calidad: ${sinteticas.length} retenidos sumados a No Conformes `
+    + `(${fmt(sinteticas.reduce((s, r) => s + (pNum(r['CANTIDAD NC']) || 0), 0))} und).`);
+  return base.concat(sinteticas);
+}
+
 async function loadOptional(label, url, assign) {
   try {
     const parsed = await fetchCSV(url);
@@ -3741,6 +3770,8 @@ async function loadAll() {
     // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
     setProgress(28, 'Cargando No Conformes...');
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
+    await loadOptional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
+    DATA.nc = mergeRetenidos(DATA.nc, DATA.ret);
     DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay  = buildNcByOrdenByDay(DATA.nc || []);
     DATA.ncByOrdenFecha  = buildNcByOrdenFecha(DATA.nc || []);
@@ -3815,6 +3846,8 @@ async function silentRefresh() {
     try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
     catch (e) { registrarFalla('Producción', e.message); }
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
+    await loadOptional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
+    DATA.nc = mergeRetenidos(DATA.nc, DATA.ret);
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
     DATA.ncByOrdenFecha = buildNcByOrdenFecha(DATA.nc || []);
