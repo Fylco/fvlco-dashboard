@@ -2999,6 +2999,15 @@ let _CSV_EDAD_MS = 0;
    después (2026-09-10, hoja de Maquilas). */
 const _ESPERA_REINTENTO = [2000, 5000];
 
+/* Reconoce el error "la hoja no existe" que manda Proxy.gs (mensaje
+   __FVLCO_ERR__ ... no tiene ninguna hoja llamada "..."). Se usa en DOS
+   sitios: para cortar los reintentos de fetchCSV (más abajo) y para que el
+   cargador de Calidad Retenidos no lo trate como una falla (junto a
+   mergeRetenidos). Una sola definición para que ambos usos no se desalineen. */
+function _esHojaInexistente(msg) {
+  return /no tiene ninguna hoja llamada/i.test(String(msg || ''));
+}
+
 async function fetchCSV(url, retries = _ESPERA_REINTENTO.length, opts) {
   const header = !opts || opts.header !== false;
   const parsear = txt => Papa.parse(txt, { header, skipEmptyLines: header });
@@ -3024,6 +3033,13 @@ async function fetchCSV(url, retries = _ESPERA_REINTENTO.length, opts) {
       return parsear(txt);
     } catch (e) {
       lastErr = e;
+      /* Una hoja que no existe no es un fallo de red: insistir no la va a crear.
+         Sin este corte, cada carga y cada auto-refresco pagaban ~11 s muertos
+         (2 esperas de reintento) en una fuente cuyo error jamás cambia solo —
+         pasó con "CALIDAD RETENIDOS" antes de que el backend la creara. Va
+         ANTES de la guarda de caché: no hay copia local que valga la pena
+         servir para una hoja que nunca existió. */
+      if (_esHojaInexistente(e.message)) break;
       /* Con el proxy caído, insistir los 3 intentos en CADA una de las 7 hojas
          son ~50 s de espera antes de servir la copia local. Si ya hay copia, con
          dos intentos basta: se sirve lo guardado y el tablero abre en segundos.
@@ -3750,6 +3766,32 @@ async function loadOptional(label, url, assign) {
   }
 }
 
+// Calidad Retenidos no puede usar loadOptional: el backend crea esa hoja en
+// el primer registro (tarea posterior), así que hasta entonces el proxy
+// contesta "no tiene ninguna hoja llamada...", y loadOptional convertiría eso
+// en registrarFalla → banner rojo de "no tomes decisiones con estos números"
+// sobre un tablero que en realidad está bien. Aquí esa respuesta puntual se
+// trata como "todavía no hay retenidos": lista vacía, sin alerta. Cualquier
+// OTRO error (proxy caído, HTTP 500, HTML de error) sí es una falla real y
+// sigue sacando el banner como siempre.
+async function loadRetenidosOpcional(label, url, assign) {
+  try {
+    const parsed = await fetchCSV(url);
+    assign(parsed.data);
+    limpiarFalla(label);
+  } catch (e) {
+    if (_esHojaInexistente(e.message)) {
+      console.info(`[FVLco] ${label}: la hoja "CALIDAD RETENIDOS" aún no existe ` +
+        `(normal hasta que Calidad registre el primer retenido).`);
+      assign([]);
+      limpiarFalla(label);
+    } else {
+      registrarFalla(label, e.message);
+      assign([]);
+    }
+  }
+}
+
 async function loadAll() {
   try {
     // Producción es la ÚNICA hoja crítica: si falla, no hay dashboard.
@@ -3770,7 +3812,7 @@ async function loadAll() {
     // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
     setProgress(28, 'Cargando No Conformes...');
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
-    await loadOptional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
+    await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
     DATA.nc = mergeRetenidos(DATA.nc, DATA.ret);
     DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay  = buildNcByOrdenByDay(DATA.nc || []);
@@ -3846,7 +3888,7 @@ async function silentRefresh() {
     try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
     catch (e) { registrarFalla('Producción', e.message); }
     await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
-    await loadOptional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
+    await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
     DATA.nc = mergeRetenidos(DATA.nc, DATA.ret);
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
