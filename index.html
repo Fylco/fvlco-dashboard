@@ -3743,15 +3743,30 @@ function validarProduccion(parsed, filas) {
 // PRODUCCIÓN) vive en registro/retenidos.js, probada en Node.
 function mergeRetenidos(nc, retenidos) {
   const base = nc || [];
-  const filas = retenidosAFilasNC(retenidos || []);
+  const entrada = retenidos || [];
+  // Guarda: si retenidos.js no cargó (ReferenceError), esto NO puede tirar
+  // todo el tablero a "Error al cargar Producción" por una pieza opcional.
+  // Sin retenidosAFilasNC no hay forma de convertir, así que se avisa por
+  // consola y se sigue con los No Conformes tal cual venían.
+  if (typeof retenidosAFilasNC !== 'function') {
+    console.info('Calidad: retenidos.js no cargó — se sigue solo con No Conformes (sin retenidos).');
+    return base;
+  }
+  const filas = retenidosAFilasNC(entrada);
+  // SIEMPRE se informa, incluso con cero filas: una fila descartada en
+  // silencio (encabezado con tilde/espacio que retenidoAFilaNC no reconoce,
+  // hoja vacía, etc.) es el peor resultado posible acá — el indicador nunca
+  // se mueve y nadie se entera. Antes el "if (!filas.length) return base"
+  // cortaba ANTES de este console.info y no quedaba ni rastro.
+  const descartadas = entrada.length - filas.length;
+  console.info(`Calidad: ${filas.length} de ${entrada.length} retenidos entraron a No Conformes`
+    + (descartadas > 0 ? ` (${descartadas} descartados — revisa encabezados de CALIDAD RETENIDOS).` : '.'));
   if (!filas.length) return base;
   const sinteticas = filas.map(f => {
     const n = normalizeProd(f);
     n._origen = 'RETENIDO';   // marcador de trazabilidad; ningún cálculo lo mira
     return n;
   });
-  console.info(`Calidad: ${sinteticas.length} retenidos sumados a No Conformes `
-    + `(${fmt(sinteticas.reduce((s, r) => s + (pNum(r['CANTIDAD NC']) || 0), 0))} und).`);
   return base.concat(sinteticas);
 }
 
@@ -3811,9 +3826,16 @@ async function loadAll() {
 
     // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
     setProgress(28, 'Cargando No Conformes...');
-    await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
+    // ncFresh es local a ESTA llamada de loadAll: el merge lo usa a él, nunca
+    // a DATA.nc, para que dos cargas solapadas (loadAll + silentRefresh) no
+    // puedan concatenar los retenidos dos veces. Con DATA.nc como fuente,
+    // "nc=... / await / nc=... / await / merge / merge" duplicaría el
+    // indicador si el segundo merge leyera el resultado YA fusionado del
+    // primero — con ncFresh eso es imposible por construcción.
+    let ncFresh = [];
+    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFresh = d.map(normalizeProd); DATA.nc = ncFresh; });
     await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
-    DATA.nc = mergeRetenidos(DATA.nc, DATA.ret);
+    DATA.nc = mergeRetenidos(ncFresh, DATA.ret);
     DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay  = buildNcByOrdenByDay(DATA.nc || []);
     DATA.ncByOrdenFecha  = buildNcByOrdenFecha(DATA.nc || []);
@@ -3887,9 +3909,13 @@ async function silentRefresh() {
     // día sin producción.
     try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
     catch (e) { registrarFalla('Producción', e.message); }
-    await loadOptional('No Conformes', SHEETS.noConformes, d => { DATA.nc = d.map(normalizeProd); });
+    // Mismo motivo que en loadAll: usar el arreglo recién parseado, no
+    // DATA.nc, para que el merge no pueda duplicarse si esta carga se
+    // solapa con otra.
+    let ncFreshR = [];
+    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFreshR = d.map(normalizeProd); DATA.nc = ncFreshR; });
     await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
-    DATA.nc = mergeRetenidos(DATA.nc, DATA.ret);
+    DATA.nc = mergeRetenidos(ncFreshR, DATA.ret);
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
     DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
     DATA.ncByOrdenFecha = buildNcByOrdenFecha(DATA.nc || []);

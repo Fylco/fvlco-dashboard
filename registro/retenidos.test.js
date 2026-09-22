@@ -171,4 +171,40 @@ t('turno 3 (cruza medianoche) resuelve al dia de produccion', () => {
   assert.strictEqual(resolveFechaTurnoRaw(f), '20/9/2026');
 });
 
+// ── Llaves toleradas (mismo criterio que _calNorm_ de Calidad.gs) ─────
+// _calVerificarEncabezados_ acepta una hoja con "FECHA PRODUCCIÓN" (tilde) o
+// "FECHA PRODUCCION " (espacio final) porque compara con esa tolerancia. Si
+// retenidoAFilaNC leyera con llave EXACTA, esas filas devolverian null en
+// silencio: el retenido queda guardado y nunca resta del indicador. Estas
+// pruebas son justo el caso que motivo el arreglo.
+const { _retNormClave_ } = require('./retenidos.js');
+t('normaliza llave con tilde', () => assert.strictEqual(_retNormClave_('FECHA PRODUCCIÓN'), 'FECHA PRODUCCION'));
+t('normaliza llave con espacio final', () => assert.strictEqual(_retNormClave_('FECHA PRODUCCION '), 'FECHA PRODUCCION'));
+t('normaliza llave en minuscula', () => assert.strictEqual(_retNormClave_('fecha produccion'), 'FECHA PRODUCCION'));
+
+t('la fila con encabezado tildado SI produce fila NC', () => {
+  const filaTilde = Object.assign({}, FILA);
+  delete filaTilde['FECHA PRODUCCION'];
+  filaTilde['FECHA PRODUCCIÓN'] = '2026-09-20';
+  const f = retenidoAFilaNC(filaTilde);
+  assert.notStrictEqual(f, null);
+  assert.strictEqual(f['FECHA Y HORA'], '20/9/2026');
+});
+t('la fila con encabezado con espacio final SI produce fila NC', () => {
+  const filaEsp = Object.assign({}, FILA);
+  delete filaEsp['CANTIDAD RETENIDA'];
+  filaEsp['CANTIDAD RETENIDA '] = '4000';
+  const f = retenidoAFilaNC(filaEsp);
+  assert.notStrictEqual(f, null);
+  assert.strictEqual(f['CANTIDAD NC'], 4000);
+});
+t('la fila con encabezado en minuscula SI produce fila NC', () => {
+  const filaMin = {};
+  Object.keys(FILA).forEach(k => { filaMin[k.toLowerCase()] = FILA[k]; });
+  const f = retenidoAFilaNC(filaMin);
+  assert.notStrictEqual(f, null);
+  assert.strictEqual(f['CANTIDAD NC'], 4000);
+  assert.strictEqual(f['CAUSA'], 'producto Rechazado');
+});
+
 console.log('\n' + passed + ' pruebas OK');

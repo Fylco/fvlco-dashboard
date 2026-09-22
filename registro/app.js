@@ -2107,11 +2107,22 @@ function calPost(accion, datos){
     if(!r || r.status==='error'){
       var m = (r && r.message) || 'Error desconocido';
       if(m === 'CLAVE_INCORRECTA'){ CAL.pw = null; throw new Error('Clave incorrecta'); }
-      // El backend no conoce las acciones cal*: este equipo guardó una versión
-      // vieja de la app. No es problema de clave — hay que recargar.
+      // El backend no conoce las acciones cal*: hay DOS causas posibles y son
+      // opuestas, a diferencia de sup* (que ya no tiene este problema, lleva
+      // meses publicado). Para CAL, la primera vez que alguien la use, el
+      // backend NO va a conocer calLogin/calRegistrar todavía — ese caso está
+      // garantizado, no es una rareza. El mensaje viejo decía "este equipo
+      // tiene una versión vieja" y "recarga la página", que es justo AL REVÉS
+      // (la app es nueva, el backend es el viejo) y recargar no arregla nada:
+      // la persona de calidad se queda recargando en círculo. Acá se listan
+      // las dos causas reales y qué hacer en cada una.
       if(/no reconocida/i.test(m)){
         CAL.pw = null;
-        throw new Error('Este equipo tiene guardada una versión vieja de la app. Cierra la página y vuelve a abrirla (en PC: Ctrl+Shift+R).');
+        throw new Error('El servidor no reconoce las acciones de Calidad. Puede ser: '
+          + '(1) este equipo tiene guardada una versión vieja de la app — cierra la página '
+          + 'y vuelve a abrirla (Ctrl+Shift+R); o (2) el backend en Apps Script todavía no '
+          + 'se ha publicado con la nueva versión "con implementación" — avisa a quien lo '
+          + 'programó. Recargar sin más NO arregla la causa (2).');
       }
       throw new Error(m);
     }
@@ -2231,9 +2242,15 @@ function calOrdenNLChange(){
   calOrdenChange();
 }
 
-/* Prellena producto/cliente/color/máquina desde la orden, SIN pisar lo que
-   ya escribieron: si la orden se cerró y lo llenaron a mano, ese dato manda.
-   Solo rellena lo que está vacío. */
+/* Prellena producto/color/máquina desde la orden, SIN pisar lo que ya
+   escribieron: si la orden se cerró y lo llenaron a mano, ese dato manda.
+   Solo rellena lo que está vacío.
+
+   Cliente NO se prellena ni se pide: la hoja se identifica por ORDEN, y de
+   la orden ya sale el cliente. Un campo Cliente en el formulario se
+   llenaba, se mostraba y se tiraba a la basura — calDatosForm() nunca lo
+   incluía y Calidad.gs no tiene columna para él (agregarla obligaría a
+   tocar esa hoja a mano y re-verificar sus encabezados). */
 function calOrdenChange(){
   var id = $('calOrdenNL').checked ? val('calOrdenM') : val('calOrden');
   var o = null;
@@ -2241,7 +2258,6 @@ function calOrdenChange(){
 
   if(o){
     if(!val('calProducto')) $('calProducto').value = o.productName || '';
-    if(!val('calCliente'))  $('calCliente').value  = o.cliente || '';
     if(!val('calColor'))    $('calColor').value    = o.color || '';
     if(!val('calMaq') && o.maquina) $('calMaq').value = String(o.maquina);
     cls('calAviso','show', false);
@@ -2251,7 +2267,7 @@ function calOrdenChange(){
     // avisa, porque si además no existe en producción el retenido no va a
     // poder restar de nada.
     $('calAviso').innerHTML = 'La orden <b>'+supEsc(id)+'</b> no está en la lista de activas. '
-      + 'Si ya se cerró, sigue: llena producto, cliente, color y máquina a mano.';
+      + 'Si ya se cerró, sigue: llena producto, color y máquina a mano.';
     cls('calAviso','show', true);
   } else {
     cls('calAviso','show', false);

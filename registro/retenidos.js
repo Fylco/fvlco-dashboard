@@ -45,6 +45,44 @@ var RET_MESES_ES_ = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
 
 function retTexto(v) { return String(v == null ? '' : v).trim(); }
 
+/* Mayúsculas, sin tildes, espacios colapsados y sin bordes — MISMO criterio
+   que _calNorm_ (Calidad.gs), copiado a propósito en vez de compartido: ese
+   archivo lo pega el usuario a mano en Apps Script y no hay forma de que
+   ambos importen lo mismo.
+
+   _calVerificarEncabezados_ compara los encabezados de la hoja con esta
+   misma tolerancia, así que una hoja con "FECHA PRODUCCIÓN" (con tilde) o
+   "FECHA PRODUCCION " (espacio final) PASA esa verificación y el backend
+   escribe sin quejarse. Si retenidoAFilaNC no aplicara la misma tolerancia
+   al leer, esas filas devolverían null en silencio: el retenido queda
+   guardado en la hoja pero nunca resta del indicador.
+
+   Sin String.prototype.normalize (no está en el ES5 que exige este archivo
+   para navegadores viejos de planta): se reemplazan a mano las vocales
+   acentuadas que de verdad aparecen en encabezados en español. */
+function _retNormClave_(s) {
+  s = String(s == null ? '' : s).toUpperCase();
+  s = s.replace(/[ÁÀÄÂ]/g, 'A').replace(/[ÉÈËÊ]/g, 'E').replace(/[ÍÌÏÎ]/g, 'I')
+       .replace(/[ÓÒÖÔ]/g, 'O').replace(/[ÚÙÜÛ]/g, 'U');
+  s = s.replace(/\s+/g, ' ');
+  return s.replace(/^\s+|\s+$/g, '');   // trim ES5-safe (sin String.prototype.trim de más)
+}
+
+/* Copia la fila con las llaves normalizadas (_retNormClave_), para que
+   retenidoAFilaNC pueda leer con llave literal 'FECHA PRODUCCION' aunque la
+   hoja real diga 'Fecha Producción ' o 'fecha produccion'. Las llaves que
+   usa retenidoAFilaNC ya están en su propia forma normalizada, así que basta
+   con normalizar las de la fila de entrada. */
+function _retNormalizarFila_(fila) {
+  var out = {};
+  for (var k in fila) {
+    if (Object.prototype.hasOwnProperty.call(fila, k)) {
+      out[_retNormClave_(k)] = fila[k];
+    }
+  }
+  return out;
+}
+
 function _ret2_(n) { return (n < 10 ? '0' : '') + n; }
 
 /* Entero desde texto del sheet o del formulario.
@@ -156,7 +194,7 @@ function retenidoAntiguo(fechaProd, hoyISO) {
    Devuelve null —no una fila en cero— cuando la fila no sirve: un cero en
    el Pareto de causas es ruido que después nadie sabe de dónde salió. */
 function retenidoAFilaNC(fila) {
-  fila = fila || {};
+  fila = _retNormalizarFila_(fila || {});
   var cant = retEntero(fila['CANTIDAD RETENIDA']);
   if (!(cant > 0)) return null;
   var iso = retFechaISO(fila['FECHA PRODUCCION']);
@@ -198,6 +236,7 @@ if (typeof module !== 'undefined' && module.exports) {
     validarRetenido: validarRetenido,
     retenidoAntiguo: retenidoAntiguo,
     retenidoAFilaNC: retenidoAFilaNC,
-    retenidosAFilasNC: retenidosAFilasNC
+    retenidosAFilasNC: retenidosAFilasNC,
+    _retNormClave_: _retNormClave_
   };
 }
