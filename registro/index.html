@@ -422,6 +422,12 @@ textarea{resize:none;min-height:42px;height:42px}
   border-radius:6px;padding:7px 9px;font-size:11.5px;font-weight:700;line-height:1.45}
 .cal-err.show{display:block}
 .cal-err ul{margin:4px 0 0 16px;padding:0}
+/* .paro-desc lleva flex:1 y min-height:0 porque en la tarjeta de PAROS su
+   trabajo es llenar el hueco que queda al pie. Acá el panel ya desplaza por
+   su cuenta, así que ese flex la aplastaba a 14 px y el texto del tratamiento
+   quedaba FUERA de la caja, cortado — justo lo contrario de para lo que está.
+   Acá tiene que crecer con su contenido. */
+.cal-panel .paro-desc{flex:0 0 auto;overflow:visible}
 @media(max-width:759px){.opb-cal{width:100%;margin-top:2px}}
 </style>
 </head>
