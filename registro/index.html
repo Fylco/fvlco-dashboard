@@ -400,6 +400,29 @@ textarea{resize:none;min-height:42px;height:42px}
 /* Quien pidió menos animación al sistema igual tiene que ver el bloque:
    se queda fijo en cian, sin parpadeo. */
 @media(prefers-reduced-motion:reduce){.paro-desc{animation:none;background:#a5f3fc}}
+
+/* ── CALIDAD — producto retenido ───────────────────────────
+   Puerta aparte de la del supervisor: calidad revisa DESPUÉS de producido
+   y no tiene por qué ver la programación, ni al revés. Morado para que a
+   un metro se vea que no es la pantalla del supervisor. */
+.opb-cal{background:#6d28d9;border:1.5px solid #a78bfa!important}
+.hd-cal{background:#6d28d9}
+.btn-cal{background:#6d28d9}
+.cal-panel{display:none;flex:1;min-height:0;gap:7px}
+.cal-panel.show{display:flex;flex-direction:column}
+.cal-panel>.card{min-height:0}
+.cal-panel>.card>.bd{overflow-y:auto;min-height:0}
+@media(min-width:900px){.cal-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}}
+/* El aviso de orden vieja o no encontrada NO bloquea: informa. */
+.cal-avi{display:none;border-radius:6px;padding:6px 8px;font-size:10.5px;
+  font-weight:700;line-height:1.35;margin-top:5px}
+.cal-avi.show{display:block}
+.cal-avi.info{background:#fffbeb;border:1.4px solid #f59e0b;color:#92400e}
+.cal-err{display:none;background:#fef2f2;border:1.6px solid var(--er);color:#991b1b;
+  border-radius:6px;padding:7px 9px;font-size:11.5px;font-weight:700;line-height:1.45}
+.cal-err.show{display:block}
+.cal-err ul{margin:4px 0 0 16px;padding:0}
+@media(max-width:759px){.opb-cal{width:100%;margin-top:2px}}
 </style>
 </head>
 <body>
@@ -429,6 +452,7 @@ textarea{resize:none;min-height:42px;height:42px}
 <button class="opb" data-op="REPROCESOS"   style="background:#0b4ec0" onclick="selOp('REPROCESOS')">🔄 REPROCESOS</button>
 <span class="opbar-sep"></span>
 <button class="opb opb-sup" id="btnSup" onclick="abrirSupervisor()">🔐 SUPERVISOR</button>
+<button class="opb opb-cal" id="btnCal" onclick="abrirCalidad()">🔬 CALIDAD</button>
 <button class="opb opb-volver" id="btnVolver" style="display:none" onclick="selOp(null)">← Volver</button>
 </div>
 
@@ -713,6 +737,71 @@ textarea{resize:none;min-height:42px;height:42px}
 
 </div><!-- /supPanel -->
 
+<!-- PANEL CALIDAD — producto retenido en revisión posterior -->
+<div class="cal-panel" id="calPanel">
+<div class="card">
+  <div class="hd hd-cal">🔬 PRODUCTO RETENIDO POR CALIDAD</div>
+  <div class="bd">
+
+    <div class="conx conx-panel" id="calConx2"><span class="dot"></span><span class="cx-t">—</span><button type="button" id="calBtnProbar2">probar</button></div>
+
+    <div class="hint" style="margin:0">
+      Esto es la revisión <b>posterior</b>: producto ya almacenado que se retiene.
+      Lo que se reporta en la máquina durante el turno va por la tarjeta
+      <b>CALIDAD</b> del formulario, no por acá.
+    </div>
+
+    <div class="fld"><label>Orden <span class="req">*</span></label>
+      <select id="calOrden"><option value="">— Seleccione orden —</option></select>
+      <input id="calOrdenM" type="text" placeholder="N° de orden" autocomplete="off" style="display:none">
+      <label style="font-size:15px;font-weight:900;color:#5b21b6;display:flex;align-items:center;gap:7px;text-transform:none;margin-top:6px;cursor:pointer;background:#f5f3ff;border:2px solid #a78bfa;border-radius:7px;padding:6px 10px;">
+        <input type="checkbox" id="calOrdenNL" style="width:18px;height:18px;margin:0;flex-shrink:0;cursor:pointer"> <b>La orden ya se cerró — escribirla a mano</b></label>
+      <div class="cal-avi info" id="calAviso"></div>
+    </div>
+
+    <div class="cal-grid">
+      <div class="fld"><label>Producto</label>
+        <input id="calProducto" type="text" autocomplete="off" placeholder="ej. TAPA TERRA 15MM"></div>
+      <div class="fld"><label>Cliente</label>
+        <input id="calCliente" type="text" autocomplete="off"></div>
+      <div class="fld"><label>Color</label>
+        <input id="calColor" type="text" autocomplete="off"></div>
+      <div class="fld"><label>Máquina <span class="req">*</span></label>
+        <select id="calMaq"><option value="">— Máquina —</option></select></div>
+      <div class="fld"><label>Turno <span class="req">*</span></label>
+        <select id="calTurno"></select></div>
+      <div class="fld"><label>Operario <span class="req">*</span></label>
+        <select id="calOperario"><option value="">— Operario —</option></select></div>
+      <div class="fld"><label>Cantidad retenida (unidades) <span class="req">*</span></label>
+        <input id="calCant" type="number" min="1" step="1" inputmode="numeric" placeholder="ej. 4000"></div>
+      <div class="fld"><label>Motivo de rechazo <span class="req">*</span></label>
+        <select id="calMotivo"><option value="">— Motivo —</option></select></div>
+      <div class="fld"><label>Fecha de producción <span class="req">*</span></label>
+        <input id="calFProd" type="date">
+        <div class="cal-avi info" id="calFProdAviso"></div></div>
+      <div class="fld"><label>Fecha de revisión <span class="req">*</span></label>
+        <input id="calFRev" type="date"></div>
+    </div>
+
+    <div class="fld"><label>Observación</label>
+      <textarea id="calObs" placeholder="Opcional"></textarea></div>
+
+    <div class="cal-err" id="calErr"></div>
+
+    <button class="btn btn-cal" id="calBtnGuardar">💾 REGISTRAR RETENIDO</button>
+
+    <!-- La descripción del tratamiento, al pie y sombreada. Mismo bloque que
+         usa el paro: se elige por el nombre corto y esto confirma que es el
+         correcto, visible desde lejos. -->
+    <div class="paro-desc" id="calDesc">
+      <div class="pd-t">QUÉ SIGNIFICA ESTE MOTIVO</div>
+      <div class="pd-x" id="calDescX"></div>
+    </div>
+
+  </div>
+</div>
+</div><!-- /calPanel -->
+
 </div><!-- /wrap -->
 <div id="toast"></div>
 
@@ -745,11 +834,31 @@ textarea{resize:none;min-height:42px;height:42px}
 <button class="btn btn-sup" style="flex:2;margin:0" id="supBtnEntrar">ENTRAR</button>
 </div></div></div>
 
+<!-- MODAL CLAVE CALIDAD -->
+<div class="modal" id="mCal">
+<div class="mbox" style="max-width:350px">
+<div class="mhd hd-cal">🔬 Acceso calidad <button onclick="cerrarCalModal()">×</button></div>
+<div class="mbd">
+<div class="fld"><label>Clave</label>
+<div class="pw-wrap">
+<input id="calPw" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" placeholder="Clave de calidad">
+<button type="button" id="calPwEye" class="pw-eye" onclick="calVerClave()" title="Mostrar/ocultar clave">👁</button>
+</div></div>
+<div id="calPwErr" style="display:none;color:var(--er);font-weight:800;font-size:11.5px;margin-top:7px"></div>
+<div class="conx conx-modal" id="calConx"><span class="dot"></span><span class="cx-t">—</span><button type="button" id="calBtnProbar">probar</button></div>
+<div class="hint" style="margin-top:8px">Registro de producto retenido en revisión posterior. Solo personal de calidad.</div>
+</div>
+<div class="mft">
+<button class="btn bgr" style="flex:1;margin:0" onclick="cerrarCalModal()">CANCELAR</button>
+<button class="btn btn-cal" style="flex:2;margin:0" id="calBtnEntrar">ENTRAR</button>
+</div></div></div>
+
 <!-- ÉXITO -->
 <div id="exitoOv"><div class="exb"><div class="ic">🎉</div><h2>¡Trabajo bien hecho!</h2><p id="exitoM">Registro guardado.</p></div></div>
 
 <script src="idb.js"></script>
 <script src="supLotes.js"></script>
+<script src="retenidos.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
