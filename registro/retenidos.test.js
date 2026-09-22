@@ -136,6 +136,28 @@ t('lista vacia o undefined devuelve lista vacia', () => {
   assert.deepStrictEqual(retenidosAFilasNC(undefined), []);
 });
 
+// El tablero lee r['MES'] CRUDO en tres sitios (filtro de No Conformes,
+// acumulado por maquina del Resumen Diario, grafico "NC por mes"), no el
+// campo derivado _mes. Sin esta columna el retenido desaparece de esas
+// vistas en cuanto se filtra el tablero a un mes concreto.
+t('la fila de septiembre trae MES en septiembre', () => {
+  const f = retenidoAFilaNC(FILA); // FECHA PRODUCCION: 2026-09-20
+  assert.strictEqual(f['MES'], 'septiembre');
+});
+// El mes sale de la fecha de PRODUCCION, no de la de revision: aqui
+// producen el 30/8 y revisan el 2/9, y debe pesar agosto.
+t('el mes sale de la fecha de produccion, no de la de revision', () => {
+  const f = retenidoAFilaNC(Object.assign({}, FILA, {
+    'FECHA PRODUCCION': '2026-08-30', 'FECHA REVISION': '2026-09-02'
+  }));
+  assert.strictEqual(f['MES'], 'agosto');
+});
+// mesMatch y el grafico de NC por mes comparan en minuscula.
+t('el mes va en minuscula', () => {
+  const f = retenidoAFilaNC(FILA);
+  assert.strictEqual(f['MES'], f['MES'].toLowerCase());
+});
+
 // ── La fila sintetica tiene que servirle a resolveFechaTurnoRaw ────
 // Es lo unico que garantiza que el retenido caiga en el DIA correcto, y hay
 // dos caminos distintos: turnos 1/2/4 y turnos 3/5 (que cruzan medianoche).

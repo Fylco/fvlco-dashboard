@@ -32,6 +32,17 @@
    y a veces pasa una semana. Bloquear sería peor que avisar. */
 var RET_DIAS_AVISO_ = 30;
 
+/* Nombres de mes en español, minúscula, sin acentos (ninguno de los doce
+   lleva). Hacen falta porque retenidoAFilaNC tiene que fijar la columna
+   MES de la fila sintética: tres sitios del tablero (el filtro del panel
+   No Conformes, el acumulado de NC por máquina del Resumen Diario y el
+   gráfico "NC por mes") leen r['MES'] CRUDO del sheet, no el campo
+   derivado _mes. Sin esta columna, en cuanto el tablero se filtra a un
+   mes concreto esas tres vistas dejan de contar el retenido —en
+   silencio, porque la vista sin filtrar sigue cuadrando igual. */
+var RET_MESES_ES_ = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
 function retTexto(v) { return String(v == null ? '' : v).trim(); }
 
 function _ret2_(n) { return (n < 10 ? '0' : '') + n; }
@@ -151,10 +162,12 @@ function retenidoAFilaNC(fila) {
   var iso = retFechaISO(fila['FECHA PRODUCCION']);
   if (!iso) return null;
   var dmy = retFechaDMY(iso);
+  var mesNum = parseInt(iso.substring(5, 7), 10);
 
   return {
     'FECHA Y HORA': dmy,
     'FECHAS SEGUN TURNO DE TRABAJO': dmy,
+    'MES': RET_MESES_ES_[mesNum - 1],
     'ORDEN': retTexto(fila['ORDEN']),
     'MÁQUINA': retTexto(fila['MAQUINA']),
     'TURNO': retTexto(fila['TURNO']),
