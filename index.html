@@ -7576,7 +7576,7 @@ function _optsInvLog() {
   const maq   = (document.getElementById('il-f-maq')?.value   || '');
   return {
     elId:'il-content', btnId:'il-share-btn', forceClass:'il-share-force',
-    width:1100,   // 5 columnas: a 1900 sobraba la mitad del ancho
+    width:1250,   // 6 columnas; a 1900 sobraria ancho y la imagen sale estirada
     key:`${fecha}|${turno}|${maq}`,
     fname:`Inventario_Logistica_${fecha}.jpg`,
     title:'Inventario Logística Diario — FVLco',
@@ -8243,6 +8243,30 @@ function ilGoLatest() {
   renderInvLogistica();
 }
 
+/* Punto de color al lado del nombre. Los nombres del sheet traen codigo de
+   pigmento ("ROJO-1922", "FUCSIA-M-008 (1985)", "VERDE 3272C"), asi que se
+   busca la palabra base dentro del texto en vez de comparar exacto. Lo que no
+   se reconoce sale en gris: es una ayuda visual, no un dato — el nombre escrito
+   siempre manda. */
+const _COLOR_MUESTRA = [
+  ['NATURAL',     '#E8EDF2'], ['TRANSPARENTE','#E8EDF2'], ['CRISTAL', '#E8EDF2'],
+  ['BLANCO',      '#FFFFFF'], ['NEGRO',       '#1F2937'],
+  ['ROJO',        '#DC2626'], ['VINOTINTO',   '#7F1D1D'],
+  ['AMARILLO',    '#FACC15'], ['DORADO',      '#D4AF37'],
+  ['NARANJA',     '#F97316'],
+  ['VERDE',       '#16A34A'], ['ESMERALDA',   '#059669'],
+  ['AZUL',        '#2563EB'], ['CELESTE',     '#7DD3FC'],
+  ['FUCSIA',      '#D946A6'], ['ROSADO',      '#F9A8D4'], ['ROSA', '#F9A8D4'],
+  ['MORADO',      '#7C3AED'], ['LILA',        '#C4B5FD'], ['VIOLETA', '#8B5CF6'],
+  ['BEIGE',       '#E7D8B8'], ['CAFE',        '#78350F'], ['MARRON', '#78350F'],
+  ['GRIS',        '#9CA3AF'], ['PLATEADO',    '#C0C0C0'],
+];
+function _colorMuestra(nombre) {
+  const t = String(nombre||'').toUpperCase();
+  for (const [clave, hex] of _COLOR_MUESTRA) if (t.includes(clave)) return hex;
+  return '#D1D5DB';
+}
+
 function renderInvLogistica() {
   const contentEl = document.getElementById('il-content');
   if (!contentEl) return;
@@ -8301,7 +8325,13 @@ function renderInvLogistica() {
     if (t) g.turnos.add(t);
     const dia = String(r._diaTurno||'');
     if (dia && TURNO_INTERVALS[t]) (g.dtSet[dia] ||= new Set()).add(t);
-    const sl = (g.slots[t + '|' + prod] ||= { turno:t, prod, und:0, lotes:{}, sinLoteUnd:0 });
+    /* El COLOR entra en la llave, no es solo una columna. Medido sobre el
+       historico: 90 de 2.141 combinaciones turno+producto llevan MAS DE UN
+       color — la maquina 4 llego a correr TAPA TERRA 15MM en cinco colores en
+       un mismo turno. Si el color no agrupa, esa linea diria "TAPA TERRA 15MM"
+       y escondaria justo lo que bodega necesita para recibir. */
+    const color = String(r['COLOR'] ?? '').trim();
+    const sl = (g.slots[t + '|' + prod + '|' + color] ||= { turno:t, prod, color, und:0, lotes:{}, sinLoteUnd:0 });
     sl.und += pN(r._cant);
     // lotes = { lote: unidades }. Las unidades se acumulan POR LOTE: un turno
     // puede cerrar un lote y abrir el siguiente, y bodega rotula por lote.
@@ -8387,6 +8417,11 @@ function renderInvLogistica() {
       return `<tr>
         <td class="il-mq" data-label="Máquina" style="font-weight:700;color:#111827">${g.maq}</td>
         <td data-label="Producto">${sl.prod || '—'}</td>
+        <td data-label="Color">${sl.color
+          ? `<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap">`
+            + `<i style="width:11px;height:11px;border-radius:50%;flex:none;border:1px solid #9CA3AF;background:${_colorMuestra(sl.color)}"></i>`
+            + `${sl.color}</span>`
+          : '<span style="color:#9CA3AF">—</span>'}</td>
         <td data-label="Turno" style="text-align:center;font-weight:700">${sl.turno ? 'T'+sl.turno : 'Sin turno'}</td>
         <td class="il-lotes" data-label="Lotes">${lotesCell}</td>
         <td data-label="Und. reportadas" style="text-align:right;color:#059669;font-weight:700">${marcaParada(sl.und)}</td>
@@ -8394,7 +8429,7 @@ function renderInvLogistica() {
     }).join('');
 
     const totalMaq = `<tr class="il-subtot" style="background:#F3F4F6">
-        <td colspan="4" style="font-weight:800;color:#374151">Total Máquina ${g.maq}${g.nTurnos?` · ${g.nTurnos} turno${g.nTurnos>1?'s':''}`:''}</td>
+        <td colspan="5" style="font-weight:800;color:#374151">Total Máquina ${g.maq}${g.nTurnos?` · ${g.nTurnos} turno${g.nTurnos>1?'s':''}`:''}</td>
         <td style="text-align:right;font-weight:800;color:#0E7490">${marcaParada(g.und)}</td>
       </tr>`;
 
@@ -8461,17 +8496,18 @@ function renderInvLogistica() {
       </div>
 
       <div style="overflow-x:auto">
-        <table class="tbl il-resp" style="width:100%;min-width:640px">
+        <table class="tbl il-resp" style="width:100%;min-width:760px">
           <thead><tr style="background:#FCE4D6">
             <th style="background:#FCE4D6;color:#7A4B12">Máq</th>
             <th style="background:#FCE4D6;color:#7A4B12">Producto</th>
+            <th style="background:#FCE4D6;color:#7A4B12">Color</th>
             <th style="text-align:center;background:#FCE4D6;color:#7A4B12">Turno</th>
             <th style="background:#FCE4D6;color:#7A4B12">Lotes</th>
             <th style="text-align:right;background:#D6EFF5;color:#155E63">Und. Reportadas</th>
           </tr></thead>
-          <tbody>${bodyRows||'<tr><td colspan="5" style="text-align:center;padding:20px;color:#6B7280">Sin datos para este día</td></tr>'}</tbody>
+          <tbody>${bodyRows||'<tr><td colspan="6" style="text-align:center;padding:20px;color:#6B7280">Sin datos para este día</td></tr>'}</tbody>
           <tfoot><tr style="background:#F3F4F6">
-            <td colspan="4" style="font-weight:800;color:#111827">TOTAL</td>
+            <td colspan="5" style="font-weight:800;color:#111827">TOTAL</td>
             <td style="text-align:right;font-weight:800;color:#0E7490;font-size:1.35rem">${ri(totUnd)}</td>
           </tr></tfoot>
         </table>
