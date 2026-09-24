@@ -2,7 +2,7 @@ const assert = require('node:assert');
 const {
   retEntero, retFechaISO, retFechaDMY,
   validarRetenido, retenidoAntiguo, retenidoAFilaNC, retenidosAFilasNC,
-  retClaveOrden, saldosRetenidos
+  retClaveOrden, saldosRetenidos, ordenesParaMoler
 } = require('./retenidos.js');
 
 let passed = 0;
@@ -301,5 +301,75 @@ t('retClaveOrden normaliza', () => {
   assert.strictEqual(retClaveOrden(''), '');
   assert.strictEqual(retClaveOrden(null), '');
 });
+
+// ── ordenesParaMoler ───────────────────────────────────────────────
+// Lo que el molino ofrece: retenciones de "producto Rechazado" que todavia
+// nadie ha molido. No es aritmetica sino un interruptor: la retencion esta
+// en unidades y el molino reporta kilos, asi que no se pueden restar.
+const RM = (orden, cant, motivo) => ({
+  'ORDEN': orden, 'CANTIDAD RETENIDA': cant, 'MOTIVO RECHAZO': motivo || 'producto Rechazado'
+});
+const M = (ordenRetenida) => ({ 'ORDEN RETENIDA': ordenRetenida });
+
+t('una retencion para moler sin moliendas aparece con sus unidades', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','3600')], []), { '1307': 3600 });
+});
+
+// El interruptor: basta una molienda que la nombre para darla por resuelta.
+t('con una molienda que la nombra, desaparece', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','3600')], [M('1307')]), {});
+});
+
+t('una molienda de OTRA orden no la resuelve', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','3600')], [M('1360')]), { '1307': 3600 });
+});
+
+// Lo de "Seleccionar" se escoge, no se muele: ofrecerlo invitaria a moler
+// producto que habia que rescatar.
+t('Seleccionar y Derogacion nunca se ofrecen para moler', () => {
+  const ret = [RM('1317','4000','Seleccionar'), RM('1360','900','Derogacion por varíacion'), RM('1307','50')];
+  assert.deepStrictEqual(ordenesParaMoler(ret, []), { '1307': 50 });
+});
+
+t('dos retenciones de la misma orden se suman en una entrada', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','3600'), RM('1307','400')], []), { '1307': 4000 });
+});
+
+// Y si una de las dos ya se molio, la orden entera queda resuelta: el
+// interruptor no distingue cuanto se molio, solo que se molio.
+t('una molienda resuelve la orden completa, aunque tenga varias retenciones', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','3600'), RM('1307','400')], [M('1307')]), {});
+});
+
+t('la orden para moler se agrupa sin espacios ni mayusculas en los dos lados', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM(' 1307 ','3600')], [M('1307')]), {});
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','3600')], [M('  1307')]), {});
+});
+
+t('una molienda sin ORDEN RETENIDA no resuelve nada', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','3600')], [M(''), M('   '), {}]), { '1307': 3600 });
+});
+
+t('el punto de miles del locale ES se entiende al moler', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('1307','13.600')], []), { '1307': 13600 });
+});
+
+t('retenciones para moler sin orden o sin cantidad se ignoran', () => {
+  assert.deepStrictEqual(ordenesParaMoler([RM('','3600'), RM('1307',''), RM('1307','0')], []), {});
+});
+
+// Los encabezados de estas hojas se editan a mano y llegan con tildes y
+// espacios de sobra, en las dos hojas.
+t('llaves con tilde y espacio se leen igual al moler', () => {
+  const ret = [{ 'orden':'1307', 'Cantidad Retenida ':'3600', 'motivo rechazo':'producto Rechazado' }];
+  assert.deepStrictEqual(ordenesParaMoler(ret, []), { '1307': 3600 });
+  assert.deepStrictEqual(ordenesParaMoler(ret, [{ 'Orden Retenida ':'1307' }]), {});
+});
+
+t('listas vacias o undefined al moler devuelven objeto vacio', () => {
+  assert.deepStrictEqual(ordenesParaMoler([], []), {});
+  assert.deepStrictEqual(ordenesParaMoler(undefined, undefined), {});
+});
+
 
 console.log('\n' + passed + ' pruebas OK');

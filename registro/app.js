@@ -14,6 +14,9 @@ var GD = {
   // Unidades retenidas por calidad y sin revisar, por orden. La tarjeta
   // REPROCESOS se lo muestra al operario cuando elige la orden.
   retenidoPorOrden:{},
+  // Ordenes con producto retenido PARA MOLER (motivo "producto Rechazado")
+  // que ninguna molienda ha nombrado todavia.
+  retenidoMolerPorOrden:{},
   // Tratamientos de calidad (LISTAS col. R) y su significado (col. S), en el
   // MISMO orden. Los usa la pestaña CALIDAD.
   motivosCalidad:[], descCalidad:[],
@@ -76,6 +79,13 @@ var OPDEF = {
          molido sin que nadie sepa de dónde vinieron. */
       {id:'mDeCalidad', label:'Este material viene de producto retenido por calidad',
        type:'checkbox', req:false},
+      /* Solo se ve al marcar la casilla. Datalist y no select, igual que en
+         REPROCESOS: una orden ya cerrada no sale en la lista y hay que poder
+         escribirla. Al elegirla, esa retencion se da por molida y deja de
+         ofrecerse. */
+      {id:'mOrdenRet', label:'Orden del producto retenido', type:'datalist', req:false,
+       placeholder:'Elige o escribe la orden'},
+      {id:'mRetAviso', label:'', type:'bloque', req:false},
       {id:'mHH',   label:'Horas Trabajadas',          type:'number',   req:true,  step:'0.5'},
       {id:'mObs',  label:'Observaciones',         type:'textarea', req:false}
     ],
@@ -83,7 +93,8 @@ var OPDEF = {
       var o = { referencia:val('mRef'), color:val('mCol'), kilosMolidos:val('mKg'),
                 kilosBarradura:val('mBar')||0, horasHombre:val('mHH'), observacion:val('mObs'),
                 maquina:'MOLINO', origenes: molOrigenes(),
-                vieneDeCalidad: !!($('mDeCalidad') && $('mDeCalidad').checked) };
+                vieneDeCalidad: !!($('mDeCalidad') && $('mDeCalidad').checked),
+                ordenRetenida: val('mOrdenRet') };
       // El id lo genera el cliente para que un reenvio de la cola
       // offline no duplique la molienda ni sus filas de origen.
       if(o.origenes.length) o.idMolienda = 'g'+Date.now()+'-'+Math.floor(Math.random()*100000);
@@ -105,7 +116,9 @@ var OPDEF = {
       } else {
         s.push(['De dónde', 'sin declarar origen']);
       }
-      return s.concat($('mDeCalidad') && $('mDeCalidad').checked ? [['Origen','Producto retenido por calidad']] : []);
+      if(!($('mDeCalidad') && $('mDeCalidad').checked)) return s;
+      return s.concat([['Origen','Producto retenido por calidad'],
+                       ['Orden retenida', val('mOrdenRet')||'sin especificar']]);
     }
   },
   MANUALIDADES: {
@@ -394,6 +407,9 @@ function init(){
     ['mndOrden', 'input',  mndVerificarOrden],
     ['rpOrden', 'change', rpMostrarRetenido],
     ['rpOrden', 'input',  rpMostrarRetenido],
+    ['mDeCalidad','change', molCalidadToggle],
+    ['mOrdenRet', 'change', molMostrarRetenido],
+    ['mOrdenRet', 'input',  molMostrarRetenido],
     ['btnCal',   'click',  registrarCalidad],
     ['btnMat',    'click',  registrarMaterial],
     ['btnMatUndo','click',  matDeshacer],
@@ -448,6 +464,7 @@ function onData(data){
   GD.descParoTap    = data.descParoTap    || [];
   GD.materialesMolino = data.materialesMolino || [];
   GD.retenidoPorOrden = data.retenidoPorOrden || {};
+  GD.retenidoMolerPorOrden = data.retenidoMolerPorOrden || {};
   GD.motivosCalidad = data.motivosCalidad || [];
   GD.descCalidad    = data.descCalidad    || [];
   GD.causasIny      = data.causasIny      || [];
@@ -508,6 +525,7 @@ function onData(data){
   // por maquina. Aqui se ofrecen en su propio campo.
   mndLlenarOrdenes();
   rpLlenarOrdenes();
+  molLlenarOrdenesRet();
 
   // Seleccionar primera opcion valida en la lista de maquinas
   var maqSel = $('maquina');
@@ -669,6 +687,62 @@ function mndVerificarOrden(){
     h.textContent='⚠️ La orden '+v+' no está en REGISTRO LIDER. Verifica el número.';
     h.style.color='#b06000';
   }
+}
+
+/* ── MOLINO: la orden del producto retenido ────────────────────────
+   Al marcar que el material viene de calidad, el operario tiene que poder
+   decir DE CUAL retencion salio: sin eso la retencion se queda ofreciendose
+   para siempre y nadie sabe que ya se molio.
+
+   Solo se ofrecen las de motivo "producto Rechazado". Lo de "Seleccionar"
+   se escoge a mano, y ofrecerlo aqui invitaria a moler producto que habia
+   que rescatar.                                                        */
+function molLlenarOrdenesRet(){
+  var dl=$('mOrdenRetList'); if(!dl) return;
+  dl.innerHTML='';
+  var pend = GD.retenidoMolerPorOrden || {};
+  var porId = {};
+  (GD.ordenes||[]).forEach(function(o){ porId[retClaveOrden(o.id)] = o; });
+  for(var orden in pend){
+    if(!pend.hasOwnProperty(orden)) continue;
+    var op=document.createElement('option');
+    op.value=orden;
+    var o=porId[orden];
+    // El navegador muestra el value y, al lado, este texto.
+    op.label=[o && o.productName, nf(pend[orden])+' und retenidas'].filter(Boolean).join(' · ');
+    dl.appendChild(op);
+  }
+  molCalidadToggle();
+}
+
+/* El campo y el aviso solo existen cuando la casilla esta marcada. Al
+   desmarcarla se limpia el valor: guardar una orden que el operario ya
+   descarto amarraria la molienda a una retencion que no es la suya. */
+function molCalidadToggle(){
+  var on = !!($('mDeCalidad') && $('mDeCalidad').checked);
+  ['mOrdenRet','mRetAviso'].forEach(function(id){
+    var e=$(id); if(!e) return;
+    var fld=e.parentNode;          // el <div class="fld"> que lo envuelve
+    if(fld) fld.style.display = on ? '' : 'none';
+  });
+  // Guardar una orden que el operario ya descarto amarraria la molienda a
+  // una retencion que no es la suya.
+  if(!on){ var c=$('mOrdenRet'); if(c) c.value=''; }
+  molMostrarRetenido();
+}
+
+/* Informativo, nunca bloqueante: se puede marcar la casilla sin elegir
+   orden, por ejemplo si se junto material de varias. */
+function molMostrarRetenido(){
+  var caja=$('mRetAviso'); if(!caja) return;
+  var on = !!($('mDeCalidad') && $('mDeCalidad').checked);
+  var orden = on ? retClaveOrden(val('mOrdenRet')) : '';
+  var und = orden ? ((GD.retenidoMolerPorOrden||{})[orden] || 0) : 0;
+  if(!(und > 0)){ caja.innerHTML=''; return; }
+  caja.innerHTML =
+    '<div class="rp-ret"><b>Calidad retuvo ' + nf(und) + ' und</b> de esta orden '
+    + 'para moler.<br><span>Al registrar esta molienda, esa retención queda '
+    + 'resuelta y deja de aparecer.</span></div>';
 }
 
 /* ── REPROCESOS: la orden y el saldo retenido ──────────────────────

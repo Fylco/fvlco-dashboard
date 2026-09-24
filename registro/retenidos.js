@@ -288,6 +288,54 @@ function saldosRetenidos(filasRetenidos, filasReprocesos) {
   return out;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   ÓRDENES PENDIENTES DE MOLER
+   ───────────────────────────────────────────────────────────────────
+   Lo que la tarjeta MOLINO ofrece cuando el operario marca que el
+   material viene de una retención: las órdenes con producto retenido de
+   motivo "producto Rechazado" que todavía nadie ha molido.
+
+   NO es aritmética, es un interruptor. La retención está en UNIDADES y el
+   molino reporta KILOS: restar una cosa de la otra daría un número falso.
+   Así que una retención está pendiente hasta que exista una fila de
+   MOLINO que la nombre en ORDEN RETENIDA, y ahí se da por resuelta.
+
+   Consecuencia aceptada: se resuelve completa o nada. Si se muele la mitad
+   hoy y la mitad mañana, al registrar la primera molienda la orden ya deja
+   de ofrecerse. Medir media retención exigiría la conversión a kilos que
+   el usuario descartó.
+
+   Las unidades viajan solo para mostrarlas en el aviso; no se restan.
+═══════════════════════════════════════════════════════════════════ */
+
+/* Lo que se muele es lo RECHAZADO. Lo de "Seleccionar" se escoge a mano y
+   ofrecerlo aquí invitaría a moler producto que había que rescatar. */
+function _retEsRechazado_(v) {
+  return _retNormClave_(v).indexOf('RECHAZAD') >= 0;
+}
+
+function ordenesParaMoler(filasRetenidos, filasMolino) {
+  var pendiente = {}, molida = {};
+
+  (filasMolino || []).forEach(function (cruda) {
+    var f = _retNormalizarFila_(cruda || {});
+    var orden = retClaveOrden(f['ORDEN RETENIDA']);
+    if (orden) molida[orden] = true;
+  });
+
+  (filasRetenidos || []).forEach(function (cruda) {
+    var f = _retNormalizarFila_(cruda || {});
+    if (!_retEsRechazado_(f['MOTIVO RECHAZO'])) return;
+    var orden = retClaveOrden(f['ORDEN']);
+    var cant = retEntero(f['CANTIDAD RETENIDA']);
+    if (!orden || !(cant > 0)) return;
+    if (molida[orden]) return;
+    pendiente[orden] = (pendiente[orden] || 0) + cant;
+  });
+
+  return pendiente;
+}
+
 /* Node para las pruebas; en el navegador estas funciones quedan globales. */
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -301,6 +349,7 @@ if (typeof module !== 'undefined' && module.exports) {
     retenidosAFilasNC: retenidosAFilasNC,
     retClaveOrden: retClaveOrden,
     saldosRetenidos: saldosRetenidos,
+    ordenesParaMoler: ordenesParaMoler,
     _retNormClave_: _retNormClave_
   };
 }
