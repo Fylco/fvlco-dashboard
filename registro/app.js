@@ -74,7 +74,7 @@ var OPDEF = {
          CONFORMES, así que el bloque "De dónde molió" no lo conoce. Esta
          casilla es su origen: sin ella, esos kilos entran a la bolsa de
          molido sin que nadie sepa de dónde vinieron. */
-      {id:'mCal', label:'Este material viene de producto retenido por calidad',
+      {id:'mDeCalidad', label:'Este material viene de producto retenido por calidad',
        type:'checkbox', req:false},
       {id:'mHH',   label:'Horas Trabajadas',          type:'number',   req:true,  step:'0.5'},
       {id:'mObs',  label:'Observaciones',         type:'textarea', req:false}
@@ -83,7 +83,7 @@ var OPDEF = {
       var o = { referencia:val('mRef'), color:val('mCol'), kilosMolidos:val('mKg'),
                 kilosBarradura:val('mBar')||0, horasHombre:val('mHH'), observacion:val('mObs'),
                 maquina:'MOLINO', origenes: molOrigenes(),
-                vieneDeCalidad: !!($('mCal') && $('mCal').checked) };
+                vieneDeCalidad: !!($('mDeCalidad') && $('mDeCalidad').checked) };
       // El id lo genera el cliente para que un reenvio de la cola
       // offline no duplique la molienda ni sus filas de origen.
       if(o.origenes.length) o.idMolienda = 'g'+Date.now()+'-'+Math.floor(Math.random()*100000);
@@ -105,7 +105,7 @@ var OPDEF = {
       } else {
         s.push(['De dónde', 'sin declarar origen']);
       }
-      return s.concat($('mCal') && $('mCal').checked ? [['Origen','Producto retenido por calidad']] : []);
+      return s.concat($('mDeCalidad') && $('mDeCalidad').checked ? [['Origen','Producto retenido por calidad']] : []);
     }
   },
   MANUALIDADES: {
@@ -360,6 +360,21 @@ function buildOpPanel(){
     html += '</div>';
   });
   $('opPanel').innerHTML = html;
+
+  /* Red contra ids repetidos. Ya pasó DOS veces: 'btnCal' choco con el boton
+     de NO CONFORMES y 'mCal' con el modal de la clave de CALIDAD — y la
+     segunda dejo la pestaña CALIDAD sin abrir en produccion. getElementById
+     devuelve el PRIMERO del documento, asi que el otro elemento muere en
+     silencio, sin error y sin sintoma hasta que alguien lo usa.
+     Comprobar que un id EXISTE es ciego a esto; hay que contar. */
+  var vistos = {};
+  document.querySelectorAll('[id]').forEach(function(e){
+    if(vistos[e.id]) {
+      console.error('[FVLco] id repetido en el DOM: "'+e.id+'". getElementById '
+        + 'devuelve solo el primero y el otro elemento no va a responder.');
+    }
+    vistos[e.id] = true;
+  });
 }
 
 /* ═══════════════════════════════════════════════════════
