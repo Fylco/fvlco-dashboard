@@ -429,6 +429,18 @@ textarea{resize:none;min-height:42px;height:42px}
    Acá tiene que crecer con su contenido. */
 .cal-panel .paro-desc{flex:0 0 auto;overflow:visible}
 @media(max-width:759px){.opb-cal{width:100%;margin-top:2px}}
+/* Casilla de las tarjetas de operaciones: etiqueta al lado y área de toque
+   grande, que esto se usa con guantes desde el piso de planta. */
+.op-chk{display:flex;align-items:center;gap:9px;background:#f8fafc;
+  border:1.6px solid var(--bo);border-radius:8px;padding:10px 12px;
+  font-size:14px;text-transform:none;cursor:pointer;margin-bottom:7px}
+.op-chk input{width:20px;height:20px;margin:0;flex-shrink:0;cursor:pointer}
+/* El aviso de producto retenido: informa, no bloquea. Ámbar y no rojo a
+   propósito — no es un error, es un dato que el operario necesita. */
+.rp-ret{background:#fffbeb;border:1.6px solid #f59e0b;color:#92400e;
+  border-radius:8px;padding:9px 11px;font-size:13.5px;line-height:1.45;margin-bottom:7px}
+.rp-ret b{font-weight:900}
+.rp-ret span{font-size:11.5px;color:#a16207}
 </style>
 </head>
 <body>

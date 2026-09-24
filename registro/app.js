@@ -11,6 +11,9 @@ var GD = {
   // Materiales del molino: los mantiene el usuario en LISTAS col A. Las
   // opciones de OPDEF.MOLINO quedan solo como respaldo.
   materialesMolino:[],
+  // Unidades retenidas por calidad y sin revisar, por orden. La tarjeta
+  // REPROCESOS se lo muestra al operario cuando elige la orden.
+  retenidoPorOrden:{},
   // Tratamientos de calidad (LISTAS col. R) y su significado (col. S), en el
   // MISMO orden. Los usa la pestaña CALIDAD.
   motivosCalidad:[], descCalidad:[],
@@ -67,13 +70,20 @@ var OPDEF = {
       {id:'mCol',  label:'Color del molido', type:'text', req:true},
       {id:'mKg',   label:'Kilos molidos',         type:'number',   req:true,  step:'0.01'},
       {id:'mBar',  label:'Kilos barradura',       type:'number',   req:false, step:'0.01'},
+      /* El material retenido por calidad no sale de una pila de NO
+         CONFORMES, así que el bloque "De dónde molió" no lo conoce. Esta
+         casilla es su origen: sin ella, esos kilos entran a la bolsa de
+         molido sin que nadie sepa de dónde vinieron. */
+      {id:'mCal', label:'Este material viene de producto retenido por calidad',
+       type:'checkbox', req:false},
       {id:'mHH',   label:'Horas Trabajadas',          type:'number',   req:true,  step:'0.5'},
       {id:'mObs',  label:'Observaciones',         type:'textarea', req:false}
     ],
     collect:function(){
       var o = { referencia:val('mRef'), color:val('mCol'), kilosMolidos:val('mKg'),
                 kilosBarradura:val('mBar')||0, horasHombre:val('mHH'), observacion:val('mObs'),
-                maquina:'MOLINO', origenes: molOrigenes() };
+                maquina:'MOLINO', origenes: molOrigenes(),
+                vieneDeCalidad: !!($('mCal') && $('mCal').checked) };
       // El id lo genera el cliente para que un reenvio de la cola
       // offline no duplique la molienda ni sus filas de origen.
       if(o.origenes.length) o.idMolienda = 'g'+Date.now()+'-'+Math.floor(Math.random()*100000);
@@ -95,7 +105,7 @@ var OPDEF = {
       } else {
         s.push(['De dónde', 'sin declarar origen']);
       }
-      return s;
+      return s.concat($('mCal') && $('mCal').checked ? [['Origen','Producto retenido por calidad']] : []);
     }
   },
   MANUALIDADES: {
@@ -126,6 +136,15 @@ var OPDEF = {
     color:'#0b4ec0', icon:'🔄', label:'REPROCESOS',
     backend:'registrarReproceso',
     fields:[
+      /* Datalist y no select, igual que en MANUALIDADES: sugiere las
+         órdenes activas pero deja escribir una que ya se cerró — que es
+         justo el caso de un producto retenido, revisado semanas después.
+         Opcional a propósito: el material suelto sin identificar se sigue
+         pudiendo reportar como hasta ahora. */
+      {id:'rpOrden', label:'Orden', type:'datalist', req:false,
+       placeholder:'Opcional — elige o escribe la orden',
+       hint:'Si calidad retuvo producto de esta orden, aparece abajo.'},
+      {id:'rpAviso', label:'', type:'bloque', req:false},
       {id:'rpProd',  label:'Producto',  type:'select', req:true, options:[]},
       {id:'rpRev',   label:'Unidades revisadas',  type:'number',   req:true},
       {id:'rpNC',    label:'Unidades NC',         type:'number',   req:true},
@@ -133,9 +152,9 @@ var OPDEF = {
       {id:'rpHH',    label:'Horas Trabajadas',        type:'number',   req:true, step:'0.5'},
       {id:'rpObs',   label:'Observaciones',       type:'textarea', req:false}
     ],
-    collect:function(){ return { producto:val('rpProd'), unidadesRevisadas:val('rpRev'), unidadesNC:val('rpNC'), causaNC:val('rpCausa'), horasHombre:val('rpHH'), observacion:val('rpObs') }; },
+    collect:function(){ return { orden:val('rpOrden'), producto:val('rpProd'), unidadesRevisadas:val('rpRev'), unidadesNC:val('rpNC'), causaNC:val('rpCausa'), horasHombre:val('rpHH'), observacion:val('rpObs') }; },
     validate:function(){ return reqs(['rpProd','rpRev','rpNC','rpCausa','rpHH']); },
-    summary:function(){ return [['Producto',val('rpProd')],['Revisadas',val('rpRev')],['NC',val('rpNC')],['Causa',val('rpCausa')],['H. Trabajadas',val('rpHH')]]; }
+    summary:function(){ return [['Orden',val('rpOrden')||'—'],['Producto',val('rpProd')],['Revisadas',val('rpRev')],['NC',val('rpNC')],['Causa',val('rpCausa')],['H. Trabajadas',val('rpHH')]]; }
   }
 };
 
@@ -308,6 +327,14 @@ function buildOpPanel(){
     // Card campos de la operación
     html += '<div class="card"><div class="hd" style="background:'+op.color+'">'+op.icon+' '+op.label+'</div><div class="bd">';
     op.fields.forEach(function(f){
+      // La casilla lleva su etiqueta AL LADO, no encima: con la etiqueta
+      // arriba y el cuadrito abajo, en el celular no se ve qué se está
+      // marcando.
+      if(f.type==='checkbox'){
+        html += '<label class="op-chk"><input type="checkbox" id="'+f.id+'"> <b>'+f.label+'</b></label>';
+        if(f.hint) html += '<div class="hint" id="'+f.id+'Hint">'+f.hint+'</div>';
+        return;
+      }
       html += '<div class="fld"><label>'+f.label+(f.req?' <span class="req">*</span>':'')+'</label>';
       if(f.type==='textarea'){
         html += '<textarea id="'+f.id+'"></textarea>';
@@ -350,6 +377,8 @@ function init(){
     ['btnParo',  'click',  registrarParo],
     ['motParo',  'change', mostrarDescParo],
     ['mndOrden', 'input',  mndVerificarOrden],
+    ['rpOrden', 'change', rpMostrarRetenido],
+    ['rpOrden', 'input',  rpMostrarRetenido],
     ['btnCal',   'click',  registrarCalidad],
     ['btnMat',    'click',  registrarMaterial],
     ['btnMatUndo','click',  matDeshacer],
@@ -403,6 +432,7 @@ function onData(data){
   GD.descParoIny    = data.descParoIny    || [];
   GD.descParoTap    = data.descParoTap    || [];
   GD.materialesMolino = data.materialesMolino || [];
+  GD.retenidoPorOrden = data.retenidoPorOrden || {};
   GD.motivosCalidad = data.motivosCalidad || [];
   GD.descCalidad    = data.descCalidad    || [];
   GD.causasIny      = data.causasIny      || [];
@@ -462,6 +492,7 @@ function onData(data){
   // Ordenes de MANUALIDAD: invisibles en el selector principal, que filtra
   // por maquina. Aqui se ofrecen en su propio campo.
   mndLlenarOrdenes();
+  rpLlenarOrdenes();
 
   // Seleccionar primera opcion valida en la lista de maquinas
   var maqSel = $('maquina');
@@ -622,6 +653,47 @@ function mndVerificarOrden(){
   } else {
     h.textContent='⚠️ La orden '+v+' no está en REGISTRO LIDER. Verifica el número.';
     h.style.color='#b06000';
+  }
+}
+
+/* ── REPROCESOS: la orden y el saldo retenido ──────────────────────
+   El operario que va a escoger un lote no tiene de dónde saber cuánto
+   retuvo calidad. Esto se lo dice cuando elige la orden.               */
+function rpLlenarOrdenes(){
+  var dl=$('rpOrdenList'); if(!dl) return;
+  dl.innerHTML='';
+  (GD.ordenes||[]).forEach(function(o){
+    var op=document.createElement('option');
+    op.value=o.id;
+    // El navegador muestra el value y, al lado, este texto: así la orden se
+    // reconoce por el producto y no solo por el número.
+    op.label=[o.productName, o.cliente].filter(Boolean).join(' · ');
+    dl.appendChild(op);
+  });
+  rpMostrarRetenido();
+}
+
+/* Informativo, nunca bloqueante: no obliga a que las unidades revisadas
+   cuadren con lo retenido, y una orden sin retención no dice nada. */
+function rpMostrarRetenido(){
+  var caja=$('rpAviso'); if(!caja) return;
+  var orden = retClaveOrden(val('rpOrden'));
+  var saldo = orden ? ((GD.retenidoPorOrden||{})[orden] || 0) : 0;
+  if(!(saldo > 0)){ caja.innerHTML=''; return; }
+  caja.innerHTML =
+    '<div class="rp-ret"><b>Calidad retuvo ' + nf(saldo) + ' und</b> de esta orden '
+    + 'para escoger al 100%.<br><span>Reporta abajo cuántas revisaste y cuántas '
+    + 'salieron malas.</span></div>';
+  // Ahorra digitación: el producto sale de la orden y sigue siendo editable.
+  var sel=$('rpProd');
+  if(sel && !sel.value){
+    var o=null;
+    (GD.ordenes||[]).forEach(function(x){ if(retClaveOrden(x.id)===orden) o=x; });
+    if(o && o.productName){
+      for(var i=0;i<sel.options.length;i++){
+        if(sel.options[i].value===o.productName){ sel.value=o.productName; break; }
+      }
+    }
   }
 }
 
@@ -1075,7 +1147,10 @@ function regOp(name){
         : ((r&&r.message)||op.label+' registrado.'));
       op.fields.forEach(function(f){
         if(f.type==='bloque') return;          // no es un campo con .value
-        var e=$(f.id); if(e) e.value='';
+        var e=$(f.id); if(!e) return;
+        // Una casilla no se limpia con .value: quedaría marcada para el
+        // siguiente registro y el operario no lo notaría.
+        if(f.type==='checkbox') e.checked=false; else e.value='';
       });
       // Los saldos ya se movieron: seguir mostrando los viejos haria que
       // la proxima molienda parta de un numero falso.
