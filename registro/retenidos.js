@@ -226,6 +226,68 @@ function retenidosAFilasNC(filas) {
   return out;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   SALDO RETENIDO POR ORDEN
+   ───────────────────────────────────────────────────────────────────
+   Lo que el operario ve al buscar una orden en REPROCESOS: cuánto retuvo
+   calidad de esa orden y todavía no ha pasado por revisión.
+
+       saldo = Σ CANTIDAD RETENIDA con motivo "Seleccionar"
+             − Σ UNIDADES REVISADAS de esa orden en REPROCESOS
+
+   Se descuenta por REVISADAS y no por las que salieron malas: lo que
+   consume la retención es haber pasado el producto por la revisión, no
+   cuánto resultó defectuoso.
+
+   Solo el motivo "Seleccionar" genera saldo. "producto Rechazado" se va al
+   molino y no se escoge; "Derogación por variación" se liberó.
+
+   Devuelve solo saldos POSITIVOS: si se revisó de más, la orden no aparece
+   y el operario no ve un número negativo que no sabría interpretar.
+═══════════════════════════════════════════════════════════════════ */
+
+/* La orden se digita a mano en la pestaña de calidad, en reprocesos y en el
+   sheet. Sin normalizar, "1317" y " 1317" son dos órdenes distintas y el
+   saldo no bajaría nunca. */
+function retClaveOrden(v) {
+  return retTexto(v).toUpperCase();
+}
+
+/* El motivo también se compara normalizado: en el catálogo está escrito
+   "Seleccionar", pero la celda puede llegar con espacios o en minúscula. */
+function _retEsSeleccionar_(v) {
+  return _retNormClave_(v) === 'SELECCIONAR';
+}
+
+function saldosRetenidos(filasRetenidos, filasReprocesos) {
+  var retenido = {}, revisado = {};
+
+  (filasRetenidos || []).forEach(function (cruda) {
+    var f = _retNormalizarFila_(cruda || {});
+    if (!_retEsSeleccionar_(f['MOTIVO RECHAZO'])) return;
+    var orden = retClaveOrden(f['ORDEN']);
+    var cant = retEntero(f['CANTIDAD RETENIDA']);
+    if (!orden || !(cant > 0)) return;
+    retenido[orden] = (retenido[orden] || 0) + cant;
+  });
+
+  (filasReprocesos || []).forEach(function (cruda) {
+    var f = _retNormalizarFila_(cruda || {});
+    var orden = retClaveOrden(f['ORDEN']);
+    var cant = retEntero(f['UNIDADES REVISADAS']);
+    if (!orden || !(cant > 0)) return;
+    revisado[orden] = (revisado[orden] || 0) + cant;
+  });
+
+  var out = {};
+  for (var orden in retenido) {
+    if (!retenido.hasOwnProperty(orden)) continue;
+    var saldo = retenido[orden] - (revisado[orden] || 0);
+    if (saldo > 0) out[orden] = saldo;
+  }
+  return out;
+}
+
 /* Node para las pruebas; en el navegador estas funciones quedan globales. */
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -237,6 +299,8 @@ if (typeof module !== 'undefined' && module.exports) {
     retenidoAntiguo: retenidoAntiguo,
     retenidoAFilaNC: retenidoAFilaNC,
     retenidosAFilasNC: retenidosAFilasNC,
+    retClaveOrden: retClaveOrden,
+    saldosRetenidos: saldosRetenidos,
     _retNormClave_: _retNormClave_
   };
 }

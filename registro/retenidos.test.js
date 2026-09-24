@@ -1,7 +1,8 @@
 const assert = require('node:assert');
 const {
   retEntero, retFechaISO, retFechaDMY,
-  validarRetenido, retenidoAntiguo, retenidoAFilaNC, retenidosAFilasNC
+  validarRetenido, retenidoAntiguo, retenidoAFilaNC, retenidosAFilasNC,
+  retClaveOrden, saldosRetenidos
 } = require('./retenidos.js');
 
 let passed = 0;
@@ -205,6 +206,100 @@ t('la fila con encabezado en minuscula SI produce fila NC', () => {
   assert.notStrictEqual(f, null);
   assert.strictEqual(f['CANTIDAD NC'], 4000);
   assert.strictEqual(f['CAUSA'], 'producto Rechazado');
+});
+
+// ── saldosRetenidos ────────────────────────────────────────────────
+// Lo que el operario ve al buscar una orden en REPROCESOS: cuánto retuvo
+// calidad de esa orden y todavía no ha pasado por revisión.
+const R = (orden, cant, motivo) => ({
+  'ORDEN': orden, 'CANTIDAD RETENIDA': cant, 'MOTIVO RECHAZO': motivo || 'Seleccionar'
+});
+const P = (orden, revisadas) => ({ 'ORDEN': orden, 'UNIDADES REVISADAS': revisadas });
+
+t('una retencion sin reprocesos deja el saldo completo', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317', '4000')], []), { '1317': 4000 });
+});
+
+t('dos retenciones de la misma orden se suman', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317','4000'), R('1317','500')], []), { '1317': 4500 });
+});
+
+// Procesar en dos tandas es normal: el operario alcanza lo que alcanza en
+// su turno. La segunda vez tiene que ver lo que falta, no el total.
+t('reprocesada a medias deja el saldo parcial', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317','4000')], [P('1317','1500')]), { '1317': 2500 });
+});
+
+t('reprocesada completa desaparece', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317','4000')], [P('1317','4000')]), {});
+});
+
+// Nunca un saldo negativo: si revisó de mas, la orden simplemente no aparece.
+t('reprocesada de mas no deja saldo negativo', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317','4000')], [P('1317','9000')]), {});
+});
+
+// El descuento va por UNIDADES REVISADAS, no por las que salieron malas:
+// lo que consume la retencion es haberla pasado por revision.
+t('descuenta por revisadas, no por las malas', () => {
+  const rep = [{ 'ORDEN':'1317', 'UNIDADES REVISADAS':'4000', 'UNIDADES NC':'400' }];
+  assert.deepStrictEqual(saldosRetenidos([R('1317','4000')], rep), {});
+});
+
+// "producto Rechazado" se va al molino y no se escoge; la derogacion se
+// libero. Ninguno de los dos genera trabajo pendiente de reproceso.
+t('solo el motivo Seleccionar genera saldo', () => {
+  const ret = [R('1317','4000','producto Rechazado'), R('1360','900','Derogacion por varíacion'), R('1400','50')];
+  assert.deepStrictEqual(saldosRetenidos(ret, []), { '1400': 50 });
+});
+
+t('el motivo se compara sin tildes ni mayusculas', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317','80','  seleccionar ')], []), { '1317': 80 });
+});
+
+// La orden se digita a mano en varios sitios: si no se normaliza, "1317" y
+// " 1317" quedan como dos ordenes distintas y el saldo nunca baja.
+t('la orden se agrupa sin espacios ni mayusculas', () => {
+  assert.deepStrictEqual(saldosRetenidos([R(' 1317 ','4000')], [P('1317','1000')]), { '1317': 3000 });
+});
+
+t('el punto de miles del locale ES se entiende', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317','13.600')], [P('1317','600')]), { '1317': 13000 });
+});
+
+// Un reproceso sin orden es el caso de hoy: material suelto sin identificar.
+// No puede descontar de ninguna retencion.
+t('un reproceso sin orden no descuenta de nadie', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('1317','4000')], [P('', '500'), P('   ','700')]), { '1317': 4000 });
+});
+
+t('una retencion sin orden o sin cantidad se ignora', () => {
+  assert.deepStrictEqual(saldosRetenidos([R('','4000'), R('1317',''), R('1317','0')], []), {});
+});
+
+t('unidades revisadas vacias o basura no rompen la cuenta', () => {
+  const rep = [P('1317',''), P('1317','ninguna'), P('1317','1000')];
+  assert.deepStrictEqual(saldosRetenidos([R('1317','4000')], rep), { '1317': 3000 });
+});
+
+// Los encabezados de estas hojas se editan a mano y llegan con tildes y
+// espacios de sobra. La misma trampa que ya se arreglo en retenidoAFilaNC.
+t('llaves con tilde, espacio y minuscula se leen igual', () => {
+  const ret = [{ 'orden':'1317', 'Cantidad Retenida ':'4000', 'MOTIVO RECHAZO':'Seleccionar' }];
+  const rep = [{ 'Orden':'1317', 'UNIDADES REVISADAS ':'1000' }];
+  assert.deepStrictEqual(saldosRetenidos(ret, rep), { '1317': 3000 });
+});
+
+t('listas vacias o undefined devuelven objeto vacio', () => {
+  assert.deepStrictEqual(saldosRetenidos([], []), {});
+  assert.deepStrictEqual(saldosRetenidos(undefined, undefined), {});
+});
+
+t('retClaveOrden normaliza', () => {
+  assert.strictEqual(retClaveOrden(' 1317 '), '1317');
+  assert.strictEqual(retClaveOrden(1317), '1317');
+  assert.strictEqual(retClaveOrden(''), '');
+  assert.strictEqual(retClaveOrden(null), '');
 });
 
 console.log('\n' + passed + ' pruebas OK');
