@@ -3749,8 +3749,15 @@ function validarProduccion(parsed, filas) {
 // (PESO ÷ CANTIDAD NC). Sin gramaje (CANTIDAD NC vacía) los kg quedan en 0.
 // Un valor con decimales (1,05 · 2,4) no puede ser unidades: ahí el operario
 // digitó kg, la fórmula del sheet acierta y la fila se deja como vino.
+//
+// Desde reproceso-unidades-2026-09-27 el backend deja las unidades bien en
+// CANTIDAD NC y las repite en UNIDADES REPROCESO. Esa columna es la marca:
+// si viene, la fila ya es buena y manda ese valor (también cubre el producto
+// sin gramaje, donde la fórmula deja CANTIDAD NC vacía).
 function corregirReprocesoNC(r) {
   if (!/^REPROCES/i.test(String(r._maq || '').trim())) return r;
+  const undNueva = pNum(r['UNIDADES REPROCESO']);
+  if (undNueva > 0) return { ...r, 'CANTIDAD NC': undNueva };
   const und = pNum(r['PESO TOTAL']) || 0;
   if (!Number.isInteger(und)) return r;
   const ncFormula = pNum(r['CANTIDAD NC']) || 0;
