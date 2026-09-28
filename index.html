@@ -3732,6 +3732,32 @@ function validarProduccion(parsed, filas) {
   return { filas: filas.length, ultima };
 }
 
+// Fila de REPROCESO en NO CONFORMES: las UNIDADES malas caen en PESO TOTAL.
+//
+// registrarReproceso (Codigo.gs) escribe por posición y deja las "Unidades NC"
+// que digita el operario en la col. M, que es PESO TOTAL (kg). La col.
+// CANTIDAD NC es una fórmula del sheet = PESO TOTAL ÷ gramaje, así que las
+// unidades se convertían DOS veces: 500 und de CONJUNTO TERRA (3,5 g) salían
+// como 142.857 NC. Mientras el reproceso no traía orden se repartía por el mes
+// y el daño se diluía; desde que trae orden (2026-09-24) cae entero sobre el
+// día de la orden, el Math.min de calcCalidad lo topa en lo producido y la
+// Calidad —y el OEE— de la tapadora salían 0% (máq 7 / orden 1361, 25-sep).
+//
+// Se corrige aquí, al cargar, para que las OCHO lecturas de DATA.nc vean ya
+// el valor bueno. Las unidades son lo que dijo el operario (PESO TOTAL); los
+// kg reales = unidades × gramaje, y el gramaje sale de la propia fórmula
+// (PESO ÷ CANTIDAD NC). Sin gramaje (CANTIDAD NC vacía) los kg quedan en 0.
+// Un valor con decimales (1,05 · 2,4) no puede ser unidades: ahí el operario
+// digitó kg, la fórmula del sheet acierta y la fila se deja como vino.
+function corregirReprocesoNC(r) {
+  if (!/^REPROCES/i.test(String(r._maq || '').trim())) return r;
+  const und = pNum(r['PESO TOTAL']) || 0;
+  if (!Number.isInteger(und)) return r;
+  const ncFormula = pNum(r['CANTIDAD NC']) || 0;
+  const kg = (und > 0 && ncFormula > 0) ? und * (und / ncFormula) : 0;
+  return { ...r, 'CANTIDAD NC': und, 'PESO TOTAL': kg, _reprocesoCorregido: true };
+}
+
 // Producto retenido por Calidad → filas NC sintéticas dentro de DATA.nc.
 //
 // Se fusiona aquí, ANTES de buildNcByOrden/buildNcByOrdenByDay/
@@ -3833,7 +3859,7 @@ async function loadAll() {
     // indicador si el segundo merge leyera el resultado YA fusionado del
     // primero — con ncFresh eso es imposible por construcción.
     let ncFresh = [];
-    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFresh = d.map(normalizeProd); DATA.nc = ncFresh; });
+    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFresh = d.map(normalizeProd).map(corregirReprocesoNC); DATA.nc = ncFresh; });
     await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
     DATA.nc = mergeRetenidos(ncFresh, DATA.ret);
     DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
@@ -3913,7 +3939,7 @@ async function silentRefresh() {
     // DATA.nc, para que el merge no pueda duplicarse si esta carga se
     // solapa con otra.
     let ncFreshR = [];
-    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFreshR = d.map(normalizeProd); DATA.nc = ncFreshR; });
+    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFreshR = d.map(normalizeProd).map(corregirReprocesoNC); DATA.nc = ncFreshR; });
     await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
     DATA.nc = mergeRetenidos(ncFreshR, DATA.ret);
     DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
