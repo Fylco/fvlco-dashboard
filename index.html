@@ -3840,6 +3840,26 @@ async function loadRetenidosOpcional(label, url, assign) {
   }
 }
 
+// Caja que llega con PRODUCTO vacío (pasa cuando el formulario no alcanza a
+// resolver la orden): sin esto el Reporte Compacto pinta una línea "—" en la
+// máquina. Se toma el producto más frecuente de las OTRAS cajas de la misma
+// orden EN LA MISMA máquina; si la orden no tiene ninguna caja con producto,
+// la fila se deja como está.
+function rellenarProdPorOrden(rows) {
+  const cuenta = {};
+  rows.forEach(r => {
+    if (!r._prod || r._orden === '' || r._orden == null) return;
+    const k = String(r._orden).trim() + '|' + r._maq;
+    (cuenta[k] ||= {})[r._prod] = (cuenta[k][r._prod] || 0) + 1;
+  });
+  rows.forEach(r => {
+    if (r._prod || r._orden === '' || r._orden == null) return;
+    const c = cuenta[String(r._orden).trim() + '|' + r._maq];
+    if (!c) return;
+    r._prod = Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+  });
+}
+
 async function loadAll() {
   try {
     // Producción es la ÚNICA hoja crítica: si falla, no hay dashboard.
@@ -3849,6 +3869,7 @@ async function loadAll() {
     DATA.dupes = dedupeProd(DATA.prod);
     DATA.prod  = DATA.prod.filter(r => !r._dup);
     canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
+    rellenarProdPorOrden(DATA.prod); // caja sin PRODUCTO → el de su orden en esa máquina
 
     // El contrato se valida sobre lo que el tablero va a mostrar de verdad
     // (después de dedupe y turnos). NO aborta: deja ver lo que haya, pero con
@@ -3935,6 +3956,7 @@ async function silentRefresh() {
     DATA.dupes = dedupeProd(DATA.prod);
     DATA.prod  = DATA.prod.filter(r => !r._dup);
     canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
+    rellenarProdPorOrden(DATA.prod); // caja sin PRODUCTO → el de su orden en esa máquina
 
     // El contrato se valida sobre lo que el tablero va a mostrar de verdad
     // (después de dedupe y turnos). NO aborta: deja ver lo que haya, pero con
