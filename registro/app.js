@@ -154,6 +154,7 @@ var OPDEF = {
          justo el caso de un producto retenido, revisado semanas después.
          Opcional a propósito: el material suelto sin identificar se sigue
          pudiendo reportar como hasta ahora. */
+      {id:'rpPend', label:'', type:'bloque', req:false},
       {id:'rpOrden', label:'Orden', type:'datalist', req:false,
        placeholder:'Opcional — elige o escribe la orden',
        hint:'Si calidad retuvo producto de esta orden, aparece abajo.'},
@@ -167,7 +168,7 @@ var OPDEF = {
     ],
     collect:function(){ return { orden:val('rpOrden'), producto:val('rpProd'), unidadesRevisadas:val('rpRev'), unidadesNC:val('rpNC'), causaNC:val('rpCausa'), horasHombre:val('rpHH'), observacion:val('rpObs') }; },
     validate:function(){ return reqs(['rpProd','rpRev','rpNC','rpCausa','rpHH']); },
-    summary:function(){ return [['Orden',val('rpOrden')||'—'],['Producto',val('rpProd')],['Revisadas',val('rpRev')],['NC',val('rpNC')],['Causa',val('rpCausa')],['H. Trabajadas',val('rpHH')]]; }
+    summary:function(){ return [['Orden',val('rpOrden')||(rpHayPendientes()?'— (no descuenta lo retenido)':'—')],['Producto',val('rpProd')],['Revisadas',val('rpRev')],['NC',val('rpNC')],['Causa',val('rpCausa')],['H. Trabajadas',val('rpHH')]]; }
   }
 };
 
@@ -231,7 +232,7 @@ function limpiarErrores(){
    2 min la app compara las dos y, si el servidor ya tiene otra, se recarga
    sola conservando lo que el operario tiene seleccionado (ver
    revisarVersionApp). Al publicar un cambio: subir las DOS y CACHE_NAME en sw.js. */
-var APP_VERSION = '2026-10-01 22:15';   // formato fecha hora: es lo que se lee en el letrero
+var APP_VERSION = '2026-10-01 23:10';   // formato fecha hora: es lo que se lee en el letrero
 
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
@@ -421,6 +422,7 @@ function init(){
     ['mndOrden', 'input',  mndVerificarOrden],
     ['rpOrden', 'change', rpMostrarRetenido],
     ['rpOrden', 'input',  rpMostrarRetenido],
+    ['rpProd',  'change', rpMostrarRetenido],
     ['mDeCalidad','change', molCalidadToggle],
     ['mOrdenRet', 'change', molMostrarRetenido],
     ['mOrdenRet', 'input',  molMostrarRetenido],
@@ -766,7 +768,16 @@ function molMostrarRetenido(){
 function rpLlenarOrdenes(){
   var dl=$('rpOrdenList'); if(!dl) return;
   dl.innerHTML='';
+  // Primero las que tienen retenido (con su saldo), después las activas.
+  var sal=GD.retenidoPorOrden||{}, puestas={};
+  rpOrdenesPendientes().forEach(function(k){
+    var op=document.createElement('option');
+    op.value=k;
+    op.label=[rpProductoDe(k), nf(sal[k])+' und retenidas'].filter(Boolean).join(' · ');
+    dl.appendChild(op); puestas[k]=true;
+  });
   (GD.ordenes||[]).forEach(function(o){
+    if(puestas[retClaveOrden(o.id)]) return;
     var op=document.createElement('option');
     op.value=o.id;
     // El navegador muestra el value y, al lado, este texto: así la orden se
@@ -774,7 +785,59 @@ function rpLlenarOrdenes(){
     op.label=[o.productName, o.cliente].filter(Boolean).join(' · ');
     dl.appendChild(op);
   });
+  rpPintarPendientes();
   rpMostrarRetenido();
+}
+
+/* Lo retenido por calidad para escoger, a la vista. Antes el saldo solo
+   aparecía si el operario escribía la orden; si no la escribía, el reproceso
+   se guardaba sin orden y NO descontaba nada (2026-10-01: 24.000 und de
+   CONJUNTO TERRA revisadas el 28-sep sin orden, y la 1361 seguía retenida).
+   El saldo baja al registrar (rpDescontarLocal) y con cada carga de datos. */
+function rpOrdenesPendientes(){
+  var sal=GD.retenidoPorOrden||{};
+  return Object.keys(sal).filter(function(k){ return sal[k]>0; }).sort();
+}
+function rpHayPendientes(){ return rpOrdenesPendientes().length>0; }
+// Producto de una orden. Una orden ya cerrada no viene en GD.ordenes: ahí no
+// se sabe, y se muestra solo el número.
+function rpProductoDe(clave){
+  var p='';
+  (GD.ordenes||[]).forEach(function(o){ if(retClaveOrden(o.id)===clave) p=o.productName||''; });
+  return p;
+}
+function rpPintarPendientes(){
+  var caja=$('rpPend'); if(!caja) return;
+  var ords=rpOrdenesPendientes(), sal=GD.retenidoPorOrden||{};
+  if(!ords.length){ caja.innerHTML=''; return; }
+  var actual=retClaveOrden(val('rpOrden'));
+  var esc=function(s){ return String(s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  caja.innerHTML='<div class="rp-pend"><div class="rp-pend-t">🔬 Retenido por calidad para escoger</div>'
+    + ords.map(function(k){
+        var p=rpProductoDe(k);
+        return '<button type="button" class="rp-pend-i'+(k===actual?' sel':'')+'" data-orden="'+esc(k)+'">'
+          + '<b>Orden '+esc(k)+'</b>'+(p?' · '+esc(p):'')+'<span>'+nf(sal[k])+' und</span></button>';
+      }).join('')
+    + '<div class="rp-pend-h">Toca la orden que vas a escoger. Al registrar, la cantidad baja; en cero sale de la lista.</div></div>';
+  Array.prototype.forEach.call(caja.querySelectorAll('.rp-pend-i'), function(b){
+    b.addEventListener('click', function(){
+      $('rpOrden').value=b.getAttribute('data-orden');
+      rpMostrarRetenido();
+    });
+  });
+}
+/* Descuenta en pantalla lo que se acaba de registrar, sin esperar a la
+   siguiente carga: es la misma regla del servidor (revisadas, no malas). */
+function rpDescontarLocal(datos){
+  var k=retClaveOrden(datos && datos.orden);
+  var sal=GD.retenidoPorOrden||{};
+  if(!k || !(sal[k]>0)) return;
+  var rev=retEntero(datos.unidadesRevisadas);
+  if(!(rev>0)) return;
+  sal[k]=sal[k]-rev;
+  if(sal[k]>0) toast('🔬 Orden '+k+': quedan '+nf(sal[k])+' und retenidas por escoger','ok');
+  else { delete sal[k]; toast('✅ Orden '+k+': lo retenido quedó escogido completo y sale de la lista','ok'); }
+  rpLlenarOrdenes();
 }
 
 /* Informativo, nunca bloqueante: no obliga a que las unidades revisadas
@@ -783,7 +846,20 @@ function rpMostrarRetenido(){
   var caja=$('rpAviso'); if(!caja) return;
   var orden = retClaveOrden(val('rpOrden'));
   var saldo = orden ? ((GD.retenidoPorOrden||{})[orden] || 0) : 0;
-  if(!(saldo > 0)){ caja.innerHTML=''; return; }
+  rpMarcarSeleccion(orden);
+  if(!(saldo > 0)){
+    // Sin orden no se descuenta nada: si el producto elegido tiene retenido
+    // pendiente, se avisa. Solo avisa, no bloquea (hay reprocesos de
+    // material suelto que no son de ninguna retención).
+    var prod = orden ? '' : val('rpProd');
+    var deEse = prod ? rpOrdenesPendientes().filter(function(k){ return rpProductoDe(k)===prod; }) : [];
+    caja.innerHTML = deEse.length
+      ? '<div class="rp-ret"><b>⚠ Este producto tiene retenido por calidad</b> (orden '
+        + deEse.join(', ') + ').<br><span>Si estás escogiendo ese lote, elige la orden arriba: '
+        + 'sin orden no se descuenta.</span></div>'
+      : '';
+    return;
+  }
   caja.innerHTML =
     '<div class="rp-ret"><b>Calidad retuvo ' + nf(saldo) + ' und</b> de esta orden '
     + 'para escoger al 100%.<br><span>Reporta abajo cuántas revisaste y cuántas '
@@ -799,6 +875,13 @@ function rpMostrarRetenido(){
       }
     }
   }
+}
+
+function rpMarcarSeleccion(clave){
+  var caja=$('rpPend'); if(!caja) return;
+  Array.prototype.forEach.call(caja.querySelectorAll('.rp-pend-i'), function(b){
+    b.classList.toggle('sel', !!clave && b.getAttribute('data-orden')===clave);
+  });
 }
 
 /* ════════════════════════════════════════════════
@@ -1285,6 +1368,7 @@ function regOp(name){
       // Los saldos ya se movieron: seguir mostrando los viejos haria que
       // la proxima molienda parta de un numero falso.
       if(name==='MOLINO'){ MOL.sel={}; molMostrar(); }
+      if(name==='REPROCESOS') rpDescontarLocal(datos);
       if(r && r.avisos && r.avisos.length) r.avisos.forEach(function(m){ toast(m,'warn'); });
     });
   });
@@ -1332,6 +1416,8 @@ function autoRefreshOrdenes(){
       var previa = GS.orden;
       var idPrevio = previa ? String(previa.id) : '';
       GD.ordenes = data.ordenes;
+      if(data.retenidoPorOrden) GD.retenidoPorOrden = data.retenidoPorOrden;
+      rpLlenarOrdenes();   // saldos retenidos de REPROCESOS al día
 
       var esOp = GS.maq==='MOLINO'||GS.maq==='MANUALIDADES'||GS.maq==='REPROCESOS';
       var manual = $('ordenNL') && $('ordenNL').checked;
