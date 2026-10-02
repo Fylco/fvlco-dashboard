@@ -231,7 +231,7 @@ function limpiarErrores(){
    20 min la app compara las dos y, si el servidor ya tiene otra, se recarga
    sola conservando lo que el operario tiene seleccionado (ver
    revisarVersionApp). Al publicar un cambio: subir las DOS y CACHE_NAME en sw.js. */
-var APP_VERSION = '2026-10-01-paro-titila';
+var APP_VERSION = '2026-10-01-paro-flecha';
 
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
@@ -414,6 +414,9 @@ function init(){
     ['btnProd',  'click',  registrarProd],
     ['btnParo',  'click',  registrarParo],
     ['motParo',  'change', mostrarDescParo],
+    ['motParo',  'change', avisoDetalleParo],
+    ['tParo',    'input',  avisoDetalleParo],
+    ['obsParo',  'input',  avisoDetalleParo],
     ['mndOrden', 'input',  mndVerificarOrden],
     ['rpOrden', 'change', rpMostrarRetenido],
     ['rpOrden', 'input',  rpMostrarRetenido],
@@ -835,6 +838,15 @@ function mostrarDescParo(){
   cls('paroDesc','show', !!d);
 }
 
+/* Flecha "Escriba el detalle, es obligatorio": solo mientras se reporta un
+   paro (motivo o tiempo puestos) y el detalle está vacío. Solo avisa: el paro
+   se registra igual sin detalle (pedido explícito del usuario). */
+function avisoDetalleParo(){
+  var hayParo = !!String(val('motParo')||'').trim() || !!String(val('tParo')||'').trim();
+  var sinDet  = !String(val('obsParo')||'').trim();
+  cls('detFlecha','show', hayParo && sinDet);
+}
+
 function llenarSelect(id, arr){
   var sel=$(id); if(!sel) return;
   sel.innerHTML='<option value="">— Seleccione —</option>';
@@ -1178,7 +1190,7 @@ function registrarProd(){
 function registrarParo(){
   limpiarErrores();
   if(!ordenUtilizable()) return;
-  // El detalle NO bloquea: el aviso es visual (casilla roja con "es obligatorio").
+  // El detalle NO bloquea: el aviso es la flecha #detFlecha (avisoDetalleParo).
   if(!reqs(['motParo','tParo'])){ toast('Seleccione motivo y tiempo de paro','warn'); return; }
   var base=datosBase();
   var datos=merge(base,{ paro:val('motParo'), tiempoParo:numV('tParo'), obsParo:val('obsParo') });
@@ -1198,6 +1210,7 @@ function registrarParo(){
         GS.paroCount++;
         ['tParo','obsParo','motParo'].forEach(function(id){ $(id).value=''; });
         mostrarDescParo();   // el motivo quedó vacío: el bloque se apaga
+        avisoDetalleParo();  // y la flecha del detalle también
       }catch(ex){}
       mostrarExito(r && r.offline
         ? '📴 Sin conexión — Paro guardado localmente. Se enviará al volver el internet.'
