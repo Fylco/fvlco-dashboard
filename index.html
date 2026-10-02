@@ -3791,7 +3791,7 @@ function corregirReprocesoNC(r) {
 // La conversión (incluida la regla de que la fecha que pesa es la de
 // PRODUCCIÓN) vive en registro/retenidos.js, probada en Node.
 function mergeRetenidos(nc, retenidos) {
-  const base = nc || [];
+  let base = nc || [];
   const entrada = retenidos || [];
   // Guarda: si retenidos.js no cargó (ReferenceError), esto NO puede tirar
   // todo el tablero a "Error al cargar Producción" por una pieza opcional.
@@ -3800,6 +3800,19 @@ function mergeRetenidos(nc, retenidos) {
   if (typeof retenidosAFilasNC !== 'function') {
     console.info('Calidad: retenidos.js no cargó — se sigue solo con No Conformes (sin retenidos).');
     return base;
+  }
+  // Un reproceso de una orden que calidad retuvo NO resta otra vez: esas
+  // unidades ya restaron el día que se retuvieron (pedido del usuario,
+  // 2026-10-01). Antes el mismo lote golpeaba el indicador dos veces: al
+  // retenerlo y al escogerlo. El reproceso SIN orden, o de una orden sin
+  // retención, sigue restando como siempre. La regla vive en retenidos.js.
+  const conRetenido = typeof ordenesConRetenido === 'function' ? ordenesConRetenido(entrada) : {};
+  const esDoble = r => /^REPROCES/i.test(String(r._maq || '').trim())
+    && conRetenido[retClaveOrden(r._orden ?? r['ORDEN'])];
+  const nDobles = base.filter(esDoble).length;
+  if (nDobles) {
+    console.info(`Calidad: ${nDobles} reproceso(s) de órdenes retenidas no restan (ya restó el retenido).`);
+    base = base.filter(r => !esDoble(r));
   }
   const filas = retenidosAFilasNC(entrada);
   // SIEMPRE se informa, incluso con cero filas: una fila descartada en

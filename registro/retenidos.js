@@ -336,6 +336,85 @@ function ordenesParaMoler(filasRetenidos, filasMolino) {
   return pendiente;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   REVISIÓN DE LO RETENIDO — columnas de CALIDAD RETENIDOS
+   ───────────────────────────────────────────────────────────────────
+   UNIDADES REVISADAS / UNIDADES RECHAZADAS / SALDO POR ESCOGER, por fila,
+   llenadas con los reprocesos que traen la orden. Pedido del usuario
+   (2026-10-01): ver en la hoja de calidad cuánto se escogió y cuánto salió
+   malo.
+
+   Una orden puede tener varias retenciones (la 1307 tiene tres): lo
+   revisado se reparte llenando primero la fila más vieja. Las malas del
+   reproceso se reparten en la misma proporción y la última parte se lleva
+   el resto, para que la suma cuadre exacto. Lo revisado de más (más que lo
+   retenido) se queda en la última fila: es un dato real, no se esconde; el
+   saldo nunca baja de cero.
+
+   UNIDADES NC con decimales (2,4) son kilos que el operario digitó donde
+   iban unidades: no se cuentan como rechazadas.
+
+   Devuelve un arreglo alineado con filasRetenidos: {revisadas, rechazadas,
+   saldo} para las de motivo Seleccionar, null para las demás.
+
+   Es la MISMA regla que calRevisionRetenidos_() en Calidad.gs. Si una
+   cambia, la otra también.
+   ═══════════════════════════════════════════════════════════════════ */
+function revisionRetenidos(filasRetenidos, filasReprocesos) {
+  var out = [], porOrden = {};
+  (filasRetenidos || []).forEach(function (cruda, i) {
+    var f = _retNormalizarFila_(cruda || {});
+    var orden = retClaveOrden(f['ORDEN']);
+    var cant = retEntero(f['CANTIDAD RETENIDA']);
+    if (!_retEsSeleccionar_(f['MOTIVO RECHAZO']) || !orden || !(cant > 0)) { out.push(null); return; }
+    var fila = { cant: cant, revisadas: 0, rechazadas: 0 };
+    out.push(fila);
+    (porOrden[orden] = porOrden[orden] || []).push(fila);
+  });
+
+  (filasReprocesos || []).forEach(function (cruda) {
+    var f = _retNormalizarFila_(cruda || {});
+    var pila = porOrden[retClaveOrden(f['ORDEN'])];
+    var rev = retEntero(f['UNIDADES REVISADAS']);
+    if (!pila || !(rev > 0)) return;
+    var malas = retEntero(f['UNIDADES NC']);
+    if (!(malas > 0)) malas = 0;
+    var resto = rev, malasResto = malas;
+    for (var j = 0; j < pila.length && resto > 0; j++) {
+      var ultima = (j === pila.length - 1);
+      var hueco = Math.max(pila[j].cant - pila[j].revisadas, 0);
+      var toma = ultima ? resto : Math.min(hueco, resto);
+      if (!(toma > 0)) continue;
+      var m = (toma === resto) ? malasResto : Math.round(malas * toma / rev);
+      pila[j].revisadas += toma;
+      pila[j].rechazadas += m;
+      resto -= toma;
+      malasResto -= m;
+    }
+  });
+
+  return out.map(function (fila) {
+    if (!fila) return null;
+    return { revisadas: fila.revisadas, rechazadas: fila.rechazadas,
+             saldo: Math.max(fila.cant - fila.revisadas, 0) };
+  });
+}
+
+/* Órdenes con producto retenido (cualquier motivo, con cantidad). El tablero
+   NO resta el reproceso de estas órdenes en el indicador de Calidad: esas
+   unidades ya restaron una vez, el día que calidad las retuvo. Pedido del
+   usuario (2026-10-01). Antes un lote retenido y después escogido golpeaba
+   el indicador dos veces. */
+function ordenesConRetenido(filasRetenidos) {
+  var out = {};
+  (filasRetenidos || []).forEach(function (cruda) {
+    var f = _retNormalizarFila_(cruda || {});
+    var orden = retClaveOrden(f['ORDEN']);
+    if (orden && retEntero(f['CANTIDAD RETENIDA']) > 0) out[orden] = true;
+  });
+  return out;
+}
+
 /* Node para las pruebas; en el navegador estas funciones quedan globales. */
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -350,6 +429,8 @@ if (typeof module !== 'undefined' && module.exports) {
     retClaveOrden: retClaveOrden,
     saldosRetenidos: saldosRetenidos,
     ordenesParaMoler: ordenesParaMoler,
+    revisionRetenidos: revisionRetenidos,
+    ordenesConRetenido: ordenesConRetenido,
     _retNormClave_: _retNormClave_
   };
 }

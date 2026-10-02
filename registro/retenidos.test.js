@@ -2,7 +2,8 @@ const assert = require('node:assert');
 const {
   retEntero, retFechaISO, retFechaDMY,
   validarRetenido, retenidoAntiguo, retenidoAFilaNC, retenidosAFilasNC,
-  retClaveOrden, saldosRetenidos, ordenesParaMoler
+  retClaveOrden, saldosRetenidos, ordenesParaMoler,
+  revisionRetenidos, ordenesConRetenido
 } = require('./retenidos.js');
 
 let passed = 0;
@@ -371,5 +372,68 @@ t('listas vacias o undefined al moler devuelven objeto vacio', () => {
   assert.deepStrictEqual(ordenesParaMoler(undefined, undefined), {});
 });
 
+
+// ── revisionRetenidos ──────────────────────────────────────────────
+// Columnas UNIDADES REVISADAS / RECHAZADAS / SALDO POR ESCOGER de CALIDAD
+// RETENIDOS. Se llenan con los reprocesos de la orden, por fila, la más
+// vieja primero. Mismo cálculo que calRevisionRetenidos_() en Calidad.gs.
+const PR = (orden, rev, nc) => ({ 'ORDEN': orden, 'UNIDADES REVISADAS': rev, 'UNIDADES NC': nc });
+
+t('sin reprocesos: revisadas 0 y saldo completo', () => {
+  assert.deepStrictEqual(revisionRetenidos([R('1361','24000')], []),
+    [{ revisadas: 0, rechazadas: 0, saldo: 24000 }]);
+});
+
+t('reproceso parcial descuenta de la fila y cuenta las malas', () => {
+  assert.deepStrictEqual(revisionRetenidos([R('1361','24000')], [PR('1361','6000','500')]),
+    [{ revisadas: 6000, rechazadas: 500, saldo: 18000 }]);
+});
+
+t('varias filas de la misma orden: se llena la más vieja primero', () => {
+  assert.deepStrictEqual(
+    revisionRetenidos([R('1307','3600'), R('1307','7200')], [PR('1307','5000','100')]),
+    [{ revisadas: 3600, rechazadas: 72, saldo: 0 }, { revisadas: 1400, rechazadas: 28, saldo: 5800 }]);
+});
+
+t('las malas repartidas suman exacto lo reportado', () => {
+  const r = revisionRetenidos([R('9','1000'), R('9','1000'), R('9','1000')], [PR('9','3000','10')]);
+  assert.strictEqual(r.reduce((s, x) => s + x.rechazadas, 0), 10);
+});
+
+t('revisar de más se queda en la última fila y el saldo no baja de cero', () => {
+  assert.deepStrictEqual(revisionRetenidos([R('5','1000')], [PR('5','1500','20')]),
+    [{ revisadas: 1500, rechazadas: 20, saldo: 0 }]);
+});
+
+t('las malas en kilos (con decimales) no se cuentan como unidades', () => {
+  assert.deepStrictEqual(revisionRetenidos([R('5','1000')], [PR('5','400','2,4')]),
+    [{ revisadas: 400, rechazadas: 0, saldo: 600 }]);
+});
+
+t('fila que no es Seleccionar queda en null (no se escoge)', () => {
+  assert.deepStrictEqual(revisionRetenidos([R('5','1000','producto Rechazado')], [PR('5','400','1')]), [null]);
+});
+
+t('reproceso sin orden o de otra orden no toca nada', () => {
+  assert.deepStrictEqual(revisionRetenidos([R('5','1000')], [PR('','400','1'), PR('6','400','1')]),
+    [{ revisadas: 0, rechazadas: 0, saldo: 1000 }]);
+});
+
+t('el saldo por filas suma lo mismo que saldosRetenidos', () => {
+  const ret = [R('1307','3600'), R('1361','24000'), R('1307','7200'), R('1307','21600')];
+  const rep = [PR('1361','6000','500'), PR('1361','6000','500'), PR('1307','10000','30')];
+  const filas = revisionRetenidos(ret, rep);
+  const porOrden = {};
+  ret.forEach((f, i) => { porOrden[f.ORDEN] = (porOrden[f.ORDEN] || 0) + filas[i].saldo; });
+  assert.deepStrictEqual(porOrden, saldosRetenidos(ret, rep));
+});
+
+// ── ordenesConRetenido ─────────────────────────────────────────────
+// El tablero no resta el reproceso de estas órdenes: ya restó al retenerlas.
+t('ordenesConRetenido junta las ordenes con cantidad, de cualquier motivo', () => {
+  assert.deepStrictEqual(
+    ordenesConRetenido([R('1307','3600'), R(' 1361 ','24000','producto Rechazado'), R('9','0'), R('','5')]),
+    { '1307': true, '1361': true });
+});
 
 console.log('\n' + passed + ' pruebas OK');
