@@ -1623,22 +1623,36 @@ function _rechazarHTML(texto, via) {
   }
 }
 
-/* UNA PETICIÓN AL PROXY A LA VEZ.
+/* COLA DEL PROXY — como máximo _PROXY_MAX peticiones a la vez, en orden.
    Apps Script limita las ejecuciones simultáneas por usuario y, cuando se pasa,
    NO devuelve un error legible: devuelve su página de error HTML. Ese es el
    fallo que sacaba el banner rojo (2026-09-10). El tablero pedía varias hojas
    casi a la vez —loadPlan usa Promise.all, y las recargas se solapan con la
    carga inicial—, así que se lo provocaba solo.
-   Serializar aquí, y no en cada sitio que llama, es lo que garantiza que no
-   quede ningún camino suelto. Cuesta unos segundos en la carga completa y a
-   cambio quita de raíz toda una clase de fallo. */
-let _colaProxy = Promise.resolve();
+   La cola vive aquí, y no en cada sitio que llama, para que no quede ningún
+   camino suelto. Hasta el 2026-10-01 era de UNA en una: con 14 peticiones eso
+   eran ~34 s de espera en fila para abrir el tablero. Con 3 la carga baja a
+   menos de la mitad y sigue muy por debajo del tope de Apps Script (30
+   simultáneas); si el error HTML volviera, _rechazarHTML lo ataja y fetchCSV
+   reintenta. El orden de llegada se respeta: lo que se pide primero (lo del
+   Reporte Compacto) sale primero. */
+const _PROXY_MAX = 3;
+let _proxyActivas = 0;
+const _proxyEspera = [];
 function _enCola(fn) {
-  const turno = _colaProxy.then(fn, fn);
-  // La cola NO debe romperse si un pedido falla: se encadena el resultado
-  // "apagado" para que el siguiente arranque igual.
-  _colaProxy = turno.then(() => {}, () => {});
-  return turno;
+  return new Promise((resolve, reject) => {
+    _proxyEspera.push({ fn, resolve, reject });
+    _proxySiguiente();
+  });
+}
+function _proxySiguiente() {
+  while (_proxyActivas < _PROXY_MAX && _proxyEspera.length) {
+    const { fn, resolve, reject } = _proxyEspera.shift();
+    _proxyActivas++;
+    // Un pedido que falla NO frena la cola: el finally libera el cupo igual.
+    Promise.resolve().then(fn).then(resolve, reject)
+      .finally(() => { _proxyActivas--; _proxySiguiente(); });
+  }
 }
 
 async function apiCall(payload){ return _enCola(() => _apiCallDirecto(payload)); }
@@ -1770,8 +1784,10 @@ let _appStarted = false;
 function startApp(){
   if(_appStarted) return; _appStarted = true;
   const ov = document.getElementById('overlay'); if(ov) ov.style.display='';
-  loadAll();
-  setTimeout(()=>ensurePlanReady().catch(e=>console.warn('Plan preload:',e)),2000);
+  // Abre en el Reporte Compacto: es la pestaña que se necesita de inmediato.
+  // Con DATA.prod vacío showSection no dibuja nada; loadAll lo hace al llegar.
+  showSection('reporte-compacto');
+  loadAll();   // precarga el Plan apenas dibuja el Compacto
 }
 
 // El tablero arranca solo: no hay clave que escribir ni que olvidar.
@@ -3860,77 +3876,98 @@ function rellenarProdPorOrden(rows) {
   });
 }
 
+/* CARGA EN DOS TANDAS — el Reporte Compacto es lo que se necesita YA.
+   Medido el 2026-10-01 en producción: 41 s para abrir. Las 14 peticiones al
+   proxy iban EN FILA, cada una esperando a la anterior (~34 s de pura espera),
+   y al final se dibujaban las 35 gráficas de TODAS las pestañas (~7 s en el PC,
+   bastante más en el celular).
+   Ahora todas las hojas se piden A LA VEZ. Se espera solo la tanda que usa el
+   Compacto (producción + NC + retenidos + personal + BD Productos + maquilas),
+   se dibuja la pestaña visible y se quita el overlay. Plan Referencias, Ventas
+   y Planes de Acción siguen llegando por detrás.
+   Devuelve la promesa de esa segunda tanda. */
+async function _cargarDatos() {
+  // Todo arranca en este mismo tick, antes del primer await: así reloadAll
+  // alcanza a marcar _FORZAR_RED para TODAS las hojas, no solo la primera.
+  const pProd = fetchCSV(SHEETS.produccion);
+  // ncFresh es local a ESTA carga: el merge lo usa a él, nunca a DATA.nc, para
+  // que dos cargas solapadas (loadAll + silentRefresh) no puedan concatenar los
+  // retenidos dos veces. Con DATA.nc como fuente, el segundo merge leería el
+  // resultado YA fusionado del primero y duplicaría el indicador.
+  let ncFresh = [];
+  const pCompacto = Promise.all([
+    loadOptional('No Conformes', SHEETS.noConformes, d => { ncFresh = d.map(normalizeProd).map(corregirReprocesoNC); DATA.nc = ncFresh; }),
+    loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; }),
+    loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; }),
+    loadBdProductos(),
+    loadMaquilas(),   // hoja distinta; ya maneja su propio error
+  ]);
+  const pResto = Promise.all([
+    loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; }),
+    loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; }),
+    SHEETS.planesAccion ? loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; }) : null,
+  ]);
+
+  // Producción es la ÚNICA hoja crítica: si falla, no hay dashboard (el
+  // throw sube al catch de quien llama). El resto son opcionales: un fallo
+  // transitorio NO debe bloquear todo — loadOptional lo absorbe.
+  const prodParsed = await pProd;
+  DATA.prod = prodParsed.data.map(normalizeProd);
+  DATA.dupes = dedupeProd(DATA.prod);
+  DATA.prod  = DATA.prod.filter(r => !r._dup);
+  canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
+  rellenarProdPorOrden(DATA.prod); // caja sin PRODUCTO → el de su orden en esa máquina
+
+  // El contrato se valida sobre lo que el tablero va a mostrar de verdad
+  // (después de dedupe y turnos). NO aborta: deja ver lo que haya, pero con
+  // el banner rojo puesto, para que nadie lea una hoja equivocada como un
+  // día sin producción.
+  try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
+  catch (e) { registrarFalla('Producción', e.message); }
+
+  setProgress(60, 'Cargando No Conformes y Personal...');
+  await pCompacto;
+  DATA.nc = mergeRetenidos(ncFresh, DATA.ret);
+  DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
+  DATA.ncByOrdenByDay  = buildNcByOrdenByDay(DATA.nc || []);
+  DATA.ncByOrdenFecha  = buildNcByOrdenFecha(DATA.nc || []);
+  buildCoverage();
+
+  // Si algo salió de la copia local, se dice: nadie debe creer que está
+  // viendo el minuto actual cuando no lo está.
+  const _edadMin = Math.round(_CSV_EDAD_MS / 60000);
+  document.getElementById('last-update').textContent =
+    `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`
+    + (_edadMin >= 1 ? ` · copia local de hace ${_edadMin} min` : '');
+
+  populateAllFilters();
+  buildCavMap();
+  buildCavTeorMap();
+  _ultimaCarga = Date.now();
+  return pResto;
+}
+
 async function loadAll() {
   try {
-    // Producción es la ÚNICA hoja crítica: si falla, no hay dashboard.
-    setProgress(10, 'Cargando Producción...');
-    const prodParsed = await fetchCSV(SHEETS.produccion);
-    DATA.prod = prodParsed.data.map(normalizeProd);
-    DATA.dupes = dedupeProd(DATA.prod);
-    DATA.prod  = DATA.prod.filter(r => !r._dup);
-    canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
-    rellenarProdPorOrden(DATA.prod); // caja sin PRODUCTO → el de su orden en esa máquina
-
-    // El contrato se valida sobre lo que el tablero va a mostrar de verdad
-    // (después de dedupe y turnos). NO aborta: deja ver lo que haya, pero con
-    // el banner rojo puesto, para que nadie lea una hoja equivocada como un
-    // día sin producción.
-    try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
-    catch (e) { registrarFalla('Producción', e.message); }
-
-    // El resto son opcionales: un fallo transitorio NO debe bloquear todo.
-    setProgress(28, 'Cargando No Conformes...');
-    // ncFresh es local a ESTA llamada de loadAll: el merge lo usa a él, nunca
-    // a DATA.nc, para que dos cargas solapadas (loadAll + silentRefresh) no
-    // puedan concatenar los retenidos dos veces. Con DATA.nc como fuente,
-    // "nc=... / await / nc=... / await / merge / merge" duplicaría el
-    // indicador si el segundo merge leyera el resultado YA fusionado del
-    // primero — con ncFresh eso es imposible por construcción.
-    let ncFresh = [];
-    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFresh = d.map(normalizeProd).map(corregirReprocesoNC); DATA.nc = ncFresh; });
-    await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
-    DATA.nc = mergeRetenidos(ncFresh, DATA.ret);
-    DATA.ncByOrden       = buildNcByOrden(DATA.nc || []);
-    DATA.ncByOrdenByDay  = buildNcByOrdenByDay(DATA.nc || []);
-    DATA.ncByOrdenFecha  = buildNcByOrdenFecha(DATA.nc || []);
-    buildCoverage();
-
-    setProgress(46, 'Cargando Plan Referencias...');
-    await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
-
-    setProgress(64, 'Cargando Ventas y Compras...');
-    await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
-
-    setProgress(82, 'Cargando Accidentalidad...');
-    await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
-
-    if (SHEETS.planesAccion) {
-      setProgress(88, 'Cargando Planes de Acción...');
-      await loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; });
-    }
-
-    setProgress(90, 'Cargando BD Productos...');
-    await loadBdProductos();
-
-    setProgress(95, 'Cargando Maquilas...');
-    await loadMaquilas();   // hoja distinta; ya maneja su propio error
-
+    setProgress(15, 'Cargando Producción...');
+    const pResto = await _cargarDatos();
     setProgress(100, 'Listo');
-    // Si algo salió de la copia local, se dice: nadie debe creer que está
-    // viendo el minuto actual cuando no lo está.
-    const _edadMin = Math.round(_CSV_EDAD_MS / 60000);
-    document.getElementById('last-update').textContent =
-      `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`
-      + (_edadMin >= 1 ? ` · copia local de hace ${_edadMin} min` : '');
-    _CSV_EDAD_MS = 0;
+    renderAll();   // solo la pestaña visible (el Compacto al abrir)
+    performance.mark('fvlco:compacto');   // para medir: performance.getEntriesByName(...)
+    setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 150);
+    // Programación/pedidos/inventario MP: antes arrancaban a los 2 s y le
+    // competían al Compacto por el proxy. Ahora van después de dibujarlo.
+    ensurePlanReady().catch(e => console.warn('Plan preload:', e));
 
-    populateAllFilters();
-    loadTarifasFromSheet();
+    await pResto;
+    _CSV_EDAD_MS = 0;
+    llenarFiltroClientes();
+    loadTarifasFromSheet();     // salen de Plan Referencias
     loadCostosFabFromSheet();
-    buildCavMap();
-    buildCavTeorMap();
-    renderAll();
-    setTimeout(() => { document.getElementById('overlay').style.display='none'; }, 400);
+    // Si mientras tanto se abrió otra pestaña, se dibujó sin Plan Referencias
+    // ni Ventas: se redibuja ahora que llegaron. El Compacto no los usa.
+    if (_seccionActiva() !== 'reporte-compacto') renderAll();
+    performance.mark('fvlco:todo');
   } catch(e) {
     registrarFalla('Producción', e.message);
     document.getElementById('load-msg').textContent = '⚠️ Error al cargar Producción: '+e.message+' — reintenta con Actualizar.';
@@ -3938,59 +3975,63 @@ async function loadAll() {
   }
 }
 
+let _recargando = false;   // una recarga (manual o automática) a la vez
+
 async function reloadAll() {
+  if (_recargando) return;
+  _recargando = true;
   document.getElementById('overlay').style.display='flex';
   setProgress(0, 'Recargando...');
   // Actualizar SIEMPRE va a la red: es la salida para no quedar atrapado con
   // datos de la caché.
   _FORZAR_RED = true;
   try { await loadAll(); }
-  finally { _FORZAR_RED = false; }
+  finally { _FORZAR_RED = false; _recargando = false; }
+  _refrescarPlan();
 }
+
+// Plan Operativo (pedidos, restricciones, PROGRAMACIÓN) se cargaba UNA vez por
+// apertura: Actualizar no lo tocaba y el Tablero Plan podía quedar con pedidos
+// de horas atrás. Se llama DESPUÉS de la carga principal para no quitarle turno
+// en el proxy al Compacto. No pasa por ensurePlanReady porque ese vuelve a poner
+// el mes actual en el selector: aquí se respeta el mes que se esté mirando. Si
+// el Plan nunca se cargó, no hay nada que refrescar.
+function _refrescarPlan() {
+  if (!_planReady) return;
+  _planReady = _planReady.catch(() => {})
+    .then(() => loadPlanData()).then(() => recalcularPlan())
+    .catch(e => console.warn('Plan refresh:', e));
+}
+
+/* REFRESCO AUTOMÁTICO cada 20 min — lo mismo que el botón Actualizar, sin el
+   overlay: todas las hojas desde la red y el Plan Operativo. silentRefresh
+   existía pero NADA lo llamaba (hasta el 2026-10-01 el tablero no se
+   refrescaba solo nunca).
+   Con la pestaña oculta (otra ventana, celular bloqueado) NO se refresca: cada
+   carga gasta ~20 s de la cuota diaria de Apps Script, y un tablero que nadie
+   mira no los necesita. Al volver a la pestaña, si ya pasaron los 20 min, se
+   refresca en ese momento. */
+const _AUTO_REFRESCO_MS = 20 * 60 * 1000;
+let _ultimaCarga = 0;   // la pone _cargarDatos al terminar bien
+async function _autoRefrescar() {
+  if (document.hidden || _recargando || !DATA.prod.length) return;
+  if (Date.now() - _ultimaCarga < _AUTO_REFRESCO_MS) return;
+  _recargando = true;
+  _FORZAR_RED = true;
+  try { await silentRefresh(); }
+  finally { _FORZAR_RED = false; _recargando = false; }
+  _refrescarPlan();
+}
+setInterval(_autoRefrescar, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _autoRefrescar(); });
 
 // Refresco silencioso (sin overlay) para el auto-refresh
 async function silentRefresh() {
   try {
-    const prodParsed = await fetchCSV(SHEETS.produccion);
-    DATA.prod = prodParsed.data.map(normalizeProd);
-    DATA.dupes = dedupeProd(DATA.prod);
-    DATA.prod  = DATA.prod.filter(r => !r._dup);
-    canonicalizeTurnos(DATA.prod);  // reescribe _turno a '4'/'5' en turnos físicos de 12h
-    rellenarProdPorOrden(DATA.prod); // caja sin PRODUCTO → el de su orden en esa máquina
-
-    // El contrato se valida sobre lo que el tablero va a mostrar de verdad
-    // (después de dedupe y turnos). NO aborta: deja ver lo que haya, pero con
-    // el banner rojo puesto, para que nadie lea una hoja equivocada como un
-    // día sin producción.
-    try { validarProduccion(prodParsed, DATA.prod); limpiarFalla('Producción'); }
-    catch (e) { registrarFalla('Producción', e.message); }
-    // Mismo motivo que en loadAll: usar el arreglo recién parseado, no
-    // DATA.nc, para que el merge no pueda duplicarse si esta carga se
-    // solapa con otra.
-    let ncFreshR = [];
-    await loadOptional('No Conformes', SHEETS.noConformes, d => { ncFreshR = d.map(normalizeProd).map(corregirReprocesoNC); DATA.nc = ncFreshR; });
-    await loadRetenidosOpcional('Calidad Retenidos', SHEETS.calidadRet, d => { DATA.ret = d; });
-    DATA.nc = mergeRetenidos(ncFreshR, DATA.ret);
-    DATA.ncByOrden      = buildNcByOrden(DATA.nc || []);
-    DATA.ncByOrdenByDay = buildNcByOrdenByDay(DATA.nc || []);
-    DATA.ncByOrdenFecha = buildNcByOrdenFecha(DATA.nc || []);
-    buildCoverage();
-    await loadOptional('Plan Referencias', SHEETS.planRef, d => { DATA.planRef = d; });
-    await loadOptional('Ventas', SHEETS.ventas, d => { DATA.ventas = d; });
-    await loadOptional('Accidentalidad', SHEETS.accid, d => { DATA.accid = d; });
-    if (SHEETS.planesAccion) await loadOptional('Planes de Acción', SHEETS.planesAccion, d => { DATA.planesAccion = d; });
-    await loadBdProductos();
-    await loadMaquilas();
-    // Si algo salió de la copia local, se dice: nadie debe creer que está
-    // viendo el minuto actual cuando no lo está.
-    const _edadMin = Math.round(_CSV_EDAD_MS / 60000);
-    document.getElementById('last-update').textContent =
-      `Actualizado: ${new Date().toLocaleString('es-CO')} · ${DATA.prod.length} registros`
-      + (_edadMin >= 1 ? ` · copia local de hace ${_edadMin} min` : '');
+    const pResto = await _cargarDatos();
+    await pResto;
     _CSV_EDAD_MS = 0;
-    populateAllFilters();
-    buildCavMap();
-    buildCavTeorMap();
+    llenarFiltroClientes();
     renderAll();
   } catch(e) {
     console.warn('Auto-refresh falló:', e.message);
@@ -4002,8 +4043,12 @@ async function silentRefresh() {
 // =======================================================
 function fillSel(id, vals, label) {
   const s = document.getElementById(id); if (!s) return;
+  // Se conserva lo que estaba elegido: el refresco automático y Actualizar
+  // vuelven a llenar los desplegables y no deben devolver el filtro a "Todo".
+  const previo = s.value;
   s.innerHTML = `<option value="">Todo (${label})</option>` +
     vals.map(v=>`<option>${v}</option>`).join('');
+  if (previo && vals.includes(previo)) s.value = previo;
 }
 function getVal(id) { const s=document.getElementById(id); return s?s.value:''; }
 function clearFilters(prefix) {
@@ -4080,6 +4125,12 @@ function populateAllFilters() {
       <span style="flex:1">${c}</span>
       <span class="razon-count">${fmt(v)}</span>
     </label>`).join('');
+  llenarFiltroClientes();
+}
+
+// Aparte de populateAllFilters porque Ventas llega en la SEGUNDA tanda de la
+// carga (ver _cargarDatos): se vuelve a llamar cuando llega.
+function llenarFiltroClientes() {
   const vCli = [...new Set(DATA.ventas.map(r=>(r['Nombre tercero']||'').trim()).filter(Boolean))].sort();
   fillSel('otif-f-cliente', vCli, 'Cliente');
 }
@@ -8579,20 +8630,16 @@ function renderInvLogistica() {
 // =======================================================
 // RENDER ALL
 // =======================================================
+function _seccionActiva() {
+  return document.querySelector('.section.active')?.id?.replace('sec-','') || '';
+}
+// Solo se dibuja la pestaña que se está viendo. Antes se dibujaban las 13 con
+// sus 35 gráficas en cada carga y cada auto-refresco, aunque nadie las mirara
+// (7-13 s en el PC, más en el celular). Las demás no quedan viejas: showSection
+// llama a SECTION_RENDERS[id] cada vez que se entra a una pestaña.
 function renderAll() {
-  renderResumen();
-  renderOEE();
-  renderReporteDiario();
-  renderReporteCompacto();
-  renderInvLogistica();
-  renderMaquilas();
-  renderPlanMensual();
-  renderPlanRef();
-  renderNC();
-  renderOTIF();
-  renderParos();
-  renderAccid();
-  renderCostos();
+  const fn = SECTION_RENDERS[_seccionActiva()];
+  if (fn) fn();
 }
 
 // =======================================================
