@@ -49,9 +49,14 @@ select,input{height:31px}
 select:focus,input:focus,textarea:focus{outline:none;border-color:var(--az);box-shadow:0 0 0 2px rgba(26,115,232,.18)}
 .ro{background:#e8eaed!important;color:#5f6368!important;cursor:not-allowed!important;font-weight:700!important;text-align:center!important}
 .err-f{border-color:var(--er)!important;background:#fde7e6!important}
-/* Obligatoria: rojo claro MIENTRAS esté vacía; al escribir vuelve a blanco. */
-.oblig:placeholder-shown{border-color:var(--er);background:#fde7e6}
-.oblig::placeholder{color:#c5221f;font-weight:700;opacity:1}
+/* Obligatoria: MIENTRAS esté vacía titila entre rojo claro y rojo fuerte para
+   que se vea desde lejos; al escribir se detiene y vuelve a blanco. */
+.oblig:placeholder-shown{border:2px solid var(--er);background:#fde7e6;animation:obligTitila 1s ease-in-out infinite}
+.oblig::placeholder{color:#b3261e;font-weight:800;font-size:15px;text-transform:uppercase;opacity:1}
+@keyframes obligTitila{
+  0%,100%{background:#fde7e6;border-color:#f28b82;box-shadow:none}
+  50%{background:#f8b4ae;border-color:#d93025;box-shadow:0 0 0 3px rgba(217,48,37,.35)}
+}
 .r2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fld{display:flex;flex-direction:column;gap:2px}

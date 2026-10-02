@@ -231,7 +231,7 @@ function limpiarErrores(){
    20 min la app compara las dos y, si el servidor ya tiene otra, se recarga
    sola conservando lo que el operario tiene seleccionado (ver
    revisarVersionApp). Al publicar un cambio: subir las DOS y CACHE_NAME en sw.js. */
-var APP_VERSION = '2026-10-01-paro-oblig';
+var APP_VERSION = '2026-10-01-paro-titila';
 
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
