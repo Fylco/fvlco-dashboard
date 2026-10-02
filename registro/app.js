@@ -227,10 +227,18 @@ function limpiarErrores(){
    CÓMO VERIFICAR SIN ESCRIBIR NADA:
      curl -sL "<esta URL>?action=version"   →   {"version":"molino-color-..."}
    Si responde HTML en vez de JSON, la implementación está vieja. */
+/* Versión de ESTE app.js. Tiene que ser IGUAL a la de version.json: cada
+   20 min la app compara las dos y, si el servidor ya tiene otra, se recarga
+   sola conservando lo que el operario tiene seleccionado (ver
+   revisarVersionApp). Al publicar un cambio: subir las DOS y CACHE_NAME en sw.js. */
+var APP_VERSION = '2026-10-01-paro-oblig';
+
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
 function obtenerDatosDesdeBackend(){
-  return fetch(GAS_URL + '?action=datos').then(function(res){
+  // Rompe-caché: Google puede cachear un GET del Web App por URL exacta, y el
+  // refresco de órdenes traería siempre la misma lista.
+  return fetch(GAS_URL + '?action=datos&_=' + Date.now(), { cache:'no-store' }).then(function(res){
     if(!res.ok) throw new Error('HTTP '+res.status);
     return res.json();
   });
@@ -248,6 +256,7 @@ function llamarBackend(accion, datos){
   }
   if(!navigator.onLine) return guardarLocal();
 
+  _enviosEnCurso++;
   return fetch(GAS_URL, {
     method:'POST',
     headers:{ 'Content-Type':'text/plain;charset=utf-8' },   // evita preflight CORS (GAS no responde OPTIONS)
@@ -257,8 +266,9 @@ function llamarBackend(accion, datos){
     return res.json();
   }).catch(function(){
     return guardarLocal();
-  });
+  }).finally(function(){ _enviosEnCurso--; });
 }
+var _enviosEnCurso = 0;   // lo mira aplicarVersionSiSePuede
 
 /* Sincroniza la cola local con el Sheet, uno por uno, en orden.
    Se detiene en el primer fallo (probablemente seguimos sin internet real).
@@ -533,6 +543,7 @@ function onData(data){
     if(!maqSel.options[i].disabled){ maqSel.selectedIndex=i; break; }
   }
   onMaqChange();
+  restaurarEstadoTrasActualizar();
   iniciarReloj();
 }
 
@@ -830,7 +841,7 @@ function llenarSelect(id, arr){
   arr.forEach(function(v){ var o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
 }
 
-function llenarOrdenes(maq, esOp){
+function llenarOrdenes(maq, esOp, conservarId){
   var sel=$('orden');
   sel.innerHTML='<option value="">— Seleccione orden —</option>';
   if(esOp) return;
@@ -847,6 +858,12 @@ function llenarOrdenes(maq, esOp){
       sel.appendChild(opt);
     }
   });
+  // Refresco automático: se deja la orden que el operario tenía y no se
+  // anuncia nada (cada 20 min un aviso de "N órdenes" sería ruido).
+  if(conservarId !== undefined){
+    if(conservarId) sel.value = conservarId;
+    return;
+  }
   if(coincidentes.length===1){
     sel.value=coincidentes[0].id;
   }
@@ -870,6 +887,28 @@ function onOrdenChange(){
   show('pImgB', !!o);
 
   if(o){
+    pintarInfoOrden(o);
+
+    if(!val('cavidades') && o.cavidades) $('cavidades').value = o.cavidades;
+    if(!val('cicloR')    && o.ciclo)     $('cicloR').value    = o.ciclo;
+    if(o.cantCaja) $('cantR').value = o.cantCaja;  // pre-llena cantidad estándar por caja (col Q)
+
+    $('numCaja').value = (o.cajasReportadas||0)+1;
+    cls('eoLabel','on',true); cls('eoLabel','off',false);
+    $('eoLabel').textContent='✅ EN PROD.';
+  } else {
+    ['cavEstd','cicloEst'].forEach(function(id){ $(id).value=''; });
+    cls('eoLabel','on',false); cls('eoLabel','off',true);
+    $('eoLabel').textContent='SIN ORDEN';
+  }
+
+  pintarAvisoOrden(o);
+}
+
+/* Datos de la orden que vienen de la HOJA (no los que escribe el operario).
+   Los usa onOrdenChange y el refresco de cada 20 min, que los repinta sin
+   tocar cav. real, ciclo real, cantidad, caja ni paro. */
+function pintarInfoOrden(o){
     $('iPro').textContent = o.productName||'—';
     $('iCli').textContent = o.cliente||'—';
     $('iCol').textContent = o.color||'—';
@@ -889,20 +928,6 @@ function onOrdenChange(){
 
     $('cavEstd').value = o.cavidades||'';
     $('cicloEst').value = o.ciclo||'';
-    if(!val('cavidades') && o.cavidades) $('cavidades').value = o.cavidades;
-    if(!val('cicloR')    && o.ciclo)     $('cicloR').value    = o.ciclo;
-    if(o.cantCaja) $('cantR').value = o.cantCaja;  // pre-llena cantidad estándar por caja (col Q)
-
-    $('numCaja').value = (o.cajasReportadas||0)+1;
-    cls('eoLabel','on',true); cls('eoLabel','off',false);
-    $('eoLabel').textContent='✅ EN PROD.';
-  } else {
-    ['cavEstd','cicloEst'].forEach(function(id){ $(id).value=''; });
-    cls('eoLabel','on',false); cls('eoLabel','off',true);
-    $('eoLabel').textContent='SIN ORDEN';
-  }
-
-  pintarAvisoOrden(o);
 }
 
 /* ════════════════════════════════════════════════
@@ -1153,6 +1178,7 @@ function registrarProd(){
 function registrarParo(){
   limpiarErrores();
   if(!ordenUtilizable()) return;
+  // El detalle NO bloquea: el aviso es visual (casilla roja con "es obligatorio").
   if(!reqs(['motParo','tParo'])){ toast('Seleccione motivo y tiempo de paro','warn'); return; }
   var base=datosBase();
   var datos=merge(base,{ paro:val('motParo'), tiempoParo:numV('tParo'), obsParo:val('obsParo') });
@@ -1160,6 +1186,7 @@ function registrarParo(){
     ['Máquina', datos.maquina],
     ['Motivo',  datos.paro],
     ['Tiempo (min)',datos.tiempoParo],
+    ['Detalle', datos.obsParo],
     ['Turno',   'T'+datos.turno],
     ['Operario',datos.operario]
   ], function(){
@@ -1267,18 +1294,117 @@ function recargarOrdenes(){
 }
 
 /* ═══════════════════════════════════════════════════════
-   AUTO-REFRESH — actualiza solo órdenes cada 30 min
-   sin tocar máquina, operario, turno ni campos llenados
+   AUTO-REFRESH — órdenes cada 20 min, AUNQUE haya orden seleccionada
+   ───────────────────────────────────────────────────────
+   Antes era cada 30 min y SOLO sin orden seleccionada, que en planta es casi
+   nunca: el operario deja su orden puesta todo el turno. Y cada caja se envía
+   con la COPIA en memoria de la orden (producto, cliente, color, MP, lotes,
+   cav/ciclo estándar), así que un dato corregido en la hoja seguía saliendo
+   viejo en cada caja hasta que alguien oprimiera Actualizar.
+   Ahora trae la lista nueva y, si la orden abierta cambió, le pone los datos
+   nuevos y avisa qué cambió. NO toca máquina, turno, operario ni lo que el
+   operario escribió (cav. real, ciclo real, cantidad, caja, paro).
 ═══════════════════════════════════════════════════════ */
+var ORD_CAMPOS_AVISO = [
+  ['productName','producto'], ['cliente','cliente'], ['color','color'],
+  ['mp','MP'], ['loteMp','lote MP'], ['loteProd','lote'],
+  ['cavidades','cav. estándar'], ['ciclo','ciclo estándar'], ['cantidadTotal','cantidad']
+];
 function autoRefreshOrdenes(){
-  if(GS.orden) return;   // operario con orden activa → no interrumpir
+  revisarVersionApp();
+  if(!navigator.onLine) return;
   obtenerDatosDesdeBackend()
     .then(function(data){
       if(!data || !data.ordenes) return;
-      GD.ordenes = data.ordenes;             // actualiza solo el listado en memoria
-      llenarOrdenes(GS.maq, false);          // redibuja solo el dropdown de órdenes
+      var previa = GS.orden;
+      var idPrevio = previa ? String(previa.id) : '';
+      GD.ordenes = data.ordenes;
+
+      var esOp = GS.maq==='MOLINO'||GS.maq==='MANUALIDADES'||GS.maq==='REPROCESOS';
+      var manual = $('ordenNL') && $('ordenNL').checked;
+      if(!esOp) llenarOrdenes(GS.maq, false, manual ? '' : idPrevio);
+      if(!previa) return;
+
+      var nueva = GD.ordenes.filter(function(x){ return String(x.id)===idPrevio; })[0];
+      if(!nueva){
+        // Se deja como estaba: quitársela a mitad de turno sería peor.
+        if(!manual && idPrevio){
+          var sel=$('orden'), op=document.createElement('option');
+          op.value=previa.id; op.textContent='Ord #'+previa.id+' · '+(previa.productName||'');
+          sel.appendChild(op); sel.value=previa.id;
+        }
+        toast('⚠️ La orden #'+idPrevio+' ya no está en órdenes activas — verifíquela con el supervisor','warn');
+        return;
+      }
+      var cambios = ORD_CAMPOS_AVISO.filter(function(c){
+        return String(previa[c[0]]==null?'':previa[c[0]]) !== String(nueva[c[0]]==null?'':nueva[c[0]]);
+      }).map(function(c){
+        return c[1]+' '+(previa[c[0]]||'—')+' → '+(nueva[c[0]]||'—');
+      });
+      GS.orden = nueva;
+      pintarInfoOrden(nueva);      // también deja cav/ciclo estándar al día
+      pintarAvisoOrden(nueva);
+      if(cambios.length) toast('🔄 Orden #'+idPrevio+' actualizada: '+cambios.join(' · '),'warn');
     })
     .catch(function(){});  // silencioso — reintenta en el próximo ciclo
+}
+
+/* ═══════════════════════════════════════════════════════
+   VERSIÓN NUEVA DE LA APP — se aplica sola, sin perder la selección
+   ───────────────────────────────────────────────────────
+   Una pestaña abierta todo el turno nunca vuelve a pedir app.js: el código
+   nuevo solo llegaba al cerrar y abrir. Cada 20 min se mira version.json
+   (Vercel, no Apps Script: no gasta cuota). Si cambió, se guarda máquina,
+   operario(s), turno, orden y cav./ciclo real, y se recarga.
+   NO se recarga con un paro, una calidad, unas observaciones o un peso a
+   medio escribir: se espera al siguiente minuto libre. Tampoco con una
+   ventana de confirmación abierta.
+═══════════════════════════════════════════════════════ */
+var EST_KEY = 'fvl_estado_recarga';
+var GS_versionNueva = false;
+function revisarVersionApp(){
+  fetch('version.json?_=' + Date.now(), { cache:'no-store' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(v){ if(v && v.version && v.version !== APP_VERSION) GS_versionNueva = true; })
+    .catch(function(){});
+}
+function hayAlgoAMedias(){
+  var ids=['motParo','tParo','obsParo','calCausa','calPeso','observ','pesoC'];
+  if(ids.some(function(id){ var e=$(id); return e && String(e.value||'').trim(); })) return true;
+  if(_enviosEnCurso > 0) return true;   // recargar abortaría el envío a medio camino
+  return !!document.querySelector('#mConf.show, #exitoOv.show');
+}
+function aplicarVersionSiSePuede(){
+  if(!GS_versionNueva || hayAlgoAMedias()) return;
+  try{
+    var manual = $('ordenNL') && $('ordenNL').checked;
+    sessionStorage.setItem(EST_KEY, JSON.stringify({
+      t: Date.now(), maq: GS.maq, turno: turnoActivo('segT'),
+      operario: val('operario'), operario2: val('operario2'),
+      orden: manual ? '' : val('orden'), ordenM: manual ? val('ordenM') : '', manual: !!manual,
+      cavidades: val('cavidades'), cicloR: val('cicloR')
+    }));
+  }catch(e){ return; }   // sin sessionStorage no se recarga: perdería la selección
+  location.reload();
+}
+function restaurarEstadoTrasActualizar(){
+  var s=null;
+  try{ s=JSON.parse(sessionStorage.getItem(EST_KEY)||'null'); sessionStorage.removeItem(EST_KEY); }catch(e){}
+  if(!s || Date.now()-s.t > 5*60*1000) return;   // viejo: no adivinar
+  try{
+    if(s.maq && $('maquina').querySelector('option[value="'+s.maq+'"]')){
+      $('maquina').value=s.maq; onMaqChange();
+    }
+    if(s.turno) selTurno(s.turno,'segT');
+    if(s.operario)  $('operario').value=s.operario;
+    if(s.operario2 && $('operario2')) $('operario2').value=s.operario2;
+    if(s.manual && $('ordenNL')){ $('ordenNL').checked=true; onOrdenNL(); $('ordenM').value=s.ordenM; }
+    else if(s.orden) $('orden').value=s.orden;
+    onOrdenChange();
+    if(s.cavidades) $('cavidades').value=s.cavidades;
+    if(s.cicloR)    $('cicloR').value=s.cicloR;
+    toast('✅ App actualizada a la versión nueva — su selección se conservó','ok');
+  }catch(e){}
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1293,10 +1419,17 @@ function actualizarDash(){
 /* ═══════════════════════════════════════════════════════
    RELOJ — actualiza validez de turnos cada minuto
 ═══════════════════════════════════════════════════════ */
+var _relojIniciado = false;
 function iniciarReloj(){
   refrescarBordeTurnos();
+  // onData corre también con ↻ Actualizar: sin esta guarda cada Actualizar
+  // sumaba otro juego de intervalos.
+  if(_relojIniciado) return;
+  _relojIniciado = true;
   setInterval(refrescarBordeTurnos, 60000);
-  setInterval(autoRefreshOrdenes, 30 * 60 * 1000);  // actualiza órdenes cada 30 min
+  setInterval(autoRefreshOrdenes, 20 * 60 * 1000);  // órdenes cada 20 min
+  setInterval(aplicarVersionSiSePuede, 60000);      // versión nueva: en el primer minuto libre
+  revisarVersionApp();
   setInterval(function(){ if(navigator.onLine) sincronizarPendientes(); }, 60000);  // reintento de sync cada minuto
 }
 

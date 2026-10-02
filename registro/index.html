@@ -49,6 +49,9 @@ select,input{height:31px}
 select:focus,input:focus,textarea:focus{outline:none;border-color:var(--az);box-shadow:0 0 0 2px rgba(26,115,232,.18)}
 .ro{background:#e8eaed!important;color:#5f6368!important;cursor:not-allowed!important;font-weight:700!important;text-align:center!important}
 .err-f{border-color:var(--er)!important;background:#fde7e6!important}
+/* Obligatoria: rojo claro MIENTRAS esté vacía; al escribir vuelve a blanco. */
+.oblig:placeholder-shown{border-color:var(--er);background:#fde7e6}
+.oblig::placeholder{color:#c5221f;font-weight:700;opacity:1}
 .r2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fld{display:flex;flex-direction:column;gap:2px}
@@ -531,7 +534,7 @@ textarea{resize:none;min-height:42px;height:42px}
 <div class="card"><div class="hd hd-rj">⛔ REGISTRO DE PARADAS</div><div class="bd">
 <div class="fld"><label>Motivo de paro <span class="req">*</span></label><select id="motParo"></select></div>
 <div class="fld"><label>Tiempo (min) <span class="req">*</span></label><input id="tParo" type="number" min="0"></div>
-<div class="fld"><label>Detalles del paro</label><textarea id="obsParo"></textarea></div>
+<div class="fld"><label>Detalles del paro</label><textarea id="obsParo" class="oblig" placeholder="Escriba el detalle, es obligatorio"></textarea></div>
 <div class="paro-desc" id="paroDesc">
 <div class="pd-t" id="paroDescT">DESCRIPCIÓN PARO INYECTORA</div>
 <div class="pd-x" id="paroDescX"></div>
