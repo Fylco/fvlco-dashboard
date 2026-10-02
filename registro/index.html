@@ -110,6 +110,9 @@ textarea{resize:none;min-height:42px;height:42px}
 .btn-refresh{background:#0b4ec0;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;letter-spacing:.3px}
 .btn-refresh:hover{background:#1a5fd4}.btn-refresh:disabled{opacity:.6;cursor:not-allowed}
 .refresh-hint{color:#94a3b8;font-size:12px;font-weight:500}
+/* Versión de la app a la vista: para saber por teléfono qué tiene cada equipo. */
+.app-ver{margin-left:auto;color:#e2e8f0;background:#1e3a52;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+.app-ver.pend{background:#b45309;color:#fff}
 .offline-bar{display:none;align-items:center;gap:10px;background:#7c2d12;border-radius:8px;padding:7px 12px;flex-wrap:wrap;box-shadow:var(--sh);color:#fff;font-weight:700;font-size:12px}
 .offline-bar.show{display:flex}
 .loading-bar{display:flex;align-items:center;gap:10px;background:#0b3a8c;border-radius:8px;padding:9px 14px;flex-wrap:wrap;box-shadow:var(--sh);color:#fff;font-weight:700;font-size:13px}
@@ -474,6 +477,7 @@ textarea{resize:none;min-height:42px;height:42px}
 <div class="refresh-bar">
   <button class="btn-refresh" onclick="recargarOrdenes()">&#x21BB; Actualizar</button>
   <span class="refresh-hint">Presiona si tu orden no aparece &middot; si a&uacute;n no sale est&aacute; pendiente, ll&eacute;nala manual</span>
+  <span class="app-ver" id="appVer"></span>
 </div>
 
 <div class="opbar">

@@ -231,7 +231,7 @@ function limpiarErrores(){
    2 min la app compara las dos y, si el servidor ya tiene otra, se recarga
    sola conservando lo que el operario tiene seleccionado (ver
    revisarVersionApp). Al publicar un cambio: subir las DOS y CACHE_NAME en sw.js. */
-var APP_VERSION = '2026-10-01-version-2min';
+var APP_VERSION = '2026-10-01 22:15';   // formato fecha hora: es lo que se lee en el letrero
 
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
@@ -404,6 +404,7 @@ function buildOpPanel(){
    INIT — carga inicial
 ═══════════════════════════════════════════════════════ */
 function init(){
+  pintarVersion();
   try { buildOpPanel(); } catch(e){ alert('Error buildOpPanel: '+e.message); return; }
 
   var evts = [
@@ -1380,9 +1381,16 @@ function revisarVersionApp(){
   fetch('version.json?_=' + Date.now(), { cache:'no-store' })
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(v){
-      if(v && v.version && v.version !== APP_VERSION){ GS_versionNueva = true; aplicarVersionSiSePuede(); }
+      if(v && v.version && v.version !== APP_VERSION){ GS_versionNueva = true; pintarVersion(); aplicarVersionSiSePuede(); }
     })
     .catch(function(){});
+}
+/* Letrero de la barra de arriba. En naranja = ya hay una versión nueva y la
+   app está esperando a que el operario termine lo que está escribiendo. */
+function pintarVersion(){
+  var e=$('appVer'); if(!e) return;
+  e.textContent = 'Versión ' + APP_VERSION + (GS_versionNueva ? ' · actualizando…' : '');
+  e.className = 'app-ver' + (GS_versionNueva ? ' pend' : '');
 }
 function hayAlgoAMedias(){
   var ids=['motParo','tParo','obsParo','calCausa','calPeso','observ','pesoC'];
@@ -1401,8 +1409,21 @@ function aplicarVersionSiSePuede(){
       cavidades: val('cavidades'), cicloR: val('cicloR')
     }));
   }catch(e){ return; }   // sin sessionStorage no se recarga: perdería la selección
-  location.reload();
+  if(_recargandoVersion) return;
+  _recargandoVersion = true;
+  /* Se borra la copia guardada ANTES de recargar. El service worker abre con
+     esa copia si la red tarda más de 3 s (sw.js), y con datos móviles lentos
+     la "versión nueva" volvía a arrancar con el app.js viejo: recargar varias
+     veces no la traía. Sin copia, sw.js va directo a la red. Aquí siempre hay
+     red: se acaba de leer version.json. */
+  var recargar=function(){ location.reload(); };
+  if(window.caches && caches.keys){
+    caches.keys()
+      .then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); })
+      .then(recargar, recargar);
+  } else recargar();
 }
+var _recargandoVersion = false;
 function restaurarEstadoTrasActualizar(){
   var s=null;
   try{ s=JSON.parse(sessionStorage.getItem(EST_KEY)||'null'); sessionStorage.removeItem(EST_KEY); }catch(e){}
