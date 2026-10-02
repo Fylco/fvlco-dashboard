@@ -232,7 +232,7 @@ function limpiarErrores(){
    2 min la app compara las dos y, si el servidor ya tiene otra, se recarga
    sola conservando lo que el operario tiene seleccionado (ver
    revisarVersionApp). Al publicar un cambio: subir las DOS y CACHE_NAME en sw.js. */
-var APP_VERSION = '2026-10-01 23:10';   // formato fecha hora: es lo que se lee en el letrero
+var APP_VERSION = '2026-10-02 00:30';   // formato fecha hora: es lo que se lee en el letrero
 
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
@@ -242,7 +242,133 @@ function obtenerDatosDesdeBackend(){
   return fetch(GAS_URL + '?action=datos&_=' + Date.now(), { cache:'no-store' }).then(function(res){
     if(!res.ok) throw new Error('HTTP '+res.status);
     return res.json();
+  }).then(function(d){
+    if(d && d.ordenes) guardarDatosCache(d);
+    return d;
   });
+}
+
+/* ═══════════════════════════════════════════════════════
+   ARRANQUE RÁPIDO — abrir con los datos de la última vez
+   ───────────────────────────────────────────────────────
+   ?action=datos tarda 10-13 s (medido 2026-10-01): el servidor lee toda BD
+   REPORTES PRODUCCIÓN, ~14.000 filas × 49 columnas, en cada apertura. La
+   página en sí carga en menos de 0,4 s. Así que la app abre con la copia
+   de la última respuesta buena (localStorage, ~16 KB) y pide la fresca por
+   detrás; cuando llega se aplica SIN perder lo que el operario ya eligió
+   o escribió (aplicarDatosFrescos).
+   REGISTRAR PROD. espera a los datos frescos: el número de caja sugerido
+   sale de cajasReportadas, y uno viejo puede chocar con una caja que otro
+   equipo ya reportó. Paros y calidad no dependen de eso y quedan libres.
+   Sin internet, la copia permite trabajar (los registros van a la cola
+   offline) y se avisa de que el número de caja puede estar atrasado.
+═══════════════════════════════════════════════════════ */
+var DATOS_CACHE_KEY = 'fvl_datos_cache';
+var DATOS_CACHE_MAX_MS = 3 * 24 * 3600 * 1000;   // más vieja que esto no se usa
+var GS_datosFrescos = true;
+function guardarDatosCache(d){
+  try{ localStorage.setItem(DATOS_CACHE_KEY, JSON.stringify({ t: Date.now(), data: d })); }catch(e){}
+}
+function leerDatosCache(){
+  try{
+    var c = JSON.parse(localStorage.getItem(DATOS_CACHE_KEY) || 'null');
+    if(c && c.data && c.data.ordenes && (Date.now() - c.t) < DATOS_CACHE_MAX_MS) return c;
+  }catch(e){}
+  return null;
+}
+function _haceMin(t){
+  var m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  return m < 1 ? 'de hace menos de 1 min' : m < 120 ? 'de hace ' + m + ' min' : 'de hace ' + Math.round(m/60) + ' h';
+}
+var BTN_PROD_TXT = '▶ REGISTRAR PROD.';
+function marcarDatosViejos(t){
+  GS_datosFrescos = false;
+  var lm = $('loadingMsg');
+  if(lm) lm.textContent = 'Mostrando los datos ' + _haceMin(t) + ' — actualizando con el servidor…';
+  show('loadingBar', true);
+  var b = $('btnProd'); if(b) b.textContent = '⏳ ACTUALIZANDO DATOS…';
+}
+function datosFrescosListos(){
+  GS_datosFrescos = true;
+  show('loadingBar', false);
+  var b = $('btnProd'); if(b) b.textContent = BTN_PROD_TXT;
+}
+
+/* Lo que el operario tiene puesto en pantalla, para devolverlo después de
+   reconstruir los selectores con datos nuevos. Todo campo con id, salvo las
+   claves y los estándar de la orden (cav/ciclo estándar), que deben salir
+   de los datos nuevos. */
+var ESTADO_NO_RESTAURAR_ = { maquina:1, orden:1, ordenM:1, numCaja:1, cavEstd:1, cicloEst:1 };
+function capturarEstado(){
+  var s = { maq: GS.maq, turno: turnoActivo('segT'), turnosOp: {}, campos: {}, checks: {},
+            orden: val('orden'), ordenM: val('ordenM'), numCaja: val('numCaja'), ordenVieja: GS.orden };
+  ['MOLINO','MANUALIDADES','REPROCESOS'].forEach(function(n){ s.turnosOp[n] = turnoActivo('segT_'+n); });
+  Array.prototype.forEach.call(document.querySelectorAll('input[id],select[id],textarea[id]'), function(e){
+    if(e.type === 'password' || ESTADO_NO_RESTAURAR_[e.id]) return;
+    if(e.type === 'checkbox' || e.type === 'radio') s.checks[e.id] = e.checked;
+    else s.campos[e.id] = e.value;
+  });
+  return s;
+}
+function _ponerValor_(e, v){
+  if(!e || v == null) return;
+  if(e.tagName === 'SELECT' && v !== ''){
+    var hay = false;
+    for(var i=0;i<e.options.length;i++){ if(e.options[i].value === v){ hay = true; break; } }
+    if(!hay) return;            // la opción ya no existe: se deja la que haya
+  }
+  e.value = v;
+}
+// Igual que selTurno pero sin el aviso de "no corresponde a la hora": aquí
+// solo se devuelve lo que el operario ya había elegido.
+function _turnoSilencioso_(id, contId){
+  var cont = $(contId); if(!cont || !id) return;
+  var btn = cont.querySelector('[data-id="'+id+'"]'); if(!btn) return;
+  cont.querySelectorAll('button').forEach(function(b){ b.classList.remove('act'); });
+  btn.classList.add('act');
+  if(contId === 'segT') GS.turno = Number(id);
+}
+function restaurarEstado(s){
+  var esOp = s.maq==='MOLINO'||s.maq==='MANUALIDADES'||s.maq==='REPROCESOS';
+  if(esOp) onMaqChange(s.maq);
+  else if(s.maq && $('maquina').querySelector('option[value="'+s.maq+'"]')){ $('maquina').value = s.maq; onMaqChange(); }
+  _turnoSilencioso_(s.turno, 'segT');
+  for(var n in s.turnosOp) if(s.turnosOp.hasOwnProperty(n)) _turnoSilencioso_(s.turnosOp[n], 'segT_'+n);
+
+  if(s.checks.ordenNL && $('ordenNL')){ $('ordenNL').checked = true; onOrdenNL(); $('ordenM').value = s.ordenM; }
+  else if(s.orden) _ponerValor_($('orden'), s.orden);
+  onOrdenChange();
+  // El número de caja: si el operario no lo tocó (era la sugerencia vieja),
+  // queda la sugerencia nueva; si lo cambió a mano, se respeta.
+  var sugVieja = s.ordenVieja ? String((s.ordenVieja.cajasReportadas||0)+1) : '';
+  if(s.numCaja && s.numCaja !== sugVieja) $('numCaja').value = s.numCaja;
+
+  for(var id in s.campos) if(s.campos.hasOwnProperty(id)) _ponerValor_($(id), s.campos[id]);
+  for(var c in s.checks) if(s.checks.hasOwnProperty(c) && c !== 'ordenNL' && $(c)) $(c).checked = s.checks[c];
+
+  try{ mostrarDescParo(); avisoDetalleParo(); rpMostrarRetenido(); molCalidadToggle(); mndVerificarOrden(); }catch(e){}
+
+  // Mismo aviso que el refresco de 20 min si la orden abierta cambió.
+  var a = s.ordenVieja, b = GS.orden;
+  if(a && b && String(a.id) === String(b.id)){
+    var cambios = ORD_CAMPOS_AVISO.filter(function(c){
+      return String(a[c[0]]==null?'':a[c[0]]) !== String(b[c[0]]==null?'':b[c[0]]);
+    }).map(function(c){ return c[1]+' '+(a[c[0]]||'—')+' → '+(b[c[0]]||'—'); });
+    if(cambios.length) toast('🔄 Orden #'+b.id+' actualizada: '+cambios.join(' · '),'warn');
+  }
+}
+/* Datos nuevos sin perder la pantalla. Con el panel de supervisor o de
+   calidad abierto no se reconstruye nada (esos paneles tienen su propio
+   estado): solo se cambian los datos en memoria y las listas de órdenes. */
+function aplicarDatosFrescos(data){
+  if((typeof SUP !== 'undefined' && SUP.activo) || (typeof CAL !== 'undefined' && CAL.activo)){
+    asignarDatos(data);
+    try{ rpLlenarOrdenes(); mndLlenarOrdenes(); molLlenarOrdenesRet(); }catch(e){}
+    return;
+  }
+  var s = capturarEstado();
+  onData(data);
+  restaurarEstado(s);
 }
 
 /* Envía un registro al backend. Si no hay internet o la petición falla,
@@ -451,12 +577,24 @@ function init(){
     });
   });
 
+  var copia = leerDatosCache();
+  if(copia){
+    try{ onData(copia.data); marcarDatosViejos(copia.t); }
+    catch(e){ copia = null; }
+  }
   obtenerDatosDesdeBackend()
     .then(function(data){
-      try{ onData(data); }
+      try{ if(copia) aplicarDatosFrescos(data); else onData(data); }
       catch(e){ alert('Error cargando datos: '+e.message); }
+      datosFrescosListos();
     })
     .catch(function(e){
+      if(copia){
+        // Sin servidor pero con copia: se puede trabajar, avisando.
+        datosFrescosListos();
+        toast('📴 No se pudo actualizar. Datos ' + _haceMin(copia.t) + ': verifica el N° de caja antes de registrar.','warn');
+        return;
+      }
       toast('❌ Error al cargar: '+e.message,'err');
       var lb=$('loadingBar');
       if(lb){
@@ -470,6 +608,11 @@ function init(){
 }
 
 function onData(data){
+  asignarDatos(data);
+  construirPantalla(data);
+}
+
+function asignarDatos(data){
   GD.ordenes        = data.ordenes        || [];
   GD.operarios      = data.operarios      || [];
   GD.maquinasIny    = data.maquinasIny    || [];
@@ -491,7 +634,9 @@ function onData(data){
   GD.molidoOrigenActivo = !!(data.config && data.config.molidoOrigenActivo);
   GD.turnoSugerido  = data.turnoServidor  || 1;
   GD.turnosValidos  = data.turnosValidos  || [1];
+}
 
+function construirPantalla(data){
   // Calcular sugerido en tiempo real con el reloj del navegador
   var sugerido = calcTurnoSugerido();
   GD.turnoSugerido = sugerido;
@@ -524,6 +669,9 @@ function onData(data){
   // Poblar dropdown de REPROCESOS con productos del PLAN REFERENCIAS
   var rpSel = document.getElementById('rpProd');
   if(rpSel && data.productosRef && data.productosRef.length){
+    // onData corre más de una vez (copia + fresca, ↻ Actualizar): sin esto
+    // cada carga volvía a agregar toda la lista de productos.
+    rpSel.innerHTML = '<option value="">— Seleccione —</option>';
     data.productosRef.forEach(function(p){
       var o=document.createElement('option');
       o.value = p.desc||p.cod;
@@ -1228,6 +1376,7 @@ function datosBase(){
    REGISTRAR PRODUCCIÓN
 ═══════════════════════════════════════════════════════ */
 function registrarProd(){
+  if(!GS_datosFrescos){ toast('⏳ Actualizando datos con el servidor — en unos segundos puedes registrar la caja','warn'); return; }
   limpiarErrores();
   if(!ordenUtilizable()) return;
   var camposOrd = $('ordenNL')&&$('ordenNL').checked ? ['ordenM'] : ['orden'];
@@ -1382,7 +1531,9 @@ function recargarOrdenes(){
   if(btn){btn.textContent='⏳ Cargando...';btn.disabled=true;}
   obtenerDatosDesdeBackend()
     .then(function(data){
-      onData(data);
+      // Antes reiniciaba la pantalla y había que volver a elegir máquina y
+      // orden; ahora se conserva lo que el operario tenía.
+      aplicarDatosFrescos(data);
       if(btn){btn.textContent='↻ Actualizar';btn.disabled=false;}
     })
     .catch(function(e){
