@@ -228,10 +228,10 @@ function limpiarErrores(){
      curl -sL "<esta URL>?action=version"   →   {"version":"molino-color-..."}
    Si responde HTML en vez de JSON, la implementación está vieja. */
 /* Versión de ESTE app.js. Tiene que ser IGUAL a la de version.json: cada
-   20 min la app compara las dos y, si el servidor ya tiene otra, se recarga
+   2 min la app compara las dos y, si el servidor ya tiene otra, se recarga
    sola conservando lo que el operario tiene seleccionado (ver
    revisarVersionApp). Al publicar un cambio: subir las DOS y CACHE_NAME en sw.js. */
-var APP_VERSION = '2026-10-01-paro-flecha';
+var APP_VERSION = '2026-10-01-version-2min';
 
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbx1JGS0834GMtmHtToG0KEOwKmmvhF3-QuZEAZkkTNEzJJCWeHEZLZevPkk1er6LKQ_vw/exec';
 
@@ -1324,7 +1324,6 @@ var ORD_CAMPOS_AVISO = [
   ['cavidades','cav. estándar'], ['ciclo','ciclo estándar'], ['cantidadTotal','cantidad']
 ];
 function autoRefreshOrdenes(){
-  revisarVersionApp();
   if(!navigator.onLine) return;
   obtenerDatosDesdeBackend()
     .then(function(data){
@@ -1366,8 +1365,10 @@ function autoRefreshOrdenes(){
    VERSIÓN NUEVA DE LA APP — se aplica sola, sin perder la selección
    ───────────────────────────────────────────────────────
    Una pestaña abierta todo el turno nunca vuelve a pedir app.js: el código
-   nuevo solo llegaba al cerrar y abrir. Cada 20 min se mira version.json
-   (Vercel, no Apps Script: no gasta cuota). Si cambió, se guarda máquina,
+   nuevo solo llegaba al cerrar y abrir. Cada 2 min se mira version.json
+   (Vercel, no Apps Script: no gasta cuota de Google). Antes era cada 20 min,
+   junto con las órdenes; el usuario pidió que un cambio llegue a planta sin
+   tener que ir. Si cambió, se guarda máquina,
    operario(s), turno, orden y cav./ciclo real, y se recarga.
    NO se recarga con un paro, una calidad, unas observaciones o un peso a
    medio escribir: se espera al siguiente minuto libre. Tampoco con una
@@ -1378,7 +1379,9 @@ var GS_versionNueva = false;
 function revisarVersionApp(){
   fetch('version.json?_=' + Date.now(), { cache:'no-store' })
     .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(v){ if(v && v.version && v.version !== APP_VERSION) GS_versionNueva = true; })
+    .then(function(v){
+      if(v && v.version && v.version !== APP_VERSION){ GS_versionNueva = true; aplicarVersionSiSePuede(); }
+    })
     .catch(function(){});
 }
 function hayAlgoAMedias(){
@@ -1441,7 +1444,8 @@ function iniciarReloj(){
   _relojIniciado = true;
   setInterval(refrescarBordeTurnos, 60000);
   setInterval(autoRefreshOrdenes, 20 * 60 * 1000);  // órdenes cada 20 min
-  setInterval(aplicarVersionSiSePuede, 60000);      // versión nueva: en el primer minuto libre
+  setInterval(revisarVersionApp, 2 * 60 * 1000);   // ¿hay versión nueva publicada?
+  setInterval(aplicarVersionSiSePuede, 60000);      // si la hay y estaba ocupado: reintenta cada minuto
   revisarVersionApp();
   setInterval(function(){ if(navigator.onLine) sincronizarPendientes(); }, 60000);  // reintento de sync cada minuto
 }

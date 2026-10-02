@@ -1,6 +1,6 @@
 'use strict';
 
-var CACHE_NAME = 'fvl-registro-v37';
+var CACHE_NAME = 'fvl-registro-v38';
 var ASSETS = [
   './',
   './index.html',
