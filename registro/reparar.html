@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Actualizar app</title>
+<!--
+  REPARAR — trae la versión nueva de la app cuando un equipo quedó pegado en
+  una copia vieja (el service worker abre con lo guardado si la red tarda más
+  de 3 s, y recargar no lo saca de ahí).
+  Esta página NO está en la lista de sw.js, así que siempre llega de la red,
+  aunque el equipo tenga un service worker viejo.
+  Borra el service worker y la caché de la app. NO toca IndexedDB: los
+  registros pendientes por enviar (cola offline) se conservan.
+  Uso: abrir https://fvlco-app.vercel.app/registro/reparar.html
+-->
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#eef1f5;color:#1f2733;
+       display:flex;min-height:100vh;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+  .card{background:#fff;border-radius:12px;padding:22px 20px;max-width:380px;width:100%;box-shadow:0 2px 10px rgba(0,0,0,.08);text-align:center}
+  h1{font-size:18px;margin:0 0 10px}
+  p{font-size:14px;line-height:1.45;margin:8px 0}
+  .ok{color:#137333;font-weight:700}
+  .err{color:#c5221f;font-weight:700}
+  a{display:inline-block;margin-top:12px;background:#1a73e8;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Actualizando la app…</h1>
+  <p id="msg">Borrando la copia vieja guardada en este equipo.</p>
+  <a id="ir" href="./" style="display:none">Abrir la app</a>
+</div>
+<script>
+(function(){
+  var msg = document.getElementById('msg');
+  var ir  = document.getElementById('ir');
+  function listo(){
+    msg.innerHTML = '<span class="ok">Listo.</span> Abriendo la versión nueva…';
+    ir.href = './?_=' + Date.now();
+    ir.style.display = 'inline-block';
+    setTimeout(function(){ location.replace(ir.href); }, 1200);
+  }
+  var pasos = [];
+  if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+    pasos.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+      return Promise.all(rs.map(function(r){ return r.unregister(); }));
+    }));
+  }
+  if (window.caches && caches.keys) {
+    pasos.push(caches.keys().then(function(ks){
+      return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+    }));
+  }
+  Promise.all(pasos).then(listo, function(e){
+    msg.innerHTML = '<span class="err">No se pudo borrar todo</span> (' + (e && e.message || e) +
+      '). Toca el botón para abrir la app igual.';
+    ir.style.display = 'inline-block';
+  });
+})();
+</script>
+</body>
+</html>
